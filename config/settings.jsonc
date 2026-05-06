@@ -3,15 +3,19 @@
         "$schema": "https://opencode.ai/config.json",
         "default_agent": "wopal",
         "agent": {
+            // "wopal": {
+            //   "model": "wopal-ai/glm-5.1"
+            // },
             // "fae": {
             //   "model": "wopal-ai/glm-5.1"
             // },
+            // "wsf-codebase-mapper": {
+            //   "model": "qwen-coding-plan/qwen3.6-plus"
+            // },
             "compaction": {
                 "model": "qwen-coding-plan/qwen3.6-plus"
-            },
-            "wsf-codebase-mapper": {
-                "model": "qwen-coding-plan/qwen3.6-plus"
             }
+
         },
         "instructions": [
             ".workspace.md",
