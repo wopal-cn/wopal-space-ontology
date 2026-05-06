@@ -39,7 +39,7 @@ import re
 from pathlib import Path
 from datetime import date
 
-from dev_flow.domain.plan.find import find_plan, find_plan_by_issue, find_plan_by_name
+from dev_flow.domain.plan.find import find_plan, find_plan_by_issue, find_plan_by_name, _find_workspace_root
 from dev_flow.domain.plan.naming import make_plan_name, validate_plan_name, ValidationError
 from dev_flow.domain.plan.metadata import get_plan_status
 from dev_flow.domain.issue.title import extract_scope, extract_type
@@ -71,20 +71,6 @@ def log_warn(msg: str) -> None:
 # ============================================
 # Helpers
 # ============================================
-
-def _find_workspace_root() -> Path:
-    """Find workspace root by searching for .wopal or .git directory."""
-    current = Path.cwd()
-    
-    while current != current.parent:
-        if (current / '.wopal').exists():
-            return current
-        if (current / '.git').exists():
-            return current
-        current = current.parent
-    
-    return Path.cwd()
-
 
 def _get_space_repo() -> str:
     """Get space repo in owner/repo format."""

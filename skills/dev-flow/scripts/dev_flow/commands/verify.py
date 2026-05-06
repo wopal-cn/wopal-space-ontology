@@ -24,7 +24,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from dev_flow.domain.plan.find import find_plan, find_plan_by_issue
+from dev_flow.domain.plan.find import find_plan, find_plan_by_issue, _find_workspace_root
 from dev_flow.domain.plan.metadata import (
     get_plan_field,
     get_plan_issue,
@@ -68,20 +68,6 @@ def log_warn(msg: str) -> None:
 # ============================================
 # Helpers
 # ============================================
-
-def _find_workspace_root() -> Path:
-    """Find workspace root by searching for .wopal or .git directory."""
-    current = Path.cwd()
-
-    while current != current.parent:
-        if (current / '.wopal').exists():
-            return current
-        if (current / '.git').exists():
-            return current
-        current = current.parent
-
-    return Path.cwd()
-
 
 def _resolve_repo(repo: str = None) -> str:
     """Resolve repository name (owner/repo format)."""

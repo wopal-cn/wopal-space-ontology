@@ -5,15 +5,15 @@
 #   - find_plan: Smart lookup by Issue number OR plan name
 #   - find_plan_by_issue: Find plan file by issue number (including archived)
 #   - find_plan_by_name: Find plan file by plan name (no-issue mode)
-#
-# Ported from lib/plan.sh
+#   - _find_workspace_root: Locate workspace root (shared by all commands)
 
 import os
 import glob
 import re
+from pathlib import Path
 
 
-def find_plan(input_ref: str, workspace_root: str = None) -> str:
+def find_plan(input_ref: str, workspace_root: str | Path = None) -> str:
     """
     Smart plan lookup: find plan by Issue number OR plan name.
     
@@ -34,6 +34,8 @@ def find_plan(input_ref: str, workspace_root: str = None) -> str:
     if workspace_root is None:
         workspace_root = _find_workspace_root()
     
+    workspace_root = str(workspace_root)
+    
     # Check if input looks like an Issue number
     if re.match(r'^\d+$', input_ref):
         return find_plan_by_issue(int(input_ref), workspace_root)
@@ -41,7 +43,7 @@ def find_plan(input_ref: str, workspace_root: str = None) -> str:
         return find_plan_by_name(input_ref, workspace_root)
 
 
-def find_plan_by_name(plan_name: str, workspace_root: str = None) -> str:
+def find_plan_by_name(plan_name: str, workspace_root: str | Path = None) -> str:
     """
     Find plan file by plan name (no-issue mode).
     
@@ -62,6 +64,8 @@ def find_plan_by_name(plan_name: str, workspace_root: str = None) -> str:
     """
     if workspace_root is None:
         workspace_root = _find_workspace_root()
+    
+    workspace_root = str(workspace_root)
     
     # Search locations in order
     search_dirs = [
@@ -94,7 +98,7 @@ def find_plan_by_name(plan_name: str, workspace_root: str = None) -> str:
     raise FileNotFoundError(f"No plan found for: {plan_name}")
 
 
-def find_plan_by_issue(issue_number: int, workspace_root: str = None) -> str:
+def find_plan_by_issue(issue_number: int, workspace_root: str | Path = None) -> str:
     """
     Find plan file by issue number, searching active and archived directories.
     
@@ -115,6 +119,8 @@ def find_plan_by_issue(issue_number: int, workspace_root: str = None) -> str:
     """
     if workspace_root is None:
         workspace_root = _find_workspace_root()
+    
+    workspace_root = str(workspace_root)
     
     # Pattern for issue-prefixed plan: <issue_number>-<type>-<scope>-<slug>.md
     pattern_prefix = f"{issue_number}-"
@@ -150,15 +156,19 @@ def find_plan_by_issue(issue_number: int, workspace_root: str = None) -> str:
     raise FileNotFoundError(f"No plan found for issue #{issue_number}")
 
 
-def _find_workspace_root() -> str:
-    """Find workspace root by searching for .wopal or .git directory"""
+def _find_workspace_root() -> Path:
+    """Find workspace root by searching for .wopal or .git directory.
+    
+    Uses isdir() to ensure .git is a real directory (not a worktree file).
+    This avoids false matches when running from inside .wopal/ (a git worktree).
+    """
     current = os.getcwd()
     
     while current != "/":
         if os.path.isdir(os.path.join(current, ".wopal")):
-            return current
+            return Path(current)
         if os.path.isdir(os.path.join(current, ".git")):
-            return current
+            return Path(current)
         current = os.path.dirname(current)
     
-    return os.getcwd()
+    return Path(os.getcwd())
