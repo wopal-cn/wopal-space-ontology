@@ -1,6 +1,6 @@
-# WopalSpace ontology — 本体能力锻造层
+# WopalSpace ontology — 能力本体上游
 
-> **定位**：WopalSpace 的 Agent 能力研发中心。
+> **定位**：WopalSpace 的 Agent 能力定义上游仓库（`wopal-cn/ontology`）。本仓库是通用能力基座，PR 目标。**活跃开发在 Fork（`sampx/wopal-space-ontology`）的 `.wopal/` worktree 中进行，不直接编辑本仓库。**
 
 ---
 
@@ -114,23 +114,25 @@ description: |
 
 ## 资源层次与归属
 
+> **注意**：本仓库是上游引用，活跃开发在 Fork `.wopal/` worktree。以下结构描述的是 upstream 源码树的组织方式。
+
 ### 源码结构
 
 ```
-projects/ontology/
-├── skills/              # 所有技能统一存放
-├── commands/
-│   ├── *.md             # 共享命令
-│   └── wopal/           # Wopal 专属命令
-├── rules/
-│   ├── *.md             # 共享规则  
-│   └── wopal/           # Wopal 专属规则
-├── agents/
-│   ├── wopal.md         # Wopal agent 定义
+ontology/                   # upstream wopal-cn/ontology
+├── skills/                 # 所有技能统一存放
+├── commands/               # 命令定义
+│   ├── *.md                # 共享命令
+│   └── wopal/              # Wopal 专属命令
+├── rules/                  # 规则定义
+│   ├── *.md                # 共享规则  
+│   └── wopal/              # Wopal 专属规则
+├── agents/                 # Agent 灵魂定义
+│   ├── wopal.md
 │   ├── wopal-cn.md
-│   ├── fae.md           # Fae agent 定义
+│   ├── fae.md
 │   └── fae-cn.md
-└── wopal-plugin/        # 插件
+└── wopal-plugin/           # 空间唯一插件
 ```
 
 ### Agent 技能权限
@@ -149,6 +151,6 @@ permission:
   "*": allow
 ```
 
-**原则**：技能统一部署，通过 Permission 实现隔离。修改 `permission.skill` 即可调整 Agent 可用技能。
+**原则**：技能统一存放在 `skills/` 目录，通过 Permission 实现 Agent 间隔离。修改 `permission.skill` 即可调整 Agent 可用技能。
 
 
