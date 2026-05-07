@@ -42,8 +42,7 @@
                 "~/**": "allow",
                 "/Users/sam/**": "allow",
                 "/tmp/**": "allow",
-                "/var/folders/**": "allow",
-                "/Users/sam/coding/wopal/wopal-workspace/.opencode/wsf/*": "allow"
+                "/var/folders/**": "allow"
             },
             "skill": {
                 "*": "allow"
@@ -114,10 +113,25 @@
                 "sleep *": "allow",
                 "xargs *": "allow",
                 "bash -n *": "allow"
-            },
-            "read": {
-                "/Users/sam/coding/wopal/wopal-workspace/.opencode/wsf/*": "allow"
             }
         }
+    },
+    "tui": {
+        "$schema": "https://opencode.ai/tui.json",
+        "plugin": [
+            [
+                "../plugins/tui-smoke.tsx",
+                {
+                    "enabled": false,
+                    "label": "WopalSpace",
+                    "keybinds": {
+                        "modal": "ctrl+shift+m",
+                        "screen": "ctrl+shift+o",
+                        "home": "escape,ctrl+shift+h",
+                        "dialog_close": "escape,q"
+                    }
+                }
+            ]
+        ]
     }
 }
