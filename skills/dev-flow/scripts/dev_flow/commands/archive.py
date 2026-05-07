@@ -210,11 +210,24 @@ def _commit_project_changes(
     Returns:
         True if commit and push succeeded
     """
+    # Normalize plan type to valid git commit type
+    plan_type_to_commit = {
+        'feature': 'feat',
+        'enhance': 'enhance',
+        'fix': 'fix',
+        'refactor': 'refactor',
+        'docs': 'docs',
+        'test': 'test',
+        'chore': 'chore',
+        'perf': 'perf',
+    }
+    commit_type = plan_type_to_commit.get(plan_type, 'chore')
+
     # Build commit message
     if issue_number:
-        commit_msg = f"{plan_type}: implement plan changes (#{issue_number})"
+        commit_msg = f"{commit_type}: implement plan changes (#{issue_number})"
     else:
-        commit_msg = f"{plan_type}: implement plan changes"
+        commit_msg = f"{commit_type}: implement plan changes"
 
     # Stage all
     subprocess.run(
