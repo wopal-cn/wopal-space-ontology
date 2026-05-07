@@ -486,6 +486,8 @@ def commit_archived_plan(
         commit_msg = f"chore: archive plan #{issue_number}"
     else:
         plan_name = Path(archived_file).stem
+        # Strip YYYYMMDD- prefix for hook length limit (≤60 chars)
+        plan_name = re.sub(r'^\d{8}-', '', plan_name)
         commit_msg = f"chore: archive plan {plan_name}"
 
     # Commit
@@ -498,6 +500,8 @@ def commit_archived_plan(
 
     if result.returncode != 0:
         log_warn("Failed to commit archived plan")
+        if result.stderr.strip():
+            log_warn(f"  {result.stderr.strip()}")
         return False
 
     # Push
