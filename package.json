@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@opencode-ai/plugin": "1.14.28",
+    "wopal-plugin": "file:wopal-plugin"
+  }
+}

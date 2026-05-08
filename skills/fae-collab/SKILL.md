@@ -102,7 +102,7 @@ prompt: "执行 /commit 命令..."      // ❌ 不会触发
 
 | Space 视角 | Fae 视角 |
 |------------|----------|
-| `projects/ontology/` | `/project/` |
+| `projects/<project>/` | `/project/` |
 | `.agents/skills/` | 不可见 |
 
 ```bash
@@ -350,7 +350,7 @@ wopal fae sandbox stop <project>
 |----------|--------|------|
 | 单元测试、集成测试（代码级） | fae | 自动化、确定性、可重复 |
 | E2E 测试、功能验证 | **Wopal** | 需要观察运行时环境 |
-| 技能安装验证 | **Wopal** | 需要确认部署层正确加载 |
+| 技能安装验证 | **Wopal** | 需要确认技能在 Agent 上下文中正确加载 |
 | 插件加载/事件流观测 | **Wopal** | 子会话无法观测父会话运行时 |
 
 `completed` ≠ 成功，Wopal 必须读取文件、运行命令验证 fae 的产出。失败时用 `wopal_reply` 反馈，让 fae 继续完善。

@@ -27,7 +27,7 @@ import glob as glob_mod
 from pathlib import Path
 from datetime import date
 
-from dev_flow.domain.plan.find import find_plan, find_plan_by_issue
+from dev_flow.domain.plan.find import find_plan, find_plan_by_issue, _find_workspace_root
 from dev_flow.domain.plan.metadata import (
     get_plan_project,
     get_plan_type,
@@ -81,20 +81,6 @@ def log_step(msg: str) -> None:
 # ============================================
 # Helpers
 # ============================================
-
-def _find_workspace_root() -> Path:
-    """Find workspace root by searching for .wopal or .git directory."""
-    current = Path.cwd()
-
-    while current != current.parent:
-        if (current / '.wopal').exists():
-            return current
-        if (current / '.git').exists():
-            return current
-        current = current.parent
-
-    return Path.cwd()
-
 
 def _get_space_repo() -> str:
     """Get space repo in owner/repo format."""
@@ -224,11 +210,24 @@ def _commit_project_changes(
     Returns:
         True if commit and push succeeded
     """
+    # Normalize plan type to valid git commit type
+    plan_type_to_commit = {
+        'feature': 'feat',
+        'enhance': 'enhance',
+        'fix': 'fix',
+        'refactor': 'refactor',
+        'docs': 'docs',
+        'test': 'test',
+        'chore': 'chore',
+        'perf': 'perf',
+    }
+    commit_type = plan_type_to_commit.get(plan_type, 'chore')
+
     # Build commit message
     if issue_number:
-        commit_msg = f"{plan_type}: implement plan changes (#{issue_number})"
+        commit_msg = f"{commit_type}: implement plan changes (#{issue_number})"
     else:
-        commit_msg = f"{plan_type}: implement plan changes"
+        commit_msg = f"{commit_type}: implement plan changes"
 
     # Stage all
     subprocess.run(
@@ -500,6 +499,8 @@ def commit_archived_plan(
         commit_msg = f"chore: archive plan #{issue_number}"
     else:
         plan_name = Path(archived_file).stem
+        # Strip YYYYMMDD- prefix for hook length limit (≤60 chars)
+        plan_name = re.sub(r'^\d{8}-', '', plan_name)
         commit_msg = f"chore: archive plan {plan_name}"
 
     # Commit
@@ -512,6 +513,8 @@ def commit_archived_plan(
 
     if result.returncode != 0:
         log_warn("Failed to commit archived plan")
+        if result.stderr.strip():
+            log_warn(f"  {result.stderr.strip()}")
         return False
 
     # Push

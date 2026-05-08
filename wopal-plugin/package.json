@@ -1,7 +1,7 @@
 {
-  "name": "opencode-rules",
+  "name": "wopal-plugin",
   "version": "0.4.0",
-  "description": "OpenCode plugin that discovers and injects markdown rules into system prompts",
+  "description": "Ellamaka plugin context rules tasks and memory management",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
@@ -23,15 +23,6 @@
     "system-prompt",
     "typescript"
   ],
-  "author": "Joe Maples <joe@maples.dev>",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/frap129/opencode-rules.git"
-  },
-  "bugs": {
-    "url": "https://github.com/frap129/opencode-rules/issues"
-  },
   "files": [
     "dist",
     "README.md",

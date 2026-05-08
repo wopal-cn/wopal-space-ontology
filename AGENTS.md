@@ -116,21 +116,20 @@ description: |
 
 ### 源码结构
 
+> `.wopal/` 是 `sampx/wopal-space-ontology`（`wopal-cn/ontology` 的 fork）的 git worktree，直接编辑即生效。
+
 ```
-projects/ontology/
+.wopal/
 ├── skills/              # 所有技能统一存放
-├── commands/
+├── commands/            # 命令定义（Agent 通过 permission 控制可见性）
 │   ├── *.md             # 共享命令
 │   └── wopal/           # Wopal 专属命令
-├── rules/
-│   ├── *.md             # 共享规则  
+├── rules/               # 规则定义
+│   ├── *.md             # 共享规则
 │   └── wopal/           # Wopal 专属规则
-├── agents/
-│   ├── wopal.md         # Wopal agent 定义
-│   ├── wopal-cn.md
-│   ├── fae.md           # Fae agent 定义
-│   └── fae-cn.md
-└── wopal-plugin/        # 插件
+├── agents/              # Agent 灵魂定义（wopal.md, wopal-cn.md, fae.md, fae-cn.md）
+├── wopal-plugin/        # 空间唯一插件（规则注入、任务委派、记忆、上下文管理）
+└── config/              # 空间本地配置（不提交到 git）
 ```
 
 ### Agent 技能权限
@@ -149,6 +148,6 @@ permission:
   "*": allow
 ```
 
-**原则**：技能统一部署，通过 Permission 实现隔离。修改 `permission.skill` 即可调整 Agent 可用技能。
+**原则**：技能统一存放在 `skills/` 目录，通过 Permission 实现 Agent 间隔离。修改 `permission.skill` 即可调整 Agent 可用技能。
 
 

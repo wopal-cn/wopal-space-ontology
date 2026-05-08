@@ -147,4 +147,3 @@ git commit -m "docs: 更新知识沉淀"
 **提交顺序**：
 1. 项目提交（projects/*）
 2. 工作空间提交
-3. 有子模块变更 → 提醒 `/pin-submodule`

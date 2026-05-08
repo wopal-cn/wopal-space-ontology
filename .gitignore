@@ -49,7 +49,7 @@ yarn.lock
 .worktrees/
 
 # tmp
-skills/download/
+.INBOX
 # ai
 .opencode
 
