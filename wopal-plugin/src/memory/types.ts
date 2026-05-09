@@ -62,7 +62,7 @@ export interface StoredMemoryRow {
   [key: string]: unknown;
   id: string;
   text: string;
-  vector: Float32Array;
+  vector: number[];
   category: string;
   project: string;
   session_id: string;
