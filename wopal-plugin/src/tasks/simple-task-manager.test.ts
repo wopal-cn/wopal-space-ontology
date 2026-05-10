@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { SimpleTaskManager } from "./simple-task-manager.js"
+import { sessionIDToTaskID } from "./task-launcher.js"
 
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void
@@ -23,7 +24,7 @@ async function flushAsyncWork(iterations = 5) {
 function createMockClient() {
   return {
     session: {
-      create: vi.fn().mockResolvedValue({ id: "child-session-1" }),
+      create: vi.fn().mockResolvedValue({ id: "ses_child-session-1" }),
       promptAsync: vi.fn().mockResolvedValue(undefined),
       abort: vi.fn().mockResolvedValue(undefined),
     },
@@ -59,28 +60,30 @@ describe("SimpleTaskManager", () => {
         throw new Error("expected successful launch")
       }
 
+      expect(result.taskId).toBe("wopal-task-child-session-1")
+
       expect(mockClient.session.create).toHaveBeenCalledWith({
         parentID: "parent-1",
         title: "Test task",
       })
       expect(mockClient.session.promptAsync).toHaveBeenCalledWith({
-        path: { id: "child-session-1" },
+        path: { id: "ses_child-session-1" },
         body: {
           agent: "general",
           parts: [{ type: "text", text: "Do something" }],
           tools: {
-            "wopal_task": false,  // only wopal_task is disabled; wopal_task_output and wopal_task_cancel are kept for monitoring mode
+            "wopal_task": false,
           },
         },
       })
 
       const task = manager.getTask(result.taskId)
       expect(task?.status).toBe("running")
-      expect(manager.findBySession("child-session-1")?.id).toBe(result.taskId)
+      expect(manager.findBySession("ses_child-session-1")?.id).toBe(result.taskId)
     })
 
     it("extracts session id from session.data.id (OpenCode API structure)", async () => {
-      mockClient.session.create.mockResolvedValueOnce({ data: { id: "session-from-data-id" } })
+      mockClient.session.create.mockResolvedValueOnce({ data: { id: "ses_session-from-data-id" } })
 
       const result = await manager.launch({
         description: "Test task",
@@ -92,11 +95,12 @@ describe("SimpleTaskManager", () => {
       expect(result).toMatchObject({ ok: true })
       if (!result.ok) throw new Error("expected success")
 
-      expect(manager.findBySession("session-from-data-id")?.id).toBe(result.taskId)
+      expect(result.taskId).toBe("wopal-task-session-from-data-id")
+      expect(manager.findBySession("ses_session-from-data-id")?.id).toBe(result.taskId)
     })
 
     it("extracts session id from session.id as fallback", async () => {
-      mockClient.session.create.mockResolvedValueOnce({ id: "session-from-id" })
+      mockClient.session.create.mockResolvedValueOnce({ id: "ses_session-from-id" })
 
       const result = await manager.launch({
         description: "Test task",
@@ -108,7 +112,8 @@ describe("SimpleTaskManager", () => {
       expect(result).toMatchObject({ ok: true })
       if (!result.ok) throw new Error("expected success")
 
-      expect(manager.findBySession("session-from-id")?.id).toBe(result.taskId)
+      expect(result.taskId).toBe("wopal-task-session-from-id")
+      expect(manager.findBySession("ses_session-from-id")?.id).toBe(result.taskId)
     })
 
     it("fails when parent session id is missing", async () => {
@@ -159,11 +164,8 @@ describe("SimpleTaskManager", () => {
         status: "error",
         error: "Background task launch failed: Create failed",
       })
-      if (result.ok || !result.taskId) {
-        throw new Error("expected failed launch with task id")
-      }
-
-      expect(manager.getTask(result.taskId)?.status).toBe("error")
+      // No taskId when session.create fails
+      expect(result.taskId).toBeUndefined()
     })
 
     it("fails when child session id is missing", async () => {
@@ -186,7 +188,7 @@ describe("SimpleTaskManager", () => {
     it("fails when session.promptAsync is unavailable", async () => {
       const client = {
         session: {
-          create: vi.fn().mockResolvedValue({ id: "child-session-1" }),
+          create: vi.fn().mockResolvedValue({ id: "ses_child-session-1" }),
           abort: vi.fn().mockResolvedValue(undefined),
         },
       }
@@ -205,7 +207,7 @@ describe("SimpleTaskManager", () => {
         error: "Background task launch failed: session.promptAsync is unavailable",
       })
       expect(client.session.abort).toHaveBeenCalledWith({
-        path: { id: "child-session-1" },
+        path: { id: "ses_child-session-1" },
       })
     })
 
@@ -226,7 +228,7 @@ describe("SimpleTaskManager", () => {
           "Background task launch failed: session.promptAsync did not return a promise",
       })
       expect(mockClient.session.abort).toHaveBeenCalledWith({
-        path: { id: "child-session-1" },
+        path: { id: "ses_child-session-1" },
       })
     })
 
@@ -253,7 +255,7 @@ describe("SimpleTaskManager", () => {
       expect(task?.error).toBe("Background task execution failed: Prompt failed")
 
       expect(mockClient.session.abort).toHaveBeenCalledWith({
-        path: { id: "child-session-1" },
+        path: { id: "ses_child-session-1" },
       })
     })
   })
@@ -293,7 +295,7 @@ describe("SimpleTaskManager", () => {
 
       expect(interrupted).toBe("interrupted")
       expect(mockClient.session.abort).toHaveBeenCalledWith({
-        path: { id: "child-session-1" },
+        path: { id: "ses_child-session-1" },
       })
       // interrupt only aborts, status remains running
       expect(manager.getTask(result.taskId)?.status).toBe("running")

@@ -3,7 +3,7 @@ import type { SimpleTaskManager } from "../tasks/simple-task-manager.js"
 
 export function createWopalTaskTool(manager: SimpleTaskManager): ToolDefinition {
   return tool({
-    description: "Launch a non-blocking background task with a subagent",
+    description: "Launch a non-blocking background task with a subagent. Returns task_id in format wopal-task-{session_suffix}. Tasks persist across restarts and can be recovered via wopal_task_output.",
     args: {
       description: tool.schema.string().describe("Short description of the task (3-5 words)"),
       prompt: tool.schema.string().describe("Detailed instructions for the subagent"),

@@ -202,6 +202,7 @@ scripts/                          # 工具脚本
 | `wopal_task` | 启动子会话任务 | `description`, `prompt`, `agent` |
 | `wopal_task_output` | 查询状态/输出/完成 | `task_id`, `section`, `last_n`, `action` |
 | `wopal_task_reply` | 恢复或中断等待中的子会话 | `task_id`, `message`, `interrupt` |
+| `wopal_task_delete` | 删除已完成的任务及其子会话 | `task_id` |
 | `wopal_task_diff` | 查看任务产生的文件变更 | `task_id` |
 | `memory_manage` | 记忆 CRUD + 蒸馏 | `command`, `query`, `text`, `category`, `tags`, `id` |
 | `context_manage` | 会话摘要/状态查询 | `action` (summary/status) |

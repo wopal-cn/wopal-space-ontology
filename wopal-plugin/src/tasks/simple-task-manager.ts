@@ -13,6 +13,7 @@ import { registerManagerForCleanup, unregisterManagerForCleanup } from "./proces
 import {
   launchTask,
   DEFAULT_CONCURRENCY_LIMIT,
+  sessionIDToTaskID,
 } from "./task-launcher.js"
 import { notifyParent, notifyParentStuck } from "./task-notifier.js"
 import { sendProgressNotification } from "./task-notifier-internals.js"
@@ -38,7 +39,6 @@ const defaultManagerLog = createDebugLog("[wopal-task]", "task")
 
 export class SimpleTaskManager {
   private tasks = new Map<string, WopalTask>()
-  private sessionToTask = new Map<string, string>()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private client: any
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -160,9 +160,7 @@ export class SimpleTaskManager {
   }
 
   findBySession(sessionID: string): WopalTask | undefined {
-    const taskId = this.sessionToTask.get(sessionID)
-    if (!taskId) return undefined
-    return this.tasks.get(taskId)
+    return this.tasks.get(sessionIDToTaskID(sessionID))
   }
 
   markTaskCompletedBySession(sessionID: string): WopalTask | undefined {
@@ -183,6 +181,39 @@ export class SimpleTaskManager {
 
   async interrupt(id: string, parentSessionID: string): Promise<CancelResult> {
     return interruptTask(this.getLifecycleDeps(), id, parentSessionID)
+  }
+
+  async closeTask(taskId: string, parentSessionID: string): Promise<{ ok: boolean; message: string }> {
+    const { tasks, client, debugLog, releaseConcurrencySlot } = this.getLifecycleDeps()
+
+    const task = this.getTaskForParent(taskId, parentSessionID)
+    if (!task) {
+      return { ok: false, message: "Task not found or not owned by this session" }
+    }
+
+    if (task.status === 'running' && !task.idleNotified) {
+      return { ok: false, message: "Task is still running. Please verify completion before deleting (use wopal_task_output to check status)." }
+    }
+
+    if (task.sessionID && client.session?.delete) {
+      try {
+        const result = await client.session.delete({ path: { id: task.sessionID } })
+        if (result.error) {
+          debugLog(`[closeTask] session.delete error for taskId=${taskId}: ${String(result.error).substring(0, 200)}`)
+          return { ok: false, message: `Failed to delete session: ${String(result.error)}` }
+        }
+      } catch (err) {
+        debugLog(`[closeTask] session.delete exception for taskId=${taskId}: ${String(err).substring(0, 200)}`)
+        return { ok: false, message: `Failed to delete session: ${String(err)}` }
+      }
+    }
+
+    tasks.delete(taskId)
+
+    releaseConcurrencySlot(task)
+
+    debugLog(`[closeTask] taskId=${taskId} deleted successfully`)
+    return { ok: true, message: "Task deleted successfully. Session removed from OpenCode." }
   }
 
   async notifyParent(taskId: string): Promise<void> {
@@ -237,10 +268,56 @@ export class SimpleTaskManager {
     }
   }
 
+  async recoverFromSession(parentSessionID: string): Promise<void> {
+    if (typeof this.client?.session?.children !== "function") {
+      this.debugLog(`[recover] skipped: session.children is unavailable`)
+      return
+    }
+
+    try {
+      const result = await this.client.session.children({ path: { id: parentSessionID } })
+      this.debugLog(`[recover] raw result keys: ${Object.keys(result ?? {}).join(', ')}`)
+      const children = result?.data ?? result ?? []
+      if (!Array.isArray(children)) {
+        this.debugLog(`[recover] skipped: children is not an array, type=${typeof children}`)
+        return
+      }
+
+      let recovered = 0
+      for (const child of children) {
+        const childSessionID = child.id
+        if (!childSessionID) continue
+
+        const taskID = sessionIDToTaskID(childSessionID)
+        if (this.tasks.has(taskID)) continue
+
+        const task: WopalTask = {
+          id: taskID,
+          sessionID: childSessionID,
+          status: 'pending',
+          description: child.title ?? '',
+          agent: child.agent ?? 'unknown',
+          prompt: '',
+          parentSessionID,
+          createdAt: new Date(child.time?.created ?? Date.now()),
+          idleNotified: true,
+        }
+        this.tasks.set(taskID, task)
+        recovered++
+        this.debugLog(`[recover] restored task=${taskID} session=${childSessionID.slice(0, 8)} title="${child.title?.substring(0, 40) ?? ''}"`)
+      }
+
+      if (recovered > 0) {
+        this.debugLog(`[recover] recovered ${recovered} task(s) from parent=${parentSessionID.slice(0, 8)}`)
+      }
+    } catch (err) {
+      this.debugLog(`[recover] error: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
   private getLauncherDeps() {
     return {
       tasks: this.tasks,
-      sessionToTask: this.sessionToTask,
       client: this.client,
       debugLog: this.debugLog,
       concurrency: this.concurrency,
@@ -255,7 +332,6 @@ export class SimpleTaskManager {
   private getLifecycleDeps() {
     return {
       tasks: this.tasks,
-      sessionToTask: this.sessionToTask,
       client: this.client,
       debugLog: this.debugLog,
       releaseConcurrencySlot: this.releaseConcurrencySlot.bind(this),

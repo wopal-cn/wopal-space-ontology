@@ -13,6 +13,8 @@ export interface EventRouterHookContext {
 }
 
 export function createEventRouter(ctx: EventRouterHookContext) {
+  let recovered = false
+
   async function onEvent(
     input: { event: { type: string; properties?: Record<string, unknown> } },
   ): Promise<void> {
@@ -20,6 +22,17 @@ export function createEventRouter(ctx: EventRouterHookContext) {
 
     const eventType = input.event.type
     const props = input.event.properties
+
+    // Lazy recovery: trigger on first event with a sessionID
+    if (!recovered && ctx.taskManager) {
+      const sessionID = props?.sessionID as string | undefined
+      if (sessionID) {
+        recovered = true
+        void ctx.taskManager.recoverFromSession(sessionID).catch((err) => {
+          ctx.taskDebugLog(`[recover] failed: ${err instanceof Error ? err.message : String(err)}`)
+        })
+      }
+    }
 
     const ACTIONABLE_EVENTS = new Set(["session.idle"])
     if (ACTIONABLE_EVENTS.has(eventType)) {

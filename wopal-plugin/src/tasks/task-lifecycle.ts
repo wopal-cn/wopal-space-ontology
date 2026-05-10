@@ -1,7 +1,7 @@
 import type { CancelResult, WopalTask } from "../types.js"
 import type { DebugLog } from "../debug.js"
 import type { IdleDiagnostic } from "./idle-diagnostic.js"
-import { toErrorMessage } from "./task-launcher.js"
+import { toErrorMessage, sessionIDToTaskID } from "./task-launcher.js"
 
 const CLEANUP_INTERVAL_MS = 600_000 // 10 minutes
 const CLEANUP_MAX_AGE_MS = 3600_000 // 1 hour
@@ -11,10 +11,10 @@ export { CLEANUP_INTERVAL_MS, CLEANUP_MAX_AGE_MS, TASK_TTL_MS }
 
 export interface TaskLifecycleDeps {
   tasks: Map<string, WopalTask>
-  sessionToTask: Map<string, string>
   client: {
     session?: {
       abort?: (args: { path: { id: string } }) => Promise<void>
+      delete?: (args: { path: { id: string } }) => Promise<{ data?: boolean; error?: unknown }>
     }
   }
   debugLog: DebugLog
@@ -64,14 +64,9 @@ export function markTaskErrorBySession(
   sessionID: string,
   error: string,
 ): WopalTask | undefined {
-  const { tasks, sessionToTask, debugLog } = deps
+  const { tasks, debugLog } = deps
 
-  const taskId = sessionToTask.get(sessionID)
-  if (!taskId) {
-    debugLog(`[markError] skipped: no task found for sessionID=${sessionID}`)
-    return undefined
-  }
-  const task = tasks.get(taskId)
+  const task = tasks.get(sessionIDToTaskID(sessionID))
   if (!task) {
     debugLog(`[markError] skipped: no task found for sessionID=${sessionID}`)
     return undefined
@@ -97,11 +92,9 @@ export function markTaskWaitingBySession(
   sessionID: string,
   diagnostic: IdleDiagnostic,
 ): WopalTask | undefined {
-  const { tasks, sessionToTask, debugLog } = deps
+  const { tasks, debugLog } = deps
 
-  const taskId = sessionToTask.get(sessionID)
-  if (!taskId) return undefined
-  const task = tasks.get(taskId)
+  const task = tasks.get(sessionIDToTaskID(sessionID))
   if (!task || task.status !== 'running') {
     return undefined
   }
@@ -121,12 +114,9 @@ export async function interruptTask(
   id: string,
   parentSessionID: string,
 ): Promise<CancelResult> {
-  const { tasks, sessionToTask, client, debugLog, releaseConcurrencySlot } = deps
+  const { tasks, client, debugLog, releaseConcurrencySlot } = deps
 
-  const taskId = sessionToTask.has(id) ? id : undefined
-  const task = taskId
-    ? tasks.get(taskId)
-    : [...tasks.values()].find(t => t.id === id)
+  const task = tasks.get(id) ?? [...tasks.values()].find(t => t.id === id)
 
   if (!task || task.parentSessionID !== parentSessionID) {
     debugLog(`[interrupt] failed: taskId=${id} not found or ownership mismatch`)
@@ -164,24 +154,19 @@ export function cleanup(
   deps: TaskLifecycleDeps,
   maxAgeMs = 3600_000,
 ): void {
-  const { tasks, sessionToTask, debugLog, releaseConcurrencySlot } = deps
+  const { tasks, debugLog, releaseConcurrencySlot } = deps
   const now = Date.now()
   let cleanedCount = 0
 
   for (const [id, task] of tasks) {
-    // Terminal tasks: only 'error' is terminal
     if (task.status === 'error') {
       if (task.completedAt && now - task.completedAt.getTime() > maxAgeMs) {
         tasks.delete(id)
-        if (task.sessionID) {
-          sessionToTask.delete(task.sessionID)
-        }
         cleanedCount++
       }
       continue
     }
 
-    // Non-terminal tasks: check for TTL timeout
     const timestamp = task.status === 'pending'
       ? task.createdAt?.getTime()
       : task.startedAt?.getTime()
@@ -189,9 +174,6 @@ export function cleanup(
     if (timestamp && now - timestamp > TASK_TTL_MS) {
       releaseConcurrencySlot(task)
       tasks.delete(id)
-      if (task.sessionID) {
-        sessionToTask.delete(task.sessionID)
-      }
       cleanedCount++
       debugLog(`[cleanup] pruned stale ${task.status} task: ${id}`)
     }

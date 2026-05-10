@@ -10,6 +10,7 @@ function createEventRouterWithTaskManager(taskManager: {
   findBySession?: ReturnType<typeof vi.fn>
   getClient?: ReturnType<typeof vi.fn>
   releaseConcurrencySlot?: ReturnType<typeof vi.fn>
+  recoverFromSession?: ReturnType<typeof vi.fn>
 }) {
   const fullTaskManager = {
     findBySession: vi.fn().mockReturnValue(undefined),
@@ -21,6 +22,7 @@ function createEventRouterWithTaskManager(taskManager: {
     markTaskWaitingBySession: vi.fn(),
     markTaskCompletedBySession: vi.fn(),
     releaseConcurrencySlot: vi.fn(),
+    recoverFromSession: vi.fn().mockResolvedValue(undefined),
     ...taskManager,
   }
   const sessionStore = new SessionStore({ max: 10 });
@@ -69,6 +71,7 @@ describe("OpenCodeRulesRuntime event handling", () => {
         markTaskWaitingBySession: vi.fn(),
         notifyParent: vi.fn().mockResolvedValue(undefined),
         releaseConcurrencySlot: vi.fn(),
+        recoverFromSession: vi.fn().mockResolvedValue(undefined),
       } as never,
     };
     const hooks = createEventRouter(ctx as never);

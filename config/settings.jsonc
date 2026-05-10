@@ -3,17 +3,29 @@
         "$schema": "https://opencode.ai/config.json",
         "default_agent": "wopal",
         "agent": {
-            // "wopal": {
-            //   "model": "wopal-ai/glm-5.1"
-            // },
-            // "fae": {
-            //   "model": "wopal-ai/glm-5.1"
-            // },
-            // "wsf-codebase-mapper": {
-            //   "model": "qwen-coding-plan/qwen3.6-plus"
-            // },
+            "fae": {
+              "model": "wopal-ai/glm-5.1"
+            },            
+            "wsf-planner": {
+              "model": "github-copilot/gpt-5.4"
+            },
+            "wsf-plan-checker": {
+              "model": "wopal-ai/glm-5"
+            },
+            "wsf-executor": {
+              "model": "wopal-ai/glm-5"
+            },
+            "wsf-code-reviewer": {
+              "model": "github-copilot/gpt-5.4"
+            },
+            "wsf-code-fixer": {
+              "model": "wopal-ai/glm-5"
+            },
+            "wsf-codebase-mapper": {
+              "model": "wopal-ai/qwen-3.6-plus"
+            },
             "compaction": {
-                "model": "qwen-coding-plan/qwen3.6-plus"
+                "model": "wopal-ai/qwen-3.6-plus"
             }
 
         },

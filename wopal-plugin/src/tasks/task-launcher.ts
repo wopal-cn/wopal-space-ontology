@@ -8,9 +8,13 @@ import type { ConcurrencyManager } from "./concurrency-manager.js"
 
 export const DEFAULT_CONCURRENCY_LIMIT = 5
 
+export function sessionIDToTaskID(sessionID: string): string {
+  const suffix = sessionID.replace(/^ses_/, '')
+  return `wopal-task-${suffix}`
+}
+
 export interface TaskLauncherDeps {
   tasks: Map<string, WopalTask>
-  sessionToTask: Map<string, string>
   client: {
     session?: {
       create?: (args: { parentID: string; title: string }) => Promise<{
@@ -65,11 +69,10 @@ export async function launchTask(
   deps: TaskLauncherDeps,
   input: LaunchInput,
 ): Promise<LaunchOutput> {
-  const { tasks, sessionToTask, client, debugLog, concurrency, concurrencyKey, failTask, abortSession } = deps
+  const { tasks, client, debugLog, concurrency, concurrencyKey, failTask, abortSession } = deps
 
   debugLog(`[launch] starting: description="${input.description}" agent="${input.agent}" parentSessionID=${input.parentSessionID}`)
 
-  // Acquire concurrency slot (non-blocking)
   if (!concurrency.tryAcquire(concurrencyKey, DEFAULT_CONCURRENCY_LIMIT)) {
     debugLog(`[launch] concurrency limit reached (${DEFAULT_CONCURRENCY_LIMIT}/${DEFAULT_CONCURRENCY_LIMIT})`)
     return { ok: false, status: 'error', error: `Concurrency limit reached (${DEFAULT_CONCURRENCY_LIMIT}/${DEFAULT_CONCURRENCY_LIMIT}). Wait for running tasks to finish.` }
@@ -93,10 +96,35 @@ export async function launchTask(
     }
   }
 
-  const taskId = `wopal-task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  let sessionID: string | undefined
+  try {
+    const session = await client.session.create({
+      parentID: input.parentSessionID,
+      title: input.description,
+    })
+
+    debugLog(`[launch] session.create returned: ${JSON.stringify(session)}`)
+    const extractedSessionID = session?.data?.id ?? session?.id ?? session?.info?.id
+    if (extractedSessionID) {
+      sessionID = extractedSessionID
+    } else {
+      const error = "Background task launch failed: child session did not provide an ID"
+      debugLog(`[launch] failed: child session did not provide an ID`)
+      concurrency.release(concurrencyKey)
+      return { ok: false, status: 'error', error }
+    }
+  } catch (err) {
+    debugLog(`[launch] session.create error: ${err}`)
+    const error = `Background task launch failed: ${toErrorMessage(err)}`
+    concurrency.release(concurrencyKey)
+    return { ok: false, status: 'error', error }
+  }
+
+  const taskId = sessionIDToTaskID(sessionID)
 
   const task: WopalTask = {
     id: taskId,
+    sessionID,
     status: 'pending',
     description: input.description,
     agent: input.agent,
@@ -107,31 +135,6 @@ export async function launchTask(
   }
   tasks.set(taskId, task)
 
-  try {
-    const session = await client.session.create({
-      parentID: input.parentSessionID,
-      title: input.description,
-    })
-
-    debugLog(`[launch] session.create returned: ${JSON.stringify(session)}`)
-    const extractedSessionID = session?.data?.id ?? session?.id ?? session?.info?.id
-    if (extractedSessionID) {
-      task.sessionID = extractedSessionID
-      sessionToTask.set(task.sessionID, taskId)
-    } else {
-      const error = "Background task launch failed: child session did not provide an ID"
-
-      failTask(task, error)
-      debugLog(`[launch] failed: child session did not provide an ID`)
-      return { ok: false, taskId, status: 'error', error }
-    }
-  } catch (err) {
-    debugLog(`[launch] session.create error: ${err}`)
-    const error = `Background task launch failed: ${toErrorMessage(err)}`
-    failTask(task, error)
-    return { ok: false, taskId, status: 'error', error }
-  }
-
   if (typeof client.session?.promptAsync !== "function") {
     const error = "Background task launch failed: session.promptAsync is unavailable"
     debugLog(`[launch] failed: session.promptAsync is unavailable`)
@@ -141,7 +144,7 @@ export async function launchTask(
   }
 
   const promptResult = client.session.promptAsync({
-    path: { id: task.sessionID },
+    path: { id: sessionID },
     body: {
       agent: input.agent,
       parts: [{ type: "text", text: input.prompt }],

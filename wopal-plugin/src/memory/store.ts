@@ -71,11 +71,14 @@ export class MemoryStore {
         const schema = await this.table.schema();
         debugLog(`Memory schema: ${schema.fields.map((f) => `${f.name}:${f.type}`).join(", ")}`);
       } catch {
+        // Bun environment has schema inference issues with Float32Array.
+        // Convert to plain array so makeArrowTable auto-infers vector as FixedSizeList<Float32>.
+        const seedVector = Array.from(new Float32Array(768));
         const schemaData = makeArrowTable([
           {
             id: "",
             text: "",
-            vector: new Float32Array(768),
+            vector: seedVector,
             category: "",
             project: "",
             session_id: "",
@@ -163,10 +166,13 @@ export class MemoryStore {
 
   /** Convert a Memory (JS number timestamps) to a StoredMemoryRow (bigint timestamps). */
   private toStoredRow(memory: Memory): StoredMemoryRow {
+    // Bun environment: Float32Array causes schema inference issues.
+    // Convert to plain array for LanceDB auto-inference.
+    const vectorArray = Array.from(memory.vector);
     return {
       id: memory.id,
       text: memory.text,
-      vector: new Float32Array(memory.vector),
+      vector: vectorArray,
       category: memory.category,
       project: memory.project,
       session_id: memory.session_id,

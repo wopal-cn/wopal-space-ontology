@@ -1,10 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { launchTask, toErrorMessage, isPromiseLike } from "./task-launcher.js"
+import { launchTask, toErrorMessage, isPromiseLike, sessionIDToTaskID } from "./task-launcher.js"
 import type { TaskLauncherDeps, LaunchInput } from "./task-launcher.js"
 import type { WopalTask } from "../types.js"
 import { ConcurrencyManager } from "./concurrency-manager.js"
 
 describe("task-launcher", () => {
+  describe("sessionIDToTaskID", () => {
+    it("should strip ses_ prefix from sessionID", () => {
+      expect(sessionIDToTaskID("ses_abc123")).toBe("wopal-task-abc123")
+    })
+
+    it("should work with sessionID without ses_ prefix", () => {
+      expect(sessionIDToTaskID("child-123")).toBe("wopal-task-child-123")
+    })
+  })
   describe("toErrorMessage", () => {
     it("should extract message from Error objects", () => {
       const error = new Error("test error message")
@@ -50,7 +59,6 @@ describe("task-launcher", () => {
 
   describe("launchTask", () => {
     let tasks: Map<string, WopalTask>
-    let sessionToTask: Map<string, string>
     let failTaskSpy: ReturnType<typeof vi.fn>
     let abortSessionSpy: ReturnType<typeof vi.fn>
     let debugLogSpy: ReturnType<typeof vi.fn>
@@ -59,7 +67,6 @@ describe("task-launcher", () => {
 
     beforeEach(() => {
       tasks = new Map()
-      sessionToTask = new Map()
       failTaskSpy = vi.fn().mockReturnValue(true)
       abortSessionSpy = vi.fn().mockResolvedValue(undefined)
       debugLogSpy = vi.fn()
@@ -67,7 +74,6 @@ describe("task-launcher", () => {
 
       deps = {
         tasks,
-        sessionToTask,
         client: {},
         debugLog: debugLogSpy,
         concurrency,
@@ -124,7 +130,8 @@ describe("task-launcher", () => {
 
       expect(result.ok).toBe(false)
       expect(result.error).toContain("create failed")
-      expect(failTaskSpy).toHaveBeenCalled()
+      // No taskId when session.create fails (task not created yet)
+      expect(result.taskId).toBeUndefined()
     })
 
     it("should fail when session does not provide ID", async () => {
@@ -205,12 +212,11 @@ describe("task-launcher", () => {
 
       expect(result.ok).toBe(true)
       expect(result.status).toBe("running")
-      expect(result.taskId).toBeDefined()
+      expect(result.taskId).toBe("wopal-task-child-123")
 
       const task = tasks.get(result.taskId!)
       expect(task?.status).toBe("running")
       expect(task?.sessionID).toBe("child-123")
-      expect(sessionToTask.get("child-123")).toBe(result.taskId)
     })
 
     it("should call failTask when promptAsync rejects and task is not idle", async () => {
