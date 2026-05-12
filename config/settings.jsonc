@@ -3,6 +3,11 @@
         "$schema": "https://opencode.ai/config.json",
         "default_agent": "wopal",
         "agent": {
+            "plan": { "disable": true },
+            "build": { "disable": true },
+            "compaction": {
+                "model": "wopal-ai/qwen-3.6-plus"
+            },
             "fae": {
               "model": "wopal-ai/glm-5.1"
             },            
@@ -23,11 +28,7 @@
             },
             "wsf-codebase-mapper": {
               "model": "wopal-ai/qwen-3.6-plus"
-            },
-            "compaction": {
-                "model": "wopal-ai/qwen-3.6-plus"
-            }
-
+            }  
         },
         "instructions": [
             ".workspace.md",
