@@ -1,7 +1,7 @@
 import type { SessionStore } from "../session-store.js";
 import type { SimpleTaskManager } from "../tasks/simple-task-manager.js";
 import type { DebugLog } from "../debug.js";
-import { trackActivity } from "../tasks/progress-tracker.js";
+import { trackActivity } from "../tasks/progress.js";
 import type { IdleDiagnostic } from "../tasks/idle-diagnostic.js";
 
 export interface EventRouterHookContext {

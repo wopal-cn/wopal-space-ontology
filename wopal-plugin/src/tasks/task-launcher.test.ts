@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { launchTask, toErrorMessage, isPromiseLike, sessionIDToTaskID } from "./task-launcher.js"
+import { launchTask, sessionIDToTaskID } from "./task-launcher.js"
 import type { TaskLauncherDeps, LaunchInput } from "./task-launcher.js"
+import { toErrorMessage, isPromiseLike } from "./utils.js"
 import type { WopalTask } from "../types.js"
 import { ConcurrencyManager } from "./concurrency-manager.js"
 

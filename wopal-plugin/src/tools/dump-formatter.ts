@@ -530,7 +530,7 @@ export interface ContextDumpOptions {
   filenamePrefix: string;
   systemSnapshots: Map<string, string[]>;
   systemMetadataMap: Map<string, SystemPromptMetadata>;
-  systemInjectionsMap?: Map<string, string[]>;
+systemInjectionsMap?: Map<string, string[]> | undefined;
   transformedMessagesMap?: Map<string, MessageWithInfo[]>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   client: any;

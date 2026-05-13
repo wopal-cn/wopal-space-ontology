@@ -2,7 +2,7 @@ import { tool, type ToolContext, type ToolDefinition } from "@opencode-ai/plugin
 import type { SimpleTaskManager } from "../tasks/simple-task-manager.js"
 import { getErrorMessage, extractMessages, extractAssistantContent, extractBySection, type OutputSection } from "../tasks/session-messages.js"
 import { consumeNewMessages } from "../tasks/session-cursor.js"
-import { analyzeProgress } from "../tasks/progress-analyzer.js"
+import { analyzeProgress } from "../tasks/progress.js"
 import { detectLoop } from "../tasks/loop-detector.js"
 import { createDebugLog } from "../debug.js"
 import {

@@ -1,9 +1,17 @@
 import { tool, type ToolContext, type ToolDefinition } from "@opencode-ai/plugin"
 import type { SimpleTaskManager } from "../tasks/simple-task-manager.js"
+import type { WopalTask } from "../types.js"
 import { createDebugLog } from "../debug.js"
-import { trackActivity } from "../tasks/progress-tracker.js"
+import { trackActivity } from "../tasks/progress.js"
 
 const debugLog = createDebugLog("[wopal-task]", "task")
+
+function resetTaskForResume(task: WopalTask): void {
+  task.status = "running"
+  delete task.idleNotified
+  delete task.waitingReason
+  trackActivity(task, "text")
+}
 
 async function replyQuestion(taskId: string, manager: SimpleTaskManager, client: Record<string, unknown>, requestID: string, message: string) {
   const v2Client = manager.getV2Client()
@@ -125,13 +133,10 @@ export function createWopalReplyTool(manager: SimpleTaskManager): ToolDefinition
           })
 
           // Reset state
-          task.status = "running"
-          delete task.idleNotified
-          delete task.waitingReason
+          resetTaskForResume(task)
           if (task.waitingConcurrencyKey) {
             manager.releaseConcurrencySlot(task)
           }
-          trackActivity(task, "text")
           debugLog(`task ${task_id} interrupted and resumed with new direction`)
 
           return `Interrupt sent to task ${task_id}. The background task will continue with new direction.`
@@ -154,10 +159,7 @@ export function createWopalReplyTool(manager: SimpleTaskManager): ToolDefinition
           debugLog(`question resolved: requestID=${questionID}`)
           delete task.pendingQuestionID
 
-          task.status = "running"
-          delete task.waitingReason
-          if (task.idleNotified) delete task.idleNotified
-          trackActivity(task, "text")
+          resetTaskForResume(task)
           debugLog(`task ${task_id} resumed via question.reply`)
 
           return `Reply sent to task ${task_id}. The background task will continue execution.`
@@ -174,10 +176,7 @@ export function createWopalReplyTool(manager: SimpleTaskManager): ToolDefinition
           },
         })
 
-        task.status = "running"
-        delete task.waitingReason
-        if (task.idleNotified) delete task.idleNotified
-        trackActivity(task, "text")
+        resetTaskForResume(task)
         debugLog(`task ${task_id} resumed`)
 
         return `Reply sent to task ${task_id}. The background task will continue execution.`

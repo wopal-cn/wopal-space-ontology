@@ -5,6 +5,7 @@ import type {
 } from "../types.js"
 import type { DebugLog } from "../debug.js"
 import type { ConcurrencyManager } from "./concurrency-manager.js"
+import { toErrorMessage, isPromiseLike } from "./utils.js"
 
 export const DEFAULT_CONCURRENCY_LIMIT = 5
 
@@ -40,30 +41,7 @@ export interface TaskLauncherDeps {
   abortSession: (sessionID: string | undefined) => Promise<void>
 }
 
-export function toErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message
-  }
-
-  if (typeof error === "string" && error.length > 0) {
-    return error
-  }
-
-  try {
-    const serialized = JSON.stringify(error)
-    if (serialized && serialized !== "{}") {
-      return serialized
-    }
-  } catch {
-    // Ignore JSON serialization failures and fall back to String().
-  }
-
-  return String(error)
-}
-
-export function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return typeof value === "object" && value !== null && "then" in value
-}
+export { toErrorMessage, isPromiseLike }
 
 export async function launchTask(
   deps: TaskLauncherDeps,

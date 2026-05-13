@@ -1,7 +1,8 @@
 import type { CancelResult, WopalTask } from "../types.js"
 import type { DebugLog } from "../debug.js"
 import type { IdleDiagnostic } from "./idle-diagnostic.js"
-import { toErrorMessage, sessionIDToTaskID } from "./task-launcher.js"
+import { toErrorMessage } from "./utils.js"
+import { sessionIDToTaskID } from "./task-launcher.js"
 
 const CLEANUP_INTERVAL_MS = 600_000 // 10 minutes
 const CLEANUP_MAX_AGE_MS = 3600_000 // 1 hour

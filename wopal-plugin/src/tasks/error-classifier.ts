@@ -1,4 +1,8 @@
-export type ErrorCategory = "timeout" | "crash" | "network" | "cancelled" | "unknown"
+import type { ErrorCategory } from "../types.js"
+import { toErrorMessage } from "./utils.js"
+
+export type { ErrorCategory }
+export { toErrorMessage }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
@@ -39,11 +43,7 @@ export function extractErrorMessage(error: unknown): string | undefined {
     }
   }
 
-  try {
-    return JSON.stringify(error)
-  } catch {
-    return String(error)
-  }
+  return toErrorMessage(error)
 }
 
 /**

@@ -1,6 +1,58 @@
 import type { SessionMessage, WopalTask } from "../types.js"
 import type { DebugLog } from "../debug.js"
-import { checkStuckTasks, DEFAULT_STUCK_TIMEOUT_MS } from "./stuck-detector.js"
+
+// --- merged from stuck-detector.ts ---
+
+export const DEFAULT_STUCK_TIMEOUT_MS = 120_000 // 2 minutes
+
+export interface StuckCheckConfig {
+  stuckTimeoutMs: number
+}
+
+export interface StuckResult {
+  task: WopalTask
+  durationMs: number
+}
+
+export function checkStuckTasks(args: {
+  tasks: Iterable<WopalTask>
+  config: StuckCheckConfig
+}): StuckResult[] {
+  const { tasks, config } = args
+  const now = Date.now()
+  const results: StuckResult[] = []
+
+  for (const task of tasks) {
+    if (task.status !== "running" && task.status !== "waiting") continue
+    if (!task.startedAt || !task.sessionID) continue
+    if (task.stuckNotified) continue
+    if (task.idleNotified) continue
+
+    const meaningfulActivity = task.progress?.lastMeaningfulActivity ?? task.startedAt
+    const elapsed = now - meaningfulActivity.getTime()
+
+    if (elapsed > config.stuckTimeoutMs) {
+      results.push({ task, durationMs: elapsed })
+    }
+  }
+
+  return results
+}
+
+export function clearStuckState(tasks: Iterable<WopalTask>): void {
+  for (const task of tasks) {
+    if (task.status !== "running") continue
+    if (!task.stuckNotified || !task.stuckNotifiedAt) continue
+
+    const meaningfulActivity = task.progress?.lastMeaningfulActivity
+    if (meaningfulActivity && meaningfulActivity > task.stuckNotifiedAt) {
+      task.stuckNotified = false
+      delete task.stuckNotifiedAt
+    }
+  }
+}
+
+// --- original task-monitor.ts ---
 
 // Progress notification thresholds
 export const PROGRESS_NOTIFY_MESSAGE_THRESHOLD = 20
@@ -41,12 +93,23 @@ export interface TaskMonitorDeps {
   sendProgressNotificationFn: (task: WopalTask, messageCount: number, contextUsage: number | null) => Promise<void>
 }
 
-export async function getContextUsagePercent(
+/**
+ * Core context usage calculation — single source of truth for fetching
+ * messages, extracting token counts, and computing the usage percentage.
+ * Returns rich info (percentage + raw values) or null if unavailable.
+ */
+export interface ContextUsageInfo {
+  pct: number
+  used: number
+  contextLimit: number
+}
+
+export async function fetchContextPercent(
   client: TaskMonitorDeps["client"],
   directory: string,
   sessionID: string,
   debugLog: DebugLog,
-): Promise<number | null> {
+): Promise<ContextUsageInfo | null> {
   const ctxLog = (msg: string) => debugLog(`[ctxUsage:${sessionID.slice(0, 8)}] ${msg}`)
   try {
     if (typeof client.session?.messages !== "function") {
@@ -98,11 +161,21 @@ export async function getContextUsagePercent(
 
     const pct = Math.round((used / contextLimit) * 100)
     ctxLog(`${used}/${contextLimit} = ${pct}%`)
-    return pct
+    return { pct, used, contextLimit }
   } catch (err) {
     ctxLog(`error: ${err instanceof Error ? err.message : String(err)}`)
     return null
   }
+}
+
+export async function getContextUsagePercent(
+  client: TaskMonitorDeps["client"],
+  directory: string,
+  sessionID: string,
+  debugLog: DebugLog,
+): Promise<number | null> {
+  const info = await fetchContextPercent(client, directory, sessionID, debugLog)
+  return info?.pct ?? null
 }
 
 export async function checkProgressNotifications(

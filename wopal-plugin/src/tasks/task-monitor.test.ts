@@ -3,7 +3,7 @@ import {
   checkStuckTasks,
   clearStuckState,
   DEFAULT_STUCK_TIMEOUT_MS,
-} from "./stuck-detector.js"
+} from "./task-monitor.js"
 import type { WopalTask } from "./types.js"
 
 function createTask(overrides: Partial<WopalTask> = {}): WopalTask {

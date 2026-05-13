@@ -1,5 +1,6 @@
 import type { SessionMessage } from "../types.js"
 import { createDebugLog } from "../debug.js"
+import { getMessageTime, extractToolCallSequence } from "./session-messages.js"
 
 const debugLog = createDebugLog("[wopal-task]", "task")
 
@@ -7,42 +8,6 @@ export interface LoopWarning {
   type: "tool_loop" | "rapid_cycle"
   message: string
   severity: "warning" | "critical"
-}
-
-/**
- * Get timestamp from a message's time field.
- * Returns milliseconds since epoch, or 0 if unavailable.
- */
-function getMessageTime(message: SessionMessage): number {
-  const time = message.info?.time
-  if (!time) return 0
-
-  if (typeof time === "string") {
-    const parsed = Date.parse(time)
-    return isNaN(parsed) ? 0 : parsed
-  }
-
-  return time.created ?? 0
-}
-
-/**
- * Extract tool calls from assistant messages in order.
- * OpenCode uses part.type === "tool" with part.tool containing the tool name.
- */
-function extractToolCallSequence(messages: SessionMessage[]): string[] {
-  const sequence: string[] = []
-
-  for (const message of messages) {
-    if (message.info?.role !== "assistant") continue
-
-    for (const part of message.parts ?? []) {
-      if (part.type === "tool") {
-        sequence.push(part.tool ?? "unknown")
-      }
-    }
-  }
-
-  return sequence
 }
 
 /**

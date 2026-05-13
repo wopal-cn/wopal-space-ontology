@@ -7,7 +7,7 @@ import type {
 import type { DebugLog } from "../debug.js"
 import type { IdleDiagnostic } from "./idle-diagnostic.js"
 import { createDebugLog } from "../debug.js"
-import { clearStuckState } from "./stuck-detector.js"
+import { clearStuckState } from "./task-monitor.js"
 import { ConcurrencyManager } from "./concurrency-manager.js"
 import { registerManagerForCleanup, unregisterManagerForCleanup } from "./process-cleanup.js"
 import {
@@ -15,8 +15,7 @@ import {
   DEFAULT_CONCURRENCY_LIMIT,
   sessionIDToTaskID,
 } from "./task-launcher.js"
-import { notifyParent, notifyParentStuck } from "./task-notifier.js"
-import { sendProgressNotification } from "./task-notifier-internals.js"
+import { notifyParent, notifyParentStuck, sendProgressNotification } from "./task-notifier.js"
 import {
   checkProgressNotifications,
   checkStuckTasksAndNotify,

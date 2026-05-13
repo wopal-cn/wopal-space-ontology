@@ -132,7 +132,7 @@ export type SystemPromptSectionKind =
 export interface SystemPromptSection {
   kind: SystemPromptSectionKind
   content: string
-  source?: string
+  source?: string | undefined
 }
 
 export interface SystemPromptMetadata {

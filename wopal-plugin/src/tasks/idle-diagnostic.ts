@@ -1,5 +1,10 @@
 import type { SessionMessage } from "../types.js"
 import { createDebugLog } from "../debug.js"
+import {
+  extractAssistantText,
+  getLastAssistantMessage,
+  getFinishReason,
+} from "./session-messages.js"
 
 const debugLog = createDebugLog("[wopal-task]", "task")
 
@@ -7,41 +12,6 @@ export interface IdleDiagnostic {
   verdict: "completed" | "error"
   reason: string
   lastMessage?: string
-}
-
-/**
- * Extract text content from an assistant message.
- * Excludes reasoning parts and synthetic text parts.
- */
-function extractAssistantText(message: SessionMessage): string {
-  const texts: string[] = []
-
-  for (const part of message.parts ?? []) {
-    if (part.type === "text" && part.text && !part.synthetic) {
-      texts.push(part.text)
-    }
-  }
-
-  return texts.join(" ").trim()
-}
-
-/**
- * Get the last assistant message from a list of messages.
- */
-function getLastAssistantMessage(messages: SessionMessage[]): SessionMessage | undefined {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].info?.role === "assistant") {
-      return messages[i]
-    }
-  }
-  return undefined
-}
-
-/**
- * Get finish reason from a message.
- */
-function getFinishReason(message: SessionMessage): string | undefined {
-  return message.info?.finish
 }
 
 /**

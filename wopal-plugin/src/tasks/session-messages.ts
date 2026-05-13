@@ -109,6 +109,113 @@ export function extractFullHistory(
   return result
 }
 
+/**
+ * Get timestamp from a message's time field.
+ * Returns milliseconds since epoch, or 0 if unavailable.
+ */
+export function getMessageTime(message: SessionMessage): number {
+  const time = message.info?.time
+  if (!time) return 0
+
+  if (typeof time === "string") {
+    const parsed = Date.parse(time)
+    return isNaN(parsed) ? 0 : parsed
+  }
+
+  return time.created ?? 0
+}
+
+/**
+ * Get the last assistant message from a list of messages.
+ */
+export function getLastAssistantMessage(
+  messages: SessionMessage[]
+): SessionMessage | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].info?.role === "assistant") {
+      return messages[i]
+    }
+  }
+  return undefined
+}
+
+/**
+ * Get finish reason from a message or message array.
+ * Single message: returns its finish field directly.
+ * Array: finds the last assistant message and returns its finish field.
+ */
+export function getFinishReason(
+  input: SessionMessage[]
+): string | undefined
+export function getFinishReason(
+  input: SessionMessage
+): string | undefined
+export function getFinishReason(
+  input: SessionMessage | SessionMessage[]
+): string | undefined {
+  if (Array.isArray(input)) {
+    for (let i = input.length - 1; i >= 0; i--) {
+      if (input[i].info?.role === "assistant") {
+        return input[i].info?.finish
+      }
+    }
+    return undefined
+  }
+  return input.info?.finish
+}
+
+/**
+ * Extract tool call names from assistant messages in order.
+ * OpenCode uses part.type === "tool" with part.tool containing the tool name.
+ */
+export function extractToolCallSequence(messages: SessionMessage[]): string[] {
+  const sequence: string[] = []
+
+  for (const message of messages) {
+    if (message.info?.role !== "assistant") continue
+
+    for (const part of message.parts ?? []) {
+      if (part.type === "tool") {
+        sequence.push(part.tool ?? "unknown")
+      }
+    }
+  }
+
+  return sequence
+}
+
+/**
+ * Check if messages contain any assistant text content.
+ */
+export function hasAssistantTextContent(messages: SessionMessage[]): boolean {
+  for (const message of messages) {
+    if (message.info?.role !== "assistant") continue
+
+    for (const part of message.parts ?? []) {
+      if ((part.type === "text" || part.type === "reasoning") && part.text?.trim()) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+/**
+ * Extract text content from an assistant message.
+ * Excludes reasoning parts and synthetic text parts.
+ */
+export function extractAssistantText(message: SessionMessage): string {
+  const texts: string[] = []
+
+  for (const part of message.parts ?? []) {
+    if (part.type === "text" && part.text && !part.synthetic) {
+      texts.push(part.text)
+    }
+  }
+
+  return texts.join(" ").trim()
+}
+
 export type OutputSection = "tools" | "reasoning" | "text"
 
 /**
