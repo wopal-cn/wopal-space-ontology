@@ -78,7 +78,7 @@ export function extractFullHistory(
       for (const part of msg.parts) {
         if (part.type === "text" && part.text) {
           texts.push(part.text)
-        } else if (part.type === "tool_call" && part.tool) {
+        } else if (part.type === "tool" && part.tool) {
           texts.push(`[tool: ${part.tool}]`)
         } else if (part.type === "tool_result") {
           const content = typeof part.content === "string"
@@ -239,7 +239,7 @@ export function extractBySection(
 
     for (const part of msg.parts) {
       if (section === "tools") {
-        if (part.type === "tool_call" && part.tool) {
+        if (part.type === "tool" && part.tool) {
           extracted.push(`[tool: ${part.tool}]`)
         } else if (part.type === "tool_result") {
           const content = typeof part.content === "string"
