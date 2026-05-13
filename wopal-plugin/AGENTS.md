@@ -507,6 +507,14 @@ WOPAL_PLUGIN_LOG_FILE=logs/debug.log  # 指定日志文件
 
 默认日志位置：`tmpdir()/wopal-plugin.log`
 
+### 规则注入开关
+
+```bash
+WOPAL_RULES_INJECTION_ENABLED=false  # 禁用规则注入
+```
+
+默认启用。设为 `false` 时跳过所有规则注入逻辑（用于调试、性能测试等场景）。
+
 ### 代码风格
 
 - TypeScript ESM 模块，`.js` 后缀导入

@@ -100,19 +100,25 @@ export function createSystemTransformHooks(ctx: SystemTransformHookContext) {
     const initialSystemLength = output.system.length;
 
     // Rule injection
-    const contextPaths = sessionState
-      ? Array.from(sessionState.contextPaths).sort()
-      : [];
-    const userPrompt = sessionState?.lastUserPrompt;
+    const rulesInjectionEnabled = process.env.WOPAL_RULES_INJECTION_ENABLED !== "false";
 
-    const formattedRules = await injectRules(
-      ruleInjectorCtx,
-      contextPaths,
-      userPrompt,
-    );
+    if (rulesInjectionEnabled) {
+      const contextPaths = sessionState
+        ? Array.from(sessionState.contextPaths).sort()
+        : [];
+      const userPrompt = sessionState?.lastUserPrompt;
 
-    if (formattedRules) {
-      output.system.push(formattedRules);
+      const formattedRules = await injectRules(
+        ruleInjectorCtx,
+        contextPaths,
+        userPrompt,
+      );
+
+      if (formattedRules) {
+        output.system.push(formattedRules);
+      }
+    } else {
+      ctx.debugLog("Rules injection disabled by environment variable");
     }
 
     // Memory injection (after rules, into same system array)
