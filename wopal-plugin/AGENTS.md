@@ -517,6 +517,14 @@ WOPAL_RULES_INJECTION_ENABLED=false  # 禁用规则注入
 
 默认启用。设为 `false` 时跳过所有规则注入逻辑（用于调试、性能测试等场景）。
 
+### 记忆注入开关
+
+```bash
+WOPAL_MEMORY_INJECTION_ENABLED=false  # 禁用记忆注入
+```
+
+默认启用。设为 `false` 时跳过所有记忆注入逻辑（用于调试、性能测试等场景）。
+
 ### 代码风格
 
 - TypeScript ESM 模块，`.js` 后缀导入

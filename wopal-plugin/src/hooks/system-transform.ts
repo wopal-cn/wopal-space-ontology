@@ -122,8 +122,12 @@ export function createSystemTransformHooks(ctx: SystemTransformHookContext) {
     }
 
     // Memory injection (after rules, into same system array)
-    if (sessionID) {
+    const memoryInjectionEnabled = process.env.WOPAL_MEMORY_INJECTION_ENABLED !== "false";
+
+    if (memoryInjectionEnabled && sessionID) {
       await injectMemoriesIntoSystem(memoryInjectorCtx, sessionID, output);
+    } else if (!memoryInjectionEnabled) {
+      ctx.debugLog("Memory injection disabled by environment variable");
     }
 
     // Snapshot system prompt for context dump
