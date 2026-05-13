@@ -18,25 +18,8 @@ export interface TaskNotifierDeps {
   debugLog: DebugLog
 }
 
-// --- merged from task-notifier-internals.ts ---
-
-export interface SendProgressDeps {
-  client: {
-    session?: {
-      promptAsync?: (args: {
-        path: { id: string }
-        body: {
-          noReply?: boolean
-          parts: Array<{ type: string; text: string }>
-        }
-      }) => Promise<void>
-    }
-  }
-  debugLog: DebugLog
-}
-
 export async function sendProgressNotification(
-  deps: SendProgressDeps,
+  deps: TaskNotifierDeps,
   task: WopalTask,
   messageCount: number,
   contextUsage: number | null,
@@ -56,11 +39,9 @@ export async function sendProgressNotification(
 
 Task is still running. Use \`wopal_task_output(task_id="${task.id}")\` for details.`
 
-  await sendNotification(deps as TaskNotifierDeps, task.parentSessionID, notification)
+  await sendNotification(deps, task.parentSessionID, notification)
   debugLog(`[progressNotify] sent: taskId=${task.id} messages=${messageCount}`)
 }
-
-// --- original task-notifier.ts ---
 
 export async function sendNotification(
   deps: TaskNotifierDeps,

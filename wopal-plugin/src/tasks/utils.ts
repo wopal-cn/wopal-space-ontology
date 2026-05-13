@@ -3,8 +3,8 @@
  */
 
 export function toErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message
+  if (error instanceof Error) {
+    return error.message || String(error)
   }
 
   if (typeof error === "string" && error.length > 0) {
@@ -13,7 +13,7 @@ export function toErrorMessage(error: unknown): string {
 
   try {
     const serialized = JSON.stringify(error)
-    if (serialized && serialized !== "{}") {
+    if (serialized) {
       return serialized
     }
   } catch {

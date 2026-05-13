@@ -17,15 +17,15 @@
 │  ├── message-hooks.ts            │  ├── monitor.ts           │
 │  ├── event-router.ts             │  ├── session-cursor.ts    │
 │  ├── command-hooks.ts            │  ├── session-messages.ts  │
-│  ├── compaction.ts               │  ├── progress-tracker.ts  │
-│  ├── message-context.ts          │  ├── progress-analyzer.ts │
-│  └── mcp-tools.ts                │  ├── stuck-detector.ts    │
-│                                  │  ├── loop-detector.ts     │
+│  ├── compaction.ts               │  ├── progress.ts          │
+│  ├── message-context.ts          │  ├── task-monitor.ts      │
+│  └── mcp-tools.ts                │  ├── loop-detector.ts     │
 │                                  │  ├── idle-diagnostic.ts   │
 │                                  │  ├── error-classifier.ts  │
+│                                  │  ├── task-notifier.ts     │
 │                                  │  ├── concurrency-manager  │
 │                                  │  ├── simple-task-manager  │
-│                                  │  ├── task-completion-notify│
+│                                  │  ├── utils.ts             │
 │                                  │  └── *.test.ts            │
 ├─────────────────────────────────────────────────────────────┤
 │  通信辅助                       │  其他运行时                │
@@ -121,18 +121,18 @@ src/                              # 源码目录
 │   ├── monitor.ts                # 任务监控器
 │   ├── session-cursor.ts         # 消息游标
 │   ├── session-messages.ts       # 消息提取
-│   ├── progress-tracker.ts       # 进度追踪
-│   ├── progress-analyzer.ts      # 进度分析
-│   ├── stuck-detector.ts         # Stuck 检测
+│   ├── progress.ts               # 进度追踪与分析（合并）
+│   ├── task-monitor.ts           # 任务监控+Stuck检测+上下文用量
+│   ├── task-notifier.ts          # 通知发送（合并 internals）
 │   ├── loop-detector.ts          # 循环检测
 │   ├── idle-diagnostic.ts        # Idle 诊断
 │   ├── error-classifier.ts       # 错误分类
 │   ├── concurrency-manager.ts    # 并发控制
 │   ├── simple-task-manager.ts    # 简化任务管理入口
+│   ├── utils.ts                  # 任务域共享工具
 │   ├── permission-proxy.ts       # 权限代理
 │   ├── question-relay.ts         # 问题中继
 │   ├── process-cleanup.ts        # 进程清理
-│   ├── task-completion-notify.ts # 任务完成通知（声音+标记文件）
 │   └── *.test.ts                 # 测试文件
 │
 ├── rules/                        # 规则子系统

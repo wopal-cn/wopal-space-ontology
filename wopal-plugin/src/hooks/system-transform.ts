@@ -9,7 +9,7 @@ import type { SessionStore } from "../session-store.js";
 import type { MemoryInjector } from "../memory/index.js";
 import type { DebugLog } from "../debug.js";
 import type { SystemPromptMetadata } from "../types.js";
-import { createDebugLog, isDebugEnabled } from "../debug.js";
+import { createDebugLog } from "../debug.js";
 import type { Model } from "@opencode-ai/sdk";
 
 const ctxDebugLog = createDebugLog("[wopal-context]", "context");

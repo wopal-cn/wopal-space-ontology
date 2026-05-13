@@ -1,4 +1,4 @@
-import type { SessionMessage, SystemPromptMetadata } from "../types.js";
+import type { SessionMessage, SystemPromptMetadata, SystemPromptSection, SystemPromptSectionKind } from "../types.js";
 import { createDebugLog } from "../debug.js";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
@@ -507,7 +507,7 @@ export interface ContextDumpOptions {
   filenamePrefix: string;
   systemSnapshots: Map<string, string[]>;
   systemMetadataMap: Map<string, SystemPromptMetadata>;
-  systemInjectionsMap?: Map<string, string[]>;
+  systemInjectionsMap?: Map<string, string[]> | undefined;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   client: any;
   detail: boolean;
