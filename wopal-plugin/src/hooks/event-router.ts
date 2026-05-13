@@ -7,7 +7,7 @@ import type { IdleDiagnostic } from "../tasks/idle-diagnostic.js";
 export interface EventRouterHookContext {
   client: unknown;
   sessionStore: SessionStore;
-  debugLog: DebugLog;
+  contextDebugLog: DebugLog;
   taskDebugLog: DebugLog;
   taskManager: SimpleTaskManager | undefined;
 }
@@ -104,7 +104,7 @@ export function createEventRouter(ctx: EventRouterHookContext) {
       const sessionID = props?.sessionID as string | undefined;
       if (sessionID) {
         ctx.sessionStore.markCompacted(sessionID);
-        ctx.debugLog(`Session ${sessionID} compact completed (event-driven)`);
+        ctx.contextDebugLog(`Session ${sessionID} compact completed (event-driven)`);
       }
     }
 

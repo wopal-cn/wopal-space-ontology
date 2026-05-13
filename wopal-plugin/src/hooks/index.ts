@@ -32,9 +32,11 @@ export interface HookContext {
   projectDirectory: string;
   ruleFiles: DiscoveredRule[];
   sessionStore: SessionStore;
-  debugLog: DebugLog;
-  taskDebugLog: DebugLog;
-  injectDebugLog: DebugLog;
+  pluginDebugLog: DebugLog;     // Plugin lifecycle (passed from index.ts)
+  rulesDebugLog: DebugLog;      // Rule discovery and injection
+  taskDebugLog: DebugLog;       // Task delegation and monitoring
+  memoryDebugLog: DebugLog;     // Memory system (store, retrieval)
+  contextDebugLog: DebugLog;    // Session state, snapshots, compaction
   now: () => number;
   taskManager: SimpleTaskManager | undefined;
   memoryInjector: MemoryInjector | undefined;
@@ -51,9 +53,11 @@ export function createHookContext(opts: HookContextOptions): HookContext {
     projectDirectory: opts.projectDirectory,
     ruleFiles: opts.ruleFiles,
     sessionStore: opts.sessionStore,
-    debugLog: opts.debugLog ?? createDebugLog(),
+    pluginDebugLog: opts.debugLog ?? createDebugLog("[wopal-plugin]", "plugin"),
+    rulesDebugLog: createDebugLog("[wopal-rules]", "rules"),
     taskDebugLog: createDebugLog("[wopal-task]", "task"),
-    injectDebugLog: createDebugLog("[wopal-memory]", "memory"),
+    memoryDebugLog: createDebugLog("[wopal-memory]", "memory"),
+    contextDebugLog: createDebugLog("[wopal-context]", "context"),
     now: opts.now ?? (() => Date.now()),
     taskManager: opts.taskManager ?? undefined,
     memoryInjector: opts.memoryInjector,
@@ -70,13 +74,13 @@ export function createAllHooks(ctx: HookContext): Record<string, unknown> {
 
   const commandHooks = createCommandHooks({
     sessionStore: ctx.sessionStore,
-    debugLog: ctx.debugLog,
+    contextDebugLog: ctx.contextDebugLog,
     projectDirectory: ctx.projectDirectory,
   });
 
   const messageHooks = createMessageHooks({
     sessionStore: ctx.sessionStore,
-    debugLog: ctx.debugLog,
+    contextDebugLog: ctx.contextDebugLog,
     projectDirectory: ctx.projectDirectory,
     transformedMessagesMap,
   });
@@ -87,8 +91,9 @@ export function createAllHooks(ctx: HookContext): Record<string, unknown> {
     projectDirectory: ctx.projectDirectory,
     ruleFiles: ctx.ruleFiles,
     sessionStore: ctx.sessionStore,
-    debugLog: ctx.debugLog,
-    injectDebugLog: ctx.injectDebugLog,
+    rulesDebugLog: ctx.rulesDebugLog,
+    memoryDebugLog: ctx.memoryDebugLog,
+    contextDebugLog: ctx.contextDebugLog,
     now: ctx.now,
     memoryInjector: ctx.memoryInjector,
     childSessionCache: ctx.childSessionCache,
@@ -102,14 +107,14 @@ export function createAllHooks(ctx: HookContext): Record<string, unknown> {
   const eventRouter = createEventRouter({
     client: ctx.client,
     sessionStore: ctx.sessionStore,
-    debugLog: ctx.debugLog,
+    contextDebugLog: ctx.contextDebugLog,
     taskDebugLog: ctx.taskDebugLog,
     taskManager: ctx.taskManager,
   });
 
   const compactionHooks = createCompactionHooks({
     sessionStore: ctx.sessionStore,
-    debugLog: ctx.debugLog,
+    contextDebugLog: ctx.contextDebugLog,
     now: ctx.now,
   });
 

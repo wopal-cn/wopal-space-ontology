@@ -33,7 +33,7 @@ describe("createDebugLog", () => {
     
     expect(existsSync(logFile)).toBe(true);
     const content = readFileSync(logFile, "utf-8");
-    expect(content).toContain("[wopal-rules] test message");
+    expect(content).toContain("[wopal-plugin] test message");
   });
 
   it("writes to log file when WOPAL_PLUGIN_DEBUG=*", () => {
@@ -43,7 +43,7 @@ describe("createDebugLog", () => {
     
     expect(existsSync(logFile)).toBe(true);
     const content = readFileSync(logFile, "utf-8");
-    expect(content).toContain("[wopal-rules] star test");
+    expect(content).toContain("[wopal-plugin] star test");
   });
 
   it("writes to log file when WOPAL_PLUGIN_DEBUG=all", () => {
@@ -53,7 +53,7 @@ describe("createDebugLog", () => {
     
     expect(existsSync(logFile)).toBe(true);
     const content = readFileSync(logFile, "utf-8");
-    expect(content).toContain("[wopal-rules] all test");
+    expect(content).toContain("[wopal-plugin] all test");
   });
 
   it("does not write when WOPAL_PLUGIN_DEBUG is unset", () => {
@@ -95,7 +95,7 @@ describe("createDebugLog", () => {
     log("timestamp test");
     
     const content = readFileSync(logFile, "utf-8");
-    // Match format: 2026-03-15 16:30:45 [wopal-rules] timestamp test
+    // Match format: 2026-03-15 16:30:45 [wopal-plugin] timestamp test
     const timestampPattern = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} /m;
     expect(timestampPattern.test(content)).toBe(true);
   });
@@ -219,7 +219,7 @@ describe("createWarnLog", () => {
     
     expect(existsSync(logFile)).toBe(true);
     const content = readFileSync(logFile, "utf-8");
-    expect(content).toContain("[wopal-rules] [WARN] warning message");
+    expect(content).toContain("[wopal-plugin] [WARN] warning message");
   });
 
   it("uses custom prefix", () => {
@@ -235,7 +235,7 @@ describe("createWarnLog", () => {
     warn("timestamp test");
     
     const content = readFileSync(logFile, "utf-8");
-    // Match format: 2026-03-15 16:30:45 [wopal-rules] [WARN] timestamp test
+    // Match format: 2026-03-15 16:30:45 [wopal-plugin] [WARN] timestamp test
     const timestampPattern = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} /m;
     expect(timestampPattern.test(content)).toBe(true);
   });

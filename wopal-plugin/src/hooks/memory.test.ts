@@ -1,8 +1,28 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 import { createSystemTransformHooks } from './system-transform.js';
 import { createHookContext } from './index.js';
 import { SessionStore } from '../session-store.js';
+
+let savedInjectionEnv: Record<string, string | undefined>;
+
+function saveAndClearInjectionEnv() {
+  savedInjectionEnv = {
+    WOPAL_RULES_INJECTION_ENABLED: process.env.WOPAL_RULES_INJECTION_ENABLED,
+    WOPAL_MEMORY_INJECTION_ENABLED: process.env.WOPAL_MEMORY_INJECTION_ENABLED,
+  };
+  delete process.env.WOPAL_RULES_INJECTION_ENABLED;
+  delete process.env.WOPAL_MEMORY_INJECTION_ENABLED;
+}
+
+function restoreInjectionEnv() {
+  if (savedInjectionEnv.WOPAL_RULES_INJECTION_ENABLED !== undefined) {
+    process.env.WOPAL_RULES_INJECTION_ENABLED = savedInjectionEnv.WOPAL_RULES_INJECTION_ENABLED;
+  }
+  if (savedInjectionEnv.WOPAL_MEMORY_INJECTION_ENABLED !== undefined) {
+    process.env.WOPAL_MEMORY_INJECTION_ENABLED = savedInjectionEnv.WOPAL_MEMORY_INJECTION_ENABLED;
+  }
+}
 
 // Helper: create a hook context with mocked memory injector
 function createHooksWithMemory(opts?: {
@@ -38,6 +58,14 @@ function createHooksWithMemory(opts?: {
 }
 
 describe('OpenCodeRulesRuntime memory injection state', () => {
+  beforeEach(() => {
+    saveAndClearInjectionEnv();
+  });
+
+  afterEach(() => {
+    restoreInjectionEnv();
+  });
+
   it('stores injectedRawText after successful injection', async () => {
     const { hooks, sessionStore } = createHooksWithMemory();
 

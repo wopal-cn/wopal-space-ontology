@@ -10,10 +10,7 @@ import type { MemoryInjector } from "../memory/index.js";
 import type { DebugLog } from "../debug.js";
 import type { SystemPromptMetadata } from "../types.js";
 import type { MessageWithInfo } from "./message-context.js";
-import { createDebugLog } from "../debug.js";
 import type { Model } from "@opencode-ai/sdk";
-
-const ctxDebugLog = createDebugLog("[wopal-context]", "context");
 import { writeContextDump } from "../tools/dump-formatter.js";
 import {
   injectRules,
@@ -39,8 +36,9 @@ export interface SystemTransformHookContext {
   projectDirectory: string;
   ruleFiles: DiscoveredRule[];
   sessionStore: SessionStore;
-  debugLog: DebugLog;
-  injectDebugLog: DebugLog;
+  rulesDebugLog: DebugLog;
+  memoryDebugLog: DebugLog;
+  contextDebugLog: DebugLog;
   now: () => number;
   memoryInjector: MemoryInjector | undefined;
   childSessionCache: Map<string, boolean>;
@@ -57,14 +55,13 @@ export function createSystemTransformHooks(ctx: SystemTransformHookContext) {
     client: ctx.client,
     directory: ctx.directory,
     ruleFiles: ctx.ruleFiles,
-    debugLog: ctx.debugLog,
+    rulesDebugLog: ctx.rulesDebugLog,
   };
 
   const memoryInjectorCtx: MemoryInjectorContext = {
     client: ctx.client,
     sessionStore: ctx.sessionStore,
-    debugLog: ctx.debugLog,
-    injectDebugLog: ctx.injectDebugLog,
+    memoryDebugLog: ctx.memoryDebugLog,
     memoryInjector: ctx.memoryInjector,
     childSessionCache: ctx.childSessionCache,
     taskManager: ctx.taskManager,
@@ -82,7 +79,7 @@ export function createSystemTransformHooks(ctx: SystemTransformHookContext) {
     if (sessionID) {
       const skip = ctx.sessionStore.shouldSkipInjection(sessionID);
       if (skip) {
-        ctx.debugLog(
+        ctx.contextDebugLog(
           `Session ${sessionID} is compacting - skipping rule injection`,
         );
         return output ?? { system: [] };
@@ -117,8 +114,6 @@ export function createSystemTransformHooks(ctx: SystemTransformHookContext) {
       if (formattedRules) {
         output.system.push(formattedRules);
       }
-    } else {
-      ctx.debugLog("Rules injection disabled by environment variable");
     }
 
     // Memory injection (after rules, into same system array)
@@ -126,8 +121,6 @@ export function createSystemTransformHooks(ctx: SystemTransformHookContext) {
 
     if (memoryInjectionEnabled && sessionID) {
       await injectMemoriesIntoSystem(memoryInjectorCtx, sessionID, output);
-    } else if (!memoryInjectionEnabled) {
-      ctx.debugLog("Memory injection disabled by environment variable");
     }
 
     // Snapshot system prompt for context dump
@@ -138,9 +131,9 @@ export function createSystemTransformHooks(ctx: SystemTransformHookContext) {
     // Store structured metadata if available
     if (sessionID && hookInput.systemMetadata && ctx.systemMetadataMap) {
       ctx.systemMetadataMap.set(sessionID, hookInput.systemMetadata);
-      ctx.debugLog(`Stored systemMetadata for session ${sessionID}: ${hookInput.systemMetadata.sections.length} sections`);
+      ctx.contextDebugLog(`Stored systemMetadata for session ${sessionID}: ${hookInput.systemMetadata.sections.length} sections`);
     } else if (sessionID && ctx.systemMetadataMap) {
-      ctx.debugLog(`No systemMetadata in hook input for session ${sessionID} (keys in map: ${ctx.systemMetadataMap.size})`);
+      ctx.contextDebugLog(`No systemMetadata in hook input for session ${sessionID} (keys in map: ${ctx.systemMetadataMap.size})`);
     }
 
     // Store plugin injections (content appended after OpenCode's original system blocks)
@@ -152,7 +145,7 @@ export function createSystemTransformHooks(ctx: SystemTransformHookContext) {
     const debug = process.env.WOPAL_PLUGIN_DEBUG;
     const explicitContext = debug && debug.toLowerCase().split(",").map(m => m.trim()).includes("context");
     if (sessionID && explicitContext) {
-      ctxDebugLog(`[auto-dump] triggered for session ${sessionID}`);
+      ctx.contextDebugLog(`[auto-dump] triggered for session ${sessionID}`);
       void writeContextDump({
         sessionID,
         baseDir: ctx.directory,
@@ -163,7 +156,7 @@ export function createSystemTransformHooks(ctx: SystemTransformHookContext) {
         transformedMessagesMap: ctx.transformedMessagesMap ?? new Map(),
         client: ctx.client,
         detail: false,
-      }).catch(err => ctx.debugLog(`[auto-dump] error: ${err}`));
+      }).catch(err => ctx.contextDebugLog(`[auto-dump] error: ${err}`));
     }
 
     return output;

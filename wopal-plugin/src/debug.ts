@@ -8,10 +8,13 @@ export type DebugLog = LogFn;
 
 /**
  * Module names for debug filtering:
- * - "rules" for [wopal-rules] prefix
- * - "task" for [wopal-task] prefix
+ * - "plugin" for plugin lifecycle (load, init, tool registration)
+ * - "rules" for rule discovery and injection
+ * - "task" for task delegation and monitoring
+ * - "memory" for memory system (store, retrieval, distill)
+ * - "context" for session state, snapshots, compaction
  */
-export type DebugModule = "rules" | "task" | "memory" | "context";
+export type DebugModule = "plugin" | "rules" | "task" | "memory" | "context";
 
 function getLogFile(): string {
   const logPath = process.env.WOPAL_PLUGIN_LOG_FILE;
@@ -105,15 +108,15 @@ function writeLog(prefix: string, message: string): void {
 
 /**
  * Create a debug log function for a specific module.
- * 
- * @param prefix - Log prefix (e.g., "[wopal-rules]", "[wopal-task]")
- * @param module - Module name for filtering ("rules" or "task")
- * 
+ *
+ * @param prefix - Log prefix (e.g., "[wopal-plugin]", "[wopal-rules]", "[wopal-task]")
+ * @param module - Module name for filtering ("plugin", "rules", "task", "memory", "context")
+ *
  * Environment variables:
- * - WOPAL_PLUGIN_DEBUG: "1"/"*"/"all" for all, or comma-separated modules ("task", "rules")
+ * - WOPAL_PLUGIN_DEBUG: "1"/"*"/"all" for all, or comma-separated modules
  * - WOPAL_PLUGIN_LOG_FILE: Custom log file path (default: tmpdir/wopal-plugin.log)
  */
-export function createDebugLog(prefix = "[wopal-rules]", module: DebugModule = "rules"): LogFn {
+export function createDebugLog(prefix = "[wopal-plugin]", module: DebugModule = "plugin"): LogFn {
   return (message: string): void => {
     if (!isDebugEnabled(module)) {
       return;
@@ -125,7 +128,7 @@ export function createDebugLog(prefix = "[wopal-rules]", module: DebugModule = "
 /**
  * Create a warn log function (always outputs to log file, ignores debug filter)
  */
-export function createWarnLog(prefix = "[wopal-rules]"): LogFn {
+export function createWarnLog(prefix = "[wopal-plugin]"): LogFn {
   return (message: string): void => {
     writeLog(`${prefix} [WARN]`, message);
   };

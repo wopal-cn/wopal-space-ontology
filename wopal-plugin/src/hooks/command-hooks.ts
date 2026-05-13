@@ -37,7 +37,7 @@ interface ToolExecuteAfterOutput {
 
 export interface CommandHookContext {
   sessionStore: SessionStore;
-  debugLog: DebugLog;
+  contextDebugLog: DebugLog;
   projectDirectory: string;
 }
 
@@ -118,7 +118,7 @@ export function createCommandHooks(ctx: CommandHookContext) {
       const skillName = args.name;
       if (typeof skillName === "string" && skillName.length > 0) {
         ctx.sessionStore.recordSkillLoaded(sessionID, skillName);
-        ctx.debugLog(`Recorded loaded skill: ${skillName} for session ${sessionID}`);
+        ctx.contextDebugLog(`Recorded loaded skill: ${skillName} for session ${sessionID}`);
       }
     }
 
@@ -128,7 +128,7 @@ export function createCommandHooks(ctx: CommandHookContext) {
         state.contextPaths.add(normalized);
       });
 
-      ctx.debugLog(
+      ctx.contextDebugLog(
         `Recorded context path from tool ${toolName}: ${normalized}`,
       );
     }

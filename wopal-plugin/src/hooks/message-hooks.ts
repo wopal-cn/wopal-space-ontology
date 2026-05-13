@@ -11,7 +11,7 @@ interface MessagesTransformOutput {
 
 export interface MessageHookContext {
   sessionStore: SessionStore;
-  debugLog: DebugLog;
+  contextDebugLog: DebugLog;
   projectDirectory: string;
   transformedMessagesMap: Map<string, MessageWithInfo[]>;
 }
@@ -23,7 +23,7 @@ export function createMessageHooks(ctx: MessageHookContext) {
   ): Promise<MessagesTransformOutput> {
     const sessionID = extractSessionID(output.messages);
     if (!sessionID) {
-      ctx.debugLog("No sessionID found in messages");
+      ctx.contextDebugLog("No sessionID found in messages");
       return output;
     }
 
@@ -53,7 +53,7 @@ export function createMessageHooks(ctx: MessageHookContext) {
       });
 
       if (contextPaths.length > 0) {
-        ctx.debugLog(
+        ctx.contextDebugLog(
           `Seeded ${contextPaths.length} context path(s) for session ${sessionID}: ${contextPaths
             .slice(0, 5)
             .join(", ")}${contextPaths.length > 5 ? "..." : ""}`,
@@ -61,12 +61,12 @@ export function createMessageHooks(ctx: MessageHookContext) {
       }
 
       if (userPrompt) {
-        ctx.debugLog(
+        ctx.contextDebugLog(
           `Seeded user prompt for session ${sessionID} (len=${userPrompt.length})`,
         );
       }
     } else {
-      ctx.debugLog(`Session ${sessionID} already seeded, skipping rescan`);
+      ctx.contextDebugLog(`Session ${sessionID} already seeded, skipping rescan`);
     }
 
     // Skill Reload injection: find last user message first, then consume
@@ -97,7 +97,7 @@ export function createMessageHooks(ctx: MessageHookContext) {
           synthetic: true,
         });
 
-        ctx.debugLog(
+        ctx.contextDebugLog(
           `Injected Skill Reload for session ${sessionID}: ${skillsToReload.join(", ")}`,
         );
       }
@@ -118,7 +118,7 @@ export function createMessageHooks(ctx: MessageHookContext) {
   ): Promise<void> {
     const sessionID = input?.sessionID;
     if (!sessionID) {
-      ctx.debugLog("No sessionID in chat.message hook input");
+      ctx.contextDebugLog("No sessionID in chat.message hook input");
       return;
     }
 
@@ -156,7 +156,7 @@ export function createMessageHooks(ctx: MessageHookContext) {
           state.needsMemoryInjection = true;
         });
 
-        ctx.debugLog(
+        ctx.contextDebugLog(
           `Updated lastUserPrompt for session ${sessionID} (len=${userPrompt.length}, parts=${textParts.length})`,
         );
       }

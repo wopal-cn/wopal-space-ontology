@@ -4,7 +4,7 @@ import type { DebugLog } from "../debug.js";
 
 export interface CompactionHookContext {
   sessionStore: SessionStore;
-  debugLog: DebugLog;
+  contextDebugLog: DebugLog;
   now: () => number;
 }
 
@@ -15,13 +15,13 @@ export function createCompactionHooks(ctx: CompactionHookContext) {
   ): Promise<void> {
     const sessionID = input?.sessionID;
     if (!sessionID) {
-      ctx.debugLog("No sessionID in compacting hook input");
+      ctx.contextDebugLog("No sessionID in compacting hook input");
       return;
     }
 
     const sessionState = ctx.sessionStore.get(sessionID);
     if (!sessionState || sessionState.contextPaths.size === 0) {
-      ctx.debugLog(
+      ctx.contextDebugLog(
         `No context paths for session ${sessionID} during compaction`,
       );
       return;
@@ -44,7 +44,7 @@ export function createCompactionHooks(ctx: CompactionHookContext) {
 
     output.context.push(contextString);
 
-    ctx.debugLog(
+    ctx.contextDebugLog(
       `Added ${pathsToInclude.length} context path(s) to compaction for session ${sessionID}`,
     );
   }

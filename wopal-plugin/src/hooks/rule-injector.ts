@@ -15,7 +15,7 @@ export interface RuleInjectorContext {
   client: unknown;
   directory: string;
   ruleFiles: DiscoveredRule[];
-  debugLog: DebugLog;
+  rulesDebugLog: DebugLog;
 }
 
 /**
@@ -42,7 +42,7 @@ export async function queryAvailableToolIDs(
     for (const id of toolResult.value.data) {
       ids.add(id);
     }
-    ctx.debugLog(
+    ctx.rulesDebugLog(
       `Built-in tools: ${toolResult.value.data.slice(0, 10).join(", ")}${toolResult.value.data.length > 10 ? "..." : ""} (${toolResult.value.data.length} total)`,
     );
   } else if (toolResult.status === "rejected") {
@@ -50,7 +50,7 @@ export async function queryAvailableToolIDs(
       toolResult.reason instanceof Error
         ? toolResult.reason.message
         : String(toolResult.reason);
-    ctx.debugLog(`Warning: Failed to query tool IDs: ${message}`);
+    ctx.rulesDebugLog(`Warning: Failed to query tool IDs: ${message}`);
   }
 
   if (mcpResult.status === "fulfilled" && mcpResult.value?.data) {
@@ -59,14 +59,14 @@ export async function queryAvailableToolIDs(
       ids.add(id);
     }
     if (mcpIds.length > 0) {
-      ctx.debugLog(`MCP capability IDs: ${mcpIds.join(", ")}`);
+      ctx.rulesDebugLog(`MCP capability IDs: ${mcpIds.join(", ")}`);
     }
   } else if (mcpResult.status === "rejected") {
     const message =
       mcpResult.reason instanceof Error
         ? mcpResult.reason.message
         : String(mcpResult.reason);
-    ctx.debugLog(`Warning: Failed to query MCP status: ${message}`);
+    ctx.rulesDebugLog(`Warning: Failed to query MCP status: ${message}`);
   }
 
   return Array.from(ids);
@@ -95,10 +95,10 @@ export async function injectRules(
   );
 
   if (formattedRules) {
-    ctx.debugLog("Injecting rules into system prompt");
+    ctx.rulesDebugLog("Injecting rules into system prompt");
     return formattedRules;
   } else {
-    ctx.debugLog("No applicable rules for current context");
+    ctx.rulesDebugLog("No applicable rules for current context");
     return undefined;
   }
 }

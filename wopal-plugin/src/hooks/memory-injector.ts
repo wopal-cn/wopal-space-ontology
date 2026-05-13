@@ -14,8 +14,7 @@ import { buildEnrichedQuery } from "./conversation-context.js";
 export interface MemoryInjectorContext {
   client: unknown;
   sessionStore: SessionStore;
-  debugLog: DebugLog;
-  injectDebugLog: DebugLog;
+  memoryDebugLog: DebugLog;
   memoryInjector: MemoryInjector | undefined;
   childSessionCache: Map<string, boolean>;
   taskManager: { findBySession: (sessionID: string) => unknown } | undefined;
@@ -53,7 +52,7 @@ export async function isChildSession(
       const hasParent = !!data?.parentID;
       ctx.childSessionCache.set(sessionID, hasParent);
       if (hasParent) {
-        ctx.debugLog(
+        ctx.memoryDebugLog(
           `Session ${sessionID} is a child session (parentID=${data.parentID}), skipping memory injection`,
         );
       }
@@ -95,7 +94,7 @@ export async function injectMemoriesIntoSystem(
   const isChild = await isChildSession(ctx, sessionID);
   if (isChild) {
     clearInjectedMemory(ctx.sessionStore, sessionID);
-    ctx.injectDebugLog("Skipped memory injection for child session");
+    ctx.memoryDebugLog("Skipped memory injection for child session");
     return;
   }
 
@@ -114,7 +113,7 @@ export async function injectMemoriesIntoSystem(
   const userQuery = state.lastUserPrompt;
   if (!userQuery) {
     clearInjectedMemory(ctx.sessionStore, sessionID);
-    ctx.injectDebugLog("Skipped memory injection (no user query)");
+    ctx.memoryDebugLog("Skipped memory injection (no user query)");
     return;
   }
 
@@ -128,7 +127,7 @@ export async function injectMemoriesIntoSystem(
     if (Array.isArray(messages?.data)) {
       allMessages = messages.data;
     }
-    ctx.injectDebugLog(
+    ctx.memoryDebugLog(
       `API returned ${allMessages.length} messages for context extraction`,
     );
   } catch {
@@ -136,14 +135,14 @@ export async function injectMemoriesIntoSystem(
   }
 
   const enrichedQuery = buildEnrichedQuery(
-    ctx.injectDebugLog,
+    ctx.memoryDebugLog,
     sessionID,
     userQuery,
     allMessages,
   );
   if (!enrichedQuery) {
     clearInjectedMemory(ctx.sessionStore, sessionID);
-    ctx.injectDebugLog(
+    ctx.memoryDebugLog(
       `Skipped memory injection for short/command input: "${userQuery}"`,
     );
     return;
@@ -166,13 +165,13 @@ export async function injectMemoriesIntoSystem(
     if (result === "timeout") {
       timedOut = true;
       clearInjectedMemory(ctx.sessionStore, sessionID);
-      ctx.injectDebugLog("Memory injection timed out (8s), skipping");
+      ctx.memoryDebugLog("Memory injection timed out (8s), skipping");
     }
     // Suppress unhandled rejection from the loser of Promise.race
     injectPromise.catch(() => {});
   } catch (error) {
     clearInjectedMemory(ctx.sessionStore, sessionID);
-    ctx.injectDebugLog(`Memory injection failed: ${error}`);
+    ctx.memoryDebugLog(`Memory injection failed: ${error}`);
   }
 }
 
@@ -192,7 +191,7 @@ async function doInjectMemories(
   const memoryText = await injector.formatForSystem(enrichedQuery);
   if (!memoryText) {
     clearInjectedMemory(ctx.sessionStore, sessionID);
-    ctx.injectDebugLog(`No relevant memories found`);
+    ctx.memoryDebugLog(`No relevant memories found`);
     return;
   }
 

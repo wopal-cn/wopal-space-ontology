@@ -21,6 +21,7 @@ import { join } from "path";
 
 const debugLog = createDebugLog();
 const warnLog = createWarnLog("[wopal-plugin]");
+const memoryDebugLog = createDebugLog("[wopal-memory]", "memory");
 
 function loadWopalEnv(rootDir: string): void {
   const envPath = join(rootDir, ".env");
@@ -73,7 +74,7 @@ async function ensureMemorySystem(): Promise<typeof _memorySystem> {
     const injector = new MemoryInjector(retriever);
 
     _memorySystem = { injector, distillEngine, store, embedder, llm };
-    debugLog("Memory system initialized (LanceDB + Embedding + LLM)");
+    memoryDebugLog("Memory system initialized (LanceDB + Embedding + LLM)");
     return _memorySystem;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -87,9 +88,16 @@ const openCodeRulesPlugin = async (pluginInput: PluginInput): Promise<Hooks> => 
 
   loadWopalEnv(pluginInput.directory);
 
-  const ruleFiles = await discoverRuleFiles(pluginInput.directory);
+  const rulesInjectionEnabled = process.env.WOPAL_RULES_INJECTION_ENABLED !== "false";
+  const memoryInjectionEnabled = process.env.WOPAL_MEMORY_INJECTION_ENABLED !== "false";
+
+  const rulesDebugLog = createDebugLog("[wopal-rules]", "rules");
+
+  const ruleFiles = rulesInjectionEnabled
+    ? await discoverRuleFiles(pluginInput.directory, rulesDebugLog)
+    : [];
   debugLog(`Discovered ${ruleFiles.length} rule file(s)`);
-    debugLog(`Tools registered: wopal_task, wopal_task_output, wopal_task_reply, memory_manage, context_manage`);
+  debugLog(`Tools registered: wopal_task, wopal_task_output, wopal_task_reply, memory_manage, context_manage`);
 
   // Extract the internal fetch from v1 client (which uses Server.Default().fetch
   // to route requests to the in-process Hono server, bypassing real HTTP).
@@ -110,7 +118,9 @@ const openCodeRulesPlugin = async (pluginInput: PluginInput): Promise<Hooks> => 
     pluginInput.serverUrl,
   );
 
-  const memory = await ensureMemorySystem();
+  const memory = memoryInjectionEnabled
+    ? await ensureMemorySystem()
+    : null;
   const systemSnapshots = new Map<string, string[]>();
   const systemMetadataMap = new Map<string, SystemPromptMetadata>();
   const systemInjectionsMap = new Map<string, string[]>();

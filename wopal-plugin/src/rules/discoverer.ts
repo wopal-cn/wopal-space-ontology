@@ -6,7 +6,7 @@ import { stat, readFile, readdir } from "fs/promises";
 import path from "path";
 import os from "os";
 import { parse as parseYaml } from "yaml";
-import { createWarnLog } from "../debug.js";
+import { createWarnLog, type DebugLog } from "../debug.js";
 
 const warnLog = createWarnLog();
 
@@ -266,13 +266,15 @@ export interface DiscoveredRule {
  * - $XDG_CONFIG_HOME/opencode/rules/ (or ~/.config/opencode/rules as fallback)
  * - .opencode/rules/ (in project directory if provided)
  * Finds all .md and .mdc files including nested subdirectories.
+ *
+ * @param projectDir - Optional project directory for local rules discovery
+ * @param rulesDebugLog - Debug log function for rules module (if omitted, no logs)
  */
 export async function discoverRuleFiles(
   projectDir?: string,
+  rulesDebugLog?: DebugLog,
 ): Promise<DiscoveredRule[]> {
   const files: DiscoveredRule[] = [];
-  const { createDebugLog } = await import("../debug.js");
-  const debugLog = createDebugLog();
 
   // Discover global rules (recursively)
   const globalRulesDir = getGlobalRulesDir();
@@ -282,7 +284,9 @@ export async function discoverRuleFiles(
       globalRulesDir,
     );
     for (const { filePath, relativePath } of globalRules) {
-      debugLog(`Discovered global rule: ${relativePath} (${filePath})`);
+      if (rulesDebugLog) {
+        rulesDebugLog(`Discovered global rule: ${relativePath} (${filePath})`);
+      }
       files.push({ filePath, relativePath });
     }
   }
@@ -295,7 +299,9 @@ export async function discoverRuleFiles(
       projectRulesDir,
     );
     for (const { filePath, relativePath } of projectRules) {
-      debugLog(`Discovered project rule: ${relativePath} (${filePath})`);
+      if (rulesDebugLog) {
+        rulesDebugLog(`Discovered project rule: ${relativePath} (${filePath})`);
+      }
       files.push({ filePath, relativePath });
     }
   }
