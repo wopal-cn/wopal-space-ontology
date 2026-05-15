@@ -8,6 +8,7 @@ import {
   type MatchedRuleInfo,
 } from "../rules/index.js";
 import type { DebugLog } from "../debug.js";
+import { formatSessionID } from "../debug.js";
 
 export interface RuleInjectorContext {
   directory: string;
@@ -42,6 +43,7 @@ export async function injectRules(
   agentName: string | undefined,
   userPrompt?: string,
   sessionID?: string,
+  isTask?: boolean,
 ): Promise<string | undefined> {
   const result = await readAndFormatRules(
     ctx.ruleFiles,
@@ -52,15 +54,10 @@ export async function injectRules(
   if (result.content) {
     const matchedRuleNames = formatMatchedRulesForLog(result.matchedRules);
     ctx.rulesDebugLog(
-      `Injected ${matchedRuleNames.length} rules for session ${sessionID ?? "unknown"}: ${matchedRuleNames.join(", ")}`,
+      `Injected ${matchedRuleNames.length} rules for session ${formatSessionID(sessionID, !!isTask)}: ${matchedRuleNames.join(", ")}`,
     );
     return result.content;
   } else {
-    // No rules matched - show context for diagnosis
-    const promptPreview = (userPrompt ?? "").slice(0, 50);
-    ctx.rulesDebugLog(
-      `No rules matched for session ${sessionID ?? "unknown"} (agent: ${agentName ?? "unknown"}; prompt: "${promptPreview}")`,
-    );
     return undefined;
   }
 }

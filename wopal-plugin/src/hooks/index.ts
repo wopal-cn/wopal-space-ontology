@@ -104,6 +104,7 @@ export function createAllHooks(ctx: HookContext): Record<string, unknown> {
       rulesDebugLog: ctx.rulesDebugLog,
       rulesInjectionEnabled: ctx.rulesInjectionEnabled,
     },
+    taskManager: ctx.taskManager,
   });
 
   const systemTransformHooks = createSystemTransformHooks({

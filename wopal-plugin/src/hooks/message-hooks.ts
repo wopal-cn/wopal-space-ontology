@@ -1,6 +1,7 @@
 import { extractSessionID, extractLatestUserPrompt, type MessageWithInfo } from "./message-context.js";
 import type { SessionStore } from "../session-store.js";
 import type { DebugLog } from "../debug.js";
+import type { SimpleTaskManager } from "../tasks/simple-task-manager.js";
 import { injectSkillReload, type SkillReloadInjectorContext } from "./skill-reload-injector.js";
 import { injectRulesToMessage, type RuleMessageInjectorContext } from "./rule-message-injector.js";
 
@@ -18,6 +19,7 @@ export interface MessageHookContext {
   transformedMessagesMap: Map<string, MessageWithInfo[]>;
   skillReloadCtx: SkillReloadInjectorContext;
   ruleMessageCtx: RuleMessageInjectorContext;
+  taskManager?: SimpleTaskManager | undefined;
 }
 
 export function createMessageHooks(ctx: MessageHookContext) {
@@ -71,7 +73,8 @@ export function createMessageHooks(ctx: MessageHookContext) {
     }
 
     await injectSkillReload(ctx.skillReloadCtx, sessionID, lastUserMsg);
-    await injectRulesToMessage(ctx.ruleMessageCtx, sessionID, output.messages, lastUserMsg);
+    const isTask = !!ctx.taskManager?.findBySession(sessionID);
+    await injectRulesToMessage(ctx.ruleMessageCtx, sessionID, output.messages, lastUserMsg, isTask);
 
     // Store transformed messages for auto dump
     ctx.transformedMessagesMap.set(sessionID, output.messages);

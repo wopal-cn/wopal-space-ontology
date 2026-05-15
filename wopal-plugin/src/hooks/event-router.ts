@@ -2,7 +2,7 @@ import type { SessionStore } from "../session-store.js";
 import type { SimpleTaskManager } from "../tasks/simple-task-manager.js";
 import type { DebugLog } from "../debug.js";
 import { trackActivity } from "../tasks/progress.js";
-import { createInfoLog } from "../debug.js";
+import { createInfoLog, formatSessionID } from "../debug.js";
 import { getSessionModelInfo } from "../tools/output-helpers.js";
 import type { IdleDiagnostic } from "../tasks/idle-diagnostic.js";
 
@@ -67,16 +67,15 @@ export function createEventRouter(ctx: EventRouterHookContext) {
     } else if (eventType === "message.part.updated") {
       const part = props?.part as EventPart | undefined
 
-      // Token usage logging for all step-finish events (always-on, no debug flag needed)
-      if (sessionID && part?.type === "step-finish" && part?.tokens) {
-        const t = part.tokens
-        const cache = t.cache ?? {}
-        const isTask = !!ctx.taskManager?.findBySession(sessionID)
-        const role = isTask ? "task" : "main"
-        const modelInfo = await getSessionModelInfo(ctx.client, sessionID)
-        const model = modelInfo ? ` model=${modelInfo.providerID}/${modelInfo.modelID}` : ""
-        infoLog(`${sessionID.slice(0, 16)}(${role}) tokens: input=${t.input ?? 0} output=${t.output ?? 0} cache_read=${cache.read ?? 0} cache_write=${cache.write ?? 0}${model}`)
-      }
+// Token usage logging for all step-finish events (always-on, no debug flag needed)
+if (sessionID && part?.type === "step-finish" && part?.tokens) {
+  const t = part.tokens
+  const cache = t.cache ?? {}
+  const isTask = !!ctx.taskManager?.findBySession(sessionID)
+  const modelInfo = await getSessionModelInfo(ctx.client, sessionID)
+  const model = modelInfo ? ` model=${modelInfo.providerID}/${modelInfo.modelID}` : ""
+  infoLog(`${formatSessionID(sessionID, isTask)} tokens: input=${t.input ?? 0} output=${t.output ?? 0} cache_read=${cache.read ?? 0} cache_write=${cache.write ?? 0}${model}`)
+}
 
       if (sessionID) {
         const task = ctx.taskManager?.findBySession(sessionID)

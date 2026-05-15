@@ -33,6 +33,7 @@ export async function injectRulesToMessage(
   sessionID: string,
   messages: MessageWithInfo[],
   lastUserMsg: MessageWithInfo | undefined,
+  isTask?: boolean,
 ): Promise<void> {
   if (!ctx.rulesInjectionEnabled) return;
   if (!lastUserMsg) return;
@@ -45,6 +46,7 @@ export async function injectRulesToMessage(
     agentName,
     userPrompt,
     sessionID,
+    isTask,
   );
 
   if (!formattedRules) return;

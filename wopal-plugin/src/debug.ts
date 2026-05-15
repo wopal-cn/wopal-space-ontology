@@ -7,6 +7,19 @@ export type LogFn = (message: string) => void;
 export type DebugLog = LogFn;
 
 /**
+ * Format session ID for logging: prefix 16 chars + (main/task) role.
+ * e.g. "ses_1da5cd417ffe(main)", "ses_1d63bf80effe(task)"
+ */
+export function formatSessionID(
+  sessionID: string | undefined,
+  isTask: boolean,
+): string {
+  if (!sessionID) return "unknown";
+  const prefix = sessionID.length > 16 ? sessionID.slice(0, 16) : sessionID;
+  return `${prefix}(${isTask ? "task" : "main"})`;
+}
+
+/**
  * Module names for debug filtering:
  * - "plugin" for plugin lifecycle (load, init, tool registration)
  * - "rules" for rule discovery and injection
