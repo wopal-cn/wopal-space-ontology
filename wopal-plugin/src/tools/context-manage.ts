@@ -14,6 +14,7 @@ import {
   type SessionContext,
 } from "../memory/session-context.js";
 import type { SessionMessage, SystemPromptMetadata } from "../types.js";
+import type { MessageWithInfo } from "../hooks/message-context.js";
 import { createDebugLog } from "../debug.js";
 import { writeContextDump } from "./dump-formatter.js";
 
@@ -32,6 +33,7 @@ function normalizeSessionID(id: string): string {
  * @param distillLLM - Distill LLM client for summary generation
  * @param client - OpenCode client for session.messages() and session.update()
  * @param systemInjectionsMap - Plugin injections (rules + memories)
+ * @param transformedMessagesMap - Messages with synthetic parts from hooks
  */
 export function createContextManageTool(
   distillLLM: DistillLLMClient,
@@ -40,11 +42,13 @@ export function createContextManageTool(
   systemSnapshots?: Map<string, string[]>,
   systemMetadataMap?: Map<string, SystemPromptMetadata>,
   systemInjectionsMap?: Map<string, string[]>,
+  transformedMessagesMap?: Map<string, MessageWithInfo[]>,
   workspaceDir?: string,
 ): ToolDefinition {
   const snapshotMap = systemSnapshots ?? new Map<string, string[]>();
   const metadataMap = systemMetadataMap ?? new Map<string, SystemPromptMetadata>();
   const injectionsMap = systemInjectionsMap ?? new Map<string, string[]>();
+  const messagesMap = transformedMessagesMap ?? new Map<string, MessageWithInfo[]>();
   const baseDir = workspaceDir ?? ".";
 
   return tool({
@@ -99,6 +103,7 @@ export function createContextManageTool(
           systemSnapshots: snapshotMap,
           systemMetadataMap: metadataMap,
           systemInjectionsMap: injectionsMap,
+          transformedMessagesMap: messagesMap,
           client,
           detail: args.detail ?? false,
           title,

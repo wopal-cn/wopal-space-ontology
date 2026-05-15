@@ -164,7 +164,7 @@ describe('context_manage: handleDump', () => {
     ];
     dumpMockMessages.mockResolvedValue({ data: msgs });
 
-    const tool = createContextManageTool(distillLLM, dumpClient, snapshots, new Map(), new Map(), testTmpDir);
+    const tool = createContextManageTool(distillLLM, dumpClient, snapshots, new Map(), new Map(), new Map(), testTmpDir);
     const execute = getExecute(tool);
     const result = await execute({ action: 'dump' }, dumpCtx);
 
@@ -190,7 +190,7 @@ describe('context_manage: handleDump', () => {
     const snapshots = new Map<string, string[]>();
     snapshots.set('ses_abc123', ['system content']);
 
-    const tool = createContextManageTool(distillLLM, dumpClient, snapshots, new Map(), new Map(), testTmpDir);
+    const tool = createContextManageTool(distillLLM, dumpClient, snapshots, new Map(), new Map(), new Map(), testTmpDir);
     const execute = getExecute(tool);
     const result = await execute({ action: 'dump', session_id: 'wopal-task-abc123' }, dumpCtx);
 
@@ -206,7 +206,7 @@ describe('context_manage: handleDump', () => {
   it('U3: graceful degradation when no snapshot', async () => {
     const snapshots = new Map<string, string[]>();
 
-    const tool = createContextManageTool(distillLLM, dumpClient, snapshots, new Map(), new Map(), testTmpDir);
+    const tool = createContextManageTool(distillLLM, dumpClient, snapshots, new Map(), new Map(), new Map(), testTmpDir);
     const execute = getExecute(tool);
     const result = await execute({ action: 'dump', session_id: 'ses_nonexist' }, dumpCtx);
 
@@ -223,7 +223,7 @@ describe('context_manage: handleDump', () => {
     dumpMockGet.mockRejectedValue(new Error('API error'));
     dumpMockMessages.mockResolvedValue({ data: null });
 
-    const tool = createContextManageTool(distillLLM, dumpClient, snapshots, new Map(), new Map(), testTmpDir);
+    const tool = createContextManageTool(distillLLM, dumpClient, snapshots, new Map(), new Map(), new Map(), testTmpDir);
     const execute = getExecute(tool);
     const result = await execute({ action: 'dump' }, dumpCtx);
 

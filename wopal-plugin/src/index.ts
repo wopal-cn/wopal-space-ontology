@@ -157,7 +157,7 @@ const openCodeRulesPlugin = async (pluginInput: PluginInput): Promise<Hooks> => 
     memoryInjectionEnabled,
   });
 
-  const hooks = createAllHooks(ctx);
+  const { hooks: hookHandlers, transformedMessagesMap } = createAllHooks(ctx);
 
   const tools = createWopalTools(taskManager, memory?.store, memory?.embedder, sessionStore, memory?.distillEngine, pluginInput.client);
 
@@ -170,6 +170,7 @@ const openCodeRulesPlugin = async (pluginInput: PluginInput): Promise<Hooks> => 
       systemSnapshots,
       systemMetadataMap,
       systemInjectionsMap,
+      transformedMessagesMap,
       pluginInput.directory,
     );
   }
@@ -177,7 +178,7 @@ const openCodeRulesPlugin = async (pluginInput: PluginInput): Promise<Hooks> => 
   debugLog(`Plugin initialized: tools=[${Object.keys(tools).join(", ")}], memory=${!!memory}`);
 
   return {
-    ...hooks,
+    ...hookHandlers,
     tool: tools,
   };
 };

@@ -75,7 +75,13 @@ export function createHookContext(opts: HookContextOptions): HookContext {
   };
 }
 
-export function createAllHooks(ctx: HookContext): Record<string, unknown> {
+export interface AllHooksResult {
+  [key: string]: unknown;
+  hooks: Record<string, unknown>;
+  transformedMessagesMap: Map<string, MessageWithInfo[]>;
+}
+
+export function createAllHooks(ctx: HookContext): AllHooksResult {
   // Shared map for transformed messages (contains synthetic parts)
   const transformedMessagesMap = new Map<string, MessageWithInfo[]>();
 
@@ -140,11 +146,14 @@ export function createAllHooks(ctx: HookContext): Record<string, unknown> {
   });
 
   return {
-    ...commandHooks,
-    ...messageHooks,
-    ...systemTransformHooks,
-    ...eventRouter,
-    ...compactionHooks,
+    hooks: {
+      ...commandHooks,
+      ...messageHooks,
+      ...systemTransformHooks,
+      ...eventRouter,
+      ...compactionHooks,
+    },
+    transformedMessagesMap,
   };
 }
 
