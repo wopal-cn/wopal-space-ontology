@@ -36,10 +36,28 @@ export function createEventRouter(ctx: EventRouterHookContext) {
 
     const eventType = input.event.type
     const props = input.event.properties
+    const sessionID = props?.sessionID as string | undefined
 
-// Lazy recovery: trigger on first event with a sessionID
+    // Lazy recovery: on first event from main session, restore child tasks
+    if (!recovered && sessionID) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const client = ctx.client as any
+      if (typeof client?.session?.get === "function") {
+        try {
+          const result = await client.session.get({ path: { id: sessionID } })
+          const session = result?.data
+          if (session && !session.parentID) {
+            recovered = true
+            ctx.taskDebugLog(`[recover] main session detected: ${sessionID.slice(0, 16)}, triggering recovery`)
+            void ctx.taskManager.recoverFromSession(sessionID)
+          }
+        } catch {
+          // Next event will retry
+        }
+      }
+    }
+
     if (eventType === "message.part.delta") {
-      const sessionID = props?.sessionID as string | undefined
       if (sessionID) {
         const task = ctx.taskManager?.findBySession(sessionID)
         if (task && task.status === "running") {
@@ -47,7 +65,6 @@ export function createEventRouter(ctx: EventRouterHookContext) {
         }
       }
     } else if (eventType === "message.part.updated") {
-      const sessionID = props?.sessionID as string | undefined
       const part = props?.part as EventPart | undefined
 
             // Token usage logging for all step-finish events (always-on, no debug flag needed)
