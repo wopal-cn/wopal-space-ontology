@@ -3,7 +3,6 @@ trigger: model_decision
 description: Nodejs 类项目, 开发 Typescript 或 Javascript 脚本时遵守此规则。
 keywords:
   - 'typescript'
-  - 'ts'
   - '.ts'
 ---
 
