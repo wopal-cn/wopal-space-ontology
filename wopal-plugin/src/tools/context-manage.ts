@@ -53,20 +53,20 @@ export function createContextManageTool(
       "- 'summary': Generate ≤50 char summary via LLM and update session title.\n" +
       "  MUST only call when user explicitly requests (e.g. \"摘要本次会话\"). Do not repeat after success.\n" +
       "- 'dump': Export session context to file. session_id accepts 'ses_xxx' or 'wopal-task-xxx' (auto-converted).\n" +
-      "  Use detail=true for full content; default detail=false uses compact mode (truncates long content).",
+      "  Default is compact mode (truncates long content, recommended). Only use detail=true when user explicitly requests full content.",
     args: {
       action: tool.schema
         .enum(["summary", "dump"] as const)
-        .describe("'summary' 生成摘要并更新 title, 'dump' 导出会话上下文到文件"),
+        .describe("'summary' to generate summary and update title, 'dump' to export session context"),
       session_id: tool.schema
         .string()
         .optional()
-        .describe("dump 时指定会话 ID，支持 ses_xxx 或 wopal-task-xxx 格式"),
+        .describe("Session ID for dump, accepts ses_xxx or wopal-task-xxx format"),
       detail: tool.schema
         .boolean()
         .optional()
         .default(false)
-        .describe("dump 时使用完整模式（默认 false 为精简模式）"),
+        .describe("Use full content mode for dump (default false = compact mode)"),
     },
     execute: async (args, context: ToolContext): Promise<string> => {
       const sessionID = context.sessionID;
