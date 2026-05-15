@@ -3,7 +3,7 @@ import type { SimpleTaskManager } from "../tasks/simple-task-manager.js";
 import type { DebugLog } from "../debug.js";
 import { trackActivity } from "../tasks/progress.js";
 import { createInfoLog } from "../debug.js";
-import { getTaskModelInfo } from "../tools/output-helpers.js";
+import { getSessionModelInfo } from "../tools/output-helpers.js";
 import type { IdleDiagnostic } from "../tasks/idle-diagnostic.js";
 
 interface EventPart {
@@ -54,7 +54,7 @@ export function createEventRouter(ctx: EventRouterHookContext) {
       if (sessionID && part?.type === "step-finish" && part?.tokens) {
         const t = part.tokens
         const cache = t.cache ?? {}
-        const modelInfo = await getTaskModelInfo(ctx.client, sessionID)
+        const modelInfo = await getSessionModelInfo(ctx.client, sessionID)
         const model = modelInfo ? ` model=${modelInfo.providerID}/${modelInfo.modelID}` : ""
         infoLog(`${sessionID.slice(0, 8)} tokens: input=${t.input ?? 0} output=${t.output ?? 0} cache_read=${cache.read ?? 0} cache_write=${cache.write ?? 0}${model}`)
       }

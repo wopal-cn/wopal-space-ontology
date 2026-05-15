@@ -20,16 +20,16 @@ export function formatTokenCount(n: number): string {
   return String(n)
 }
 
-export interface TaskModelInfo {
+export interface SessionModelInfo {
   providerID: string
   modelID: string
 }
 
-export async function getTaskModelInfo(
+export async function getSessionModelInfo(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   client: any,
   sessionID: string,
-): Promise<TaskModelInfo | null> {
+): Promise<SessionModelInfo | null> {
   try {
     if (typeof client.session?.messages !== "function") return null
     const messagesResult = await client.session.messages({

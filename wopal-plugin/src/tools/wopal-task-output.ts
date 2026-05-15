@@ -6,7 +6,7 @@ import { analyzeProgress } from "../tasks/progress.js"
 import { detectLoop } from "../tasks/loop-detector.js"
 import { createDebugLog } from "../debug.js"
 import {
-  getTaskModelInfo,
+  getSessionModelInfo,
   getContextUsage,
   formatProgressOutput,
 } from "./output-helpers.js"
@@ -43,7 +43,7 @@ export function createWopalOutputTool(manager: SimpleTaskManager): ToolDefinitio
       // 获取模型信息（仅当有 sessionID 时）
       if (task.sessionID) {
         const client = manager.getClient()
-        const modelInfo = await getTaskModelInfo(client, task.sessionID)
+        const modelInfo = await getSessionModelInfo(client, task.sessionID)
         if (modelInfo) {
           result += `**Model:** ${modelInfo.providerID}/${modelInfo.modelID}\n`
         }
