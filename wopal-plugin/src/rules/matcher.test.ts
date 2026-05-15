@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { promptMatchesKeywords, toolsMatchAvailable } from "./index.js";
+import { promptMatchesKeywords } from "./matcher.js";
 
 describe("promptMatchesKeywords", () => {
   it("should return true when keyword matches prompt", () => {
@@ -118,46 +118,5 @@ describe("promptMatchesKeywords", () => {
     expect(promptMatchesKeywords("I entered a contest", ["test"])).toBe(false);
     expect(promptMatchesKeywords("I am testing this", ["test"])).toBe(true);
     expect(promptMatchesKeywords("testing", ["test"])).toBe(true);
-  });
-});
-
-describe("toolsMatchAvailable", () => {
-  it("should return true when required tool is available", () => {
-    const available = ["mcp_bash", "mcp_read", "mcp_websearch"];
-    expect(toolsMatchAvailable(available, ["mcp_websearch"])).toBe(true);
-  });
-
-  it("should return false when required tool is not available", () => {
-    const available = ["mcp_bash", "mcp_read"];
-    expect(toolsMatchAvailable(available, ["mcp_websearch"])).toBe(false);
-  });
-
-  it("should return true if any required tool is available (OR logic)", () => {
-    const available = ["mcp_bash", "mcp_read"];
-    expect(toolsMatchAvailable(available, ["mcp_websearch", "mcp_bash"])).toBe(
-      true,
-    );
-  });
-
-  it("should return false for empty required tools", () => {
-    const available = ["mcp_bash", "mcp_read"];
-    expect(toolsMatchAvailable(available, [])).toBe(false);
-  });
-
-  it("should return false for empty available tools", () => {
-    expect(toolsMatchAvailable([], ["mcp_websearch"])).toBe(false);
-  });
-
-  it("should use exact string matching", () => {
-    const available = ["mcp_websearch_v2"];
-    // Should not match partial strings
-    expect(toolsMatchAvailable(available, ["mcp_websearch"])).toBe(false);
-    expect(toolsMatchAvailable(available, ["mcp_websearch_v2"])).toBe(true);
-  });
-
-  it("should handle multiple required and available tools efficiently", () => {
-    const available = ["tool_a", "tool_b", "tool_c", "tool_d", "tool_e"];
-    const required = ["tool_x", "tool_y", "tool_c"]; // tool_c matches
-    expect(toolsMatchAvailable(available, required)).toBe(true);
   });
 });

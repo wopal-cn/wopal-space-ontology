@@ -1,9 +1,10 @@
 /**
  * Rule formatting for system prompt injection
+ * Keywords-only matching with agent scope filtering
  */
 
 import { getCachedRule, type DiscoveredRule } from "./discoverer.js";
-import { fileMatchesGlobs, promptMatchesKeywords } from "./matcher.js";
+import { promptMatchesKeywords } from "./matcher.js";
 
 /**
  * Matched rule description for logging
@@ -24,18 +25,44 @@ export interface FormattedRulesResult {
 }
 
 /**
+ * Check if a rule is eligible for the given agent based on its path.
+ * - Root-level rules (no subdirectory in relativePath) match all agents
+ * - Agent-scoped rules (relativePath like "fae/rules.md") only match when agentName matches
+ *
+ * @param relativePath - Relative path of the rule from the rules directory root
+ * @param agentName - Current agent name, or undefined for generic matching
+ * @returns true if the rule is eligible for the current agent
+ */
+function isEligibleForAgent(
+  relativePath: string,
+  agentName?: string,
+): boolean {
+  const slashIndex = relativePath.indexOf("/");
+  if (slashIndex === -1) {
+    // Root-level rule: matches all agents
+    return true;
+  }
+  // Agent-scoped rule: only matches when agentName equals the scope prefix
+  const scope = relativePath.substring(0, slashIndex);
+  return agentName === scope;
+}
+
+/**
  * Read and format rule files for system prompt injection
+ * Rules are filtered by:
+ * 1. Agent scope: agent-scoped rules only match the corresponding agent
+ * 2. Keywords: rules without keywords are skipped (no "unconditional" injection)
+ * 3. Keyword matching: only rules whose keywords match the user prompt are included
+ *
  * @param files - Array of discovered rule files with paths
- * @param contextFilePaths - Optional array of file paths from conversation context (used to filter conditional rules)
+ * @param agentName - Optional agent name for agent-scoped rule filtering
  * @param userPrompt - Optional user prompt text (used for keyword matching)
- * @param availableToolIDs - Optional array of available tool IDs (used for tool-based filtering)
  * @returns Object with formatted content and matched rules info
  */
 export async function readAndFormatRules(
   files: DiscoveredRule[],
-  contextFilePaths?: string[],
+  agentName?: string,
   userPrompt?: string,
-  availableToolIDs?: string[],
 ): Promise<FormattedRulesResult> {
   if (files.length === 0) {
     return { content: "", matchedRules: [] };
@@ -43,12 +70,13 @@ export async function readAndFormatRules(
 
   const ruleContents: string[] = [];
   const matchedRules: MatchedRuleInfo[] = [];
-  const availableToolSet =
-    availableToolIDs && availableToolIDs.length > 0
-      ? new Set(availableToolIDs)
-      : undefined;
 
   for (const { filePath, relativePath } of files) {
+    // Agent scope filtering: skip rules not eligible for current agent
+    if (!isEligibleForAgent(relativePath, agentName)) {
+      continue;
+    }
+
     // Use cached rule data with mtime-based invalidation
     const cachedRule = await getCachedRule(filePath);
     if (!cachedRule) {
@@ -57,58 +85,29 @@ export async function readAndFormatRules(
 
     const { metadata, strippedContent } = cachedRule;
 
-    // Rules with metadata (globs, keywords, or tools) require matching
-    // OR logic: rule applies if keywords match OR globs match OR tools match
-    if (metadata?.globs || metadata?.keywords || metadata?.tools) {
-      const matchReasons: string[] = [];
-
-      // Check globs against context file paths
-      if (metadata.globs && contextFilePaths && contextFilePaths.length > 0) {
-        const matchingGlobs = metadata.globs.filter((glob) =>
-          contextFilePaths.some((contextPath) =>
-            fileMatchesGlobs(contextPath, [glob]),
-          ),
-        );
-        if (matchingGlobs.length > 0) {
-          matchReasons.push(`globs: ${matchingGlobs.join(", ")}`);
-        }
-      }
-
-      // Check keywords against user prompt
-      if (metadata.keywords && userPrompt) {
-        const matchingKeywords = metadata.keywords.filter((keyword) =>
-          promptMatchesKeywords(userPrompt, [keyword]),
-        );
-        if (matchingKeywords.length > 0) {
-          matchReasons.push(`keyword: ${matchingKeywords.join(", ")}`);
-        }
-      }
-
-      // Check tools against available tool IDs
-      if (metadata.tools && availableToolSet) {
-        const matchingTools = metadata.tools.filter((tool) =>
-          availableToolSet.has(tool),
-        );
-        if (matchingTools.length > 0) {
-          matchReasons.push(`tools: ${matchingTools.join(", ")}`);
-        }
-      }
-
-      // If rule has conditions but none match, skip it
-      if (matchReasons.length === 0) {
-        continue;
-      }
-
-      matchedRules.push({
-        name: relativePath,
-        reason: matchReasons.join("; "),
-      });
-    } else {
-      // Unconditional rule (no metadata) - always included
-      matchedRules.push({ name: relativePath, reason: "unconditional" });
+    // Rules without keywords are skipped (no "unconditional" injection)
+    if (!metadata?.keywords || metadata.keywords.length === 0) {
+      continue;
     }
 
-    // Use cached stripped content for output
+    // Keyword matching: requires a user prompt
+    if (!userPrompt) {
+      continue;
+    }
+
+    const matchingKeywords = metadata.keywords.filter((keyword) =>
+      promptMatchesKeywords(userPrompt, [keyword]),
+    );
+
+    if (matchingKeywords.length === 0) {
+      continue;
+    }
+
+    matchedRules.push({
+      name: relativePath,
+      reason: `keyword: ${matchingKeywords.join(", ")}`,
+    });
+
     // Use relativePath for unique headings instead of just filename
     ruleContents.push(`## ${relativePath}\n\n${strippedContent}`);
   }

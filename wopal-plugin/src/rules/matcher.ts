@@ -2,15 +2,6 @@
  * Rule matching utilities for conditional rule filtering
  */
 
-import { minimatch } from "minimatch";
-
-/**
- * Check if a file path matches any of the given glob patterns
- */
-export function fileMatchesGlobs(filePath: string, globs: string[]): boolean {
-  return globs.some((glob) => minimatch(filePath, glob, { matchBase: true }));
-}
-
 /**
  * Check if a user prompt matches any of the given keywords.
  * Supports:
@@ -54,24 +45,4 @@ export function promptMatchesKeywords(
     const regex = new RegExp(regexPattern, "i");
     return regex.test(lowerPrompt);
   });
-}
-
-/**
- * Check if any of the required tools are available.
- * Uses exact string matching (OR logic: any match returns true).
- *
- * @param availableToolIDs - Array of tool IDs currently available
- * @param requiredTools - Array of tool IDs from rule metadata
- * @returns true if any required tool is available
- */
-export function toolsMatchAvailable(
-  availableToolIDs: string[],
-  requiredTools: string[],
-): boolean {
-  if (requiredTools.length === 0) {
-    return false;
-  }
-  // Create a Set for O(1) lookups
-  const availableSet = new Set(availableToolIDs);
-  return requiredTools.some((tool) => availableSet.has(tool));
 }

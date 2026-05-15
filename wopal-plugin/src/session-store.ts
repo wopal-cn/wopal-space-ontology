@@ -1,7 +1,6 @@
 import type { MessageWithInfo } from "./hooks/message-context.js";
 
 export interface SessionState {
-  contextPaths: Set<string>;
   lastUserPrompt?: string;
   needsMemoryInjection?: boolean;
   lastUpdated: number;
@@ -47,10 +46,7 @@ export class SessionStore {
   snapshot(sessionID: string): SessionState | undefined {
     const s = this.stateMap.get(sessionID);
     if (!s) return undefined;
-    return {
-      ...s,
-      contextPaths: new Set(s.contextPaths),
-    };
+    return { ...s, loadedSkills: new Set(s.loadedSkills) };
   }
 
   reset(): void {
@@ -128,7 +124,6 @@ export class SessionStore {
 
   private createDefaultState(): SessionState {
     return {
-      contextPaths: new Set<string>(),
       lastUpdated: ++this.tick,
       seededFromHistory: false,
       seedCount: 0,

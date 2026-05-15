@@ -2,7 +2,9 @@
 trigger: model_decision
 description: 开发 Python 项目和脚本时遵守此规则。
 keywords:
-  - '**/*.py'
+  - 'python'
+  - 'py'
+  - '.py'
 ---
 
 # Python 开发规范

@@ -1,4 +1,4 @@
-import { extractSessionID, extractLatestUserPrompt, normalizeContextPath, toExtractableMessages, type MessageWithInfo } from "./message-context.js";
+import { extractSessionID, extractLatestUserPrompt, type MessageWithInfo } from "./message-context.js";
 import type { SessionStore } from "../session-store.js";
 import type { DebugLog } from "../debug.js";
 import { injectSkillReload, type SkillReloadInjectorContext } from "./skill-reload-injector.js";
@@ -35,18 +35,12 @@ export function createMessageHooks(ctx: MessageHookContext) {
     const shouldSeed = !existingState?.seededFromHistory;
 
     if (shouldSeed) {
-      const contextPaths = extractFilePathsFromMessages(
-        toExtractableMessages(output.messages),
-      );
       const userPrompt = extractLatestUserPrompt(output.messages);
 
       // Store recent messages for context enrichment (last N messages)
       const recentMessages = output.messages.slice(-MAX_RECENT_MESSAGES);
 
       ctx.sessionStore.upsert(sessionID, (state) => {
-        for (const p of contextPaths) {
-          state.contextPaths.add(normalizeContextPath(p, ctx.projectDirectory));
-        }
         if (userPrompt && !state.lastUserPrompt) {
           state.lastUserPrompt = userPrompt;
         }
@@ -55,14 +49,6 @@ export function createMessageHooks(ctx: MessageHookContext) {
         state.seedCount = (state.seedCount ?? 0) + 1;
         state.recentMessages = recentMessages;
       });
-
-      if (contextPaths.length > 0) {
-        ctx.contextDebugLog(
-          `Seeded ${contextPaths.length} context path(s) for session ${sessionID}: ${contextPaths
-            .slice(0, 5)
-            .join(", ")}${contextPaths.length > 5 ? "..." : ""}`,
-        );
-      }
 
       if (userPrompt) {
         ctx.contextDebugLog(
@@ -152,7 +138,3 @@ export function createMessageHooks(ctx: MessageHookContext) {
     "chat.message": onChatMessage,
   };
 }
-
-// Re-export extractFilePathsFromMessages from message-context for onMessagesTransform
-// (This is from rules/ path-extractor, used internally)
-import { extractFilePathsFromMessages } from "../rules/index.js";

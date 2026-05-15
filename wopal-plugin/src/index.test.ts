@@ -10,9 +10,9 @@ let projectRulesDir: string;
 let savedInjectionEnv: Record<string, string | undefined>;
 
 function setupTestDirs() {
-  testDir = mkdtempSync(path.join(os.tmpdir(), "opencode-rules-test-"));
-  globalRulesDir = path.join(testDir, ".config", "opencode", "rules");
-  projectRulesDir = path.join(testDir, "project", ".opencode", "rules");
+  testDir = mkdtempSync(path.join(os.tmpdir(), "wopal-rules-test-"));
+  globalRulesDir = path.join(testDir, ".wopal", "rules");
+  projectRulesDir = path.join(testDir, "project", ".wopal", "rules");
   mkdirSync(globalRulesDir, { recursive: true });
   mkdirSync(projectRulesDir, { recursive: true });
 }
@@ -62,9 +62,9 @@ describe("OpenCodeRulesPlugin", () => {
   });
 
   it("should return transform hooks even when no rules exist", async () => {
-    const originalEnv = process.env.XDG_CONFIG_HOME;
-    process.env.XDG_CONFIG_HOME = path.join(testDir, "empty-config");
-    mkdirSync(path.join(testDir, "empty-config", "opencode", "rules"), {
+    const originalHome = process.env.HOME;
+    process.env.HOME = path.join(testDir, "empty-home");
+    mkdirSync(path.join(testDir, "empty-home", ".wopal", "rules"), {
       recursive: true,
     });
 
@@ -84,18 +84,24 @@ describe("OpenCodeRulesPlugin", () => {
       expect("experimental.chat.messages.transform" in hooks).toBe(true);
       expect("experimental.chat.system.transform" in hooks).toBe(true);
     } finally {
-      process.env.XDG_CONFIG_HOME = originalEnv;
+      process.env.HOME = originalHome;
     }
   });
 
   it("should inject rules into user message via messages.transform hook", async () => {
     writeFileSync(
       path.join(globalRulesDir, "rule.md"),
-      "# Test Rule\nDo this always",
+      `---
+keywords:
+  - "hello"
+---
+
+# Test Rule
+Do this always`,
     );
 
-    const originalEnv = process.env.XDG_CONFIG_HOME;
-    process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+    const originalHome = process.env.HOME;
+    process.env.HOME = testDir;
 
     const { default: pluginDef } = await import("./index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
@@ -120,7 +126,7 @@ describe("OpenCodeRulesPlugin", () => {
             {
               role: "user",
               info: { sessionID: "test-ses", role: "user" },
-              parts: [{ type: "text", text: "hello" }],
+              parts: [{ type: "text", text: "hello world" }],
             },
           ],
         },
@@ -133,11 +139,14 @@ describe("OpenCodeRulesPlugin", () => {
       const rulesText = syntheticParts.map((p: any) => p.text).join("\n");
       expect(rulesText).toContain("Test Rule");
     } finally {
-      process.env.XDG_CONFIG_HOME = originalEnv;
+      process.env.HOME = originalHome;
     }
   });
 
   it("seeds session state once from messages.transform and does not rescan", async () => {
+    const originalHome = process.env.HOME;
+    process.env.HOME = testDir;
+
     const { default: pluginDef } = await import("./index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
@@ -149,26 +158,30 @@ describe("OpenCodeRulesPlugin", () => {
       serverUrl: new URL("http://localhost"),
     });
 
-    const transform = hooks["experimental.chat.messages.transform"] as any;
-    const messages = {
-      messages: [
-        {
-          info: { role: "assistant" },
-          parts: [
-            {
-              sessionID: "ses_seed",
-              type: "tool-invocation",
-              toolInvocation: { toolName: "read", args: { filePath: "src/a.ts" } },
-            },
-          ],
-        },
-      ],
-    };
+    try {
+      const transform = hooks["experimental.chat.messages.transform"] as any;
+      const messages = {
+        messages: [
+          {
+            info: { role: "assistant" },
+            parts: [
+              {
+                sessionID: "ses_seed",
+                type: "tool-invocation",
+                toolInvocation: { toolName: "read", args: { filePath: "src/a.ts" } },
+              },
+            ],
+          },
+        ],
+      };
 
-    await transform({}, messages);
-    await transform({}, messages);
+      await transform({}, messages);
+      await transform({}, messages);
 
-    expect(getSeedCount("ses_seed")).toBe(1);
+      expect(getSeedCount("ses_seed")).toBe(1);
+    } finally {
+      process.env.HOME = originalHome;
+    }
   });
 });
 
@@ -197,43 +210,57 @@ describe("SessionState", () => {
   });
 
   it("registers memory command/tool hardening hooks", async () => {
-    const { default: pluginDef } = await import("./index.js");
-    const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
-    const hooks = await plugin({
-      client: { tool: { ids: vi.fn(async () => ({ data: [] })) } } as any,
-      project: {} as any,
-      directory: testDir,
-      worktree: testDir,
-      $: {} as any,
-      serverUrl: new URL("http://localhost"),
-    });
+    const originalHome = process.env.HOME;
+    process.env.HOME = testDir;
 
-    expect(typeof hooks["command.execute.before"]).toBe("function");
-    expect(typeof hooks["tool.execute.after"]).toBe("function");
-    expect(typeof hooks["tool.definition"]).toBe("function");
+    try {
+      const { default: pluginDef } = await import("./index.js");
+      const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
+      const hooks = await plugin({
+        client: { tool: { ids: vi.fn(async () => ({ data: [] })) } } as any,
+        project: {} as any,
+        directory: testDir,
+        worktree: testDir,
+        $: {} as any,
+        serverUrl: new URL("http://localhost"),
+      });
+
+      expect(typeof hooks["command.execute.before"]).toBe("function");
+      expect(typeof hooks["tool.execute.after"]).toBe("function");
+      expect(typeof hooks["tool.definition"]).toBe("function");
+    } finally {
+      process.env.HOME = originalHome;
+    }
   });
 
   it("hardens /memory command prompt before execution", async () => {
-    const { default: pluginDef } = await import("./index.js");
-    const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
-    const hooks = await plugin({
-      client: { tool: { ids: vi.fn(async () => ({ data: [] })) } } as any,
-      project: {} as any,
-      directory: testDir,
-      worktree: testDir,
-      $: {} as any,
-      serverUrl: new URL("http://localhost"),
-    });
+    const originalHome = process.env.HOME;
+    process.env.HOME = testDir;
 
-    const hook = hooks["command.execute.before"] as any;
-    const output = {
-      parts: [{ type: "text", text: "# /memory — 记忆管理命令\n原始内容" }],
-    };
+    try {
+      const { default: pluginDef } = await import("./index.js");
+      const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
+      const hooks = await plugin({
+        client: { tool: { ids: vi.fn(async () => ({ data: [] })) } } as any,
+        project: {} as any,
+        directory: testDir,
+        worktree: testDir,
+        $: {} as any,
+        serverUrl: new URL("http://localhost"),
+      });
 
-    await hook({ command: "memory", sessionID: "ses_mem", arguments: "" }, output);
+      const hook = hooks["command.execute.before"] as any;
+      const output = {
+        parts: [{ type: "text", text: "# /memory — 记忆管理命令\n原始内容" }],
+      };
 
-    expect(output.parts[0].text).toContain("这是一个立即执行命令");
-    expect(output.parts[0].text).toContain("必须把工具返回的完整文本逐字写入回复");
-    expect(output.parts[0].text).toContain("原始内容");
+      await hook({ command: "memory", sessionID: "ses_mem", arguments: "" }, output);
+
+      expect(output.parts[0].text).toContain("这是一个立即执行命令");
+      expect(output.parts[0].text).toContain("必须把工具返回的完整文本逐字写入回复");
+      expect(output.parts[0].text).toContain("原始内容");
+    } finally {
+      process.env.HOME = originalHome;
+    }
   });
 });

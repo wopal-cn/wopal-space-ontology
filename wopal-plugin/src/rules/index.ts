@@ -16,8 +16,6 @@ export {
 // From matcher
 export {
   promptMatchesKeywords,
-  toolsMatchAvailable,
-  fileMatchesGlobs,
 } from "./matcher.js";
 
 // From formatter
@@ -26,10 +24,3 @@ export {
   type MatchedRuleInfo,
   type FormattedRulesResult,
 } from "./formatter.js";
-
-// From path-extractor
-export {
-  extractFilePathsFromMessages,
-  type Message,
-  type MessagePart,
-} from "./path-extractor.js";

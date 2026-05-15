@@ -2,8 +2,7 @@
 trigger: model_decision
 description: Astro 项目开发时遵守此规则。
 keywords:
-  - '**/*.astro'
-  - '**/astro.config.*'
+  - 'astro'
 ---
 # Astro 开发规范
 
