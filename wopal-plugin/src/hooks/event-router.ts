@@ -64,6 +64,17 @@ export function createEventRouter(ctx: EventRouterHookContext) {
       }
     }
 
+    // Update model cache when user switches model mid-session
+    if (eventType === "session.next.model.switched") {
+      const sessionID = props?.sessionID as string | undefined
+      const model = props?.model as { id?: string; providerID?: string; variant?: string } | undefined
+      if (sessionID && model?.id && model?.providerID) {
+        ctx.sessionStore.upsert(sessionID, (s) => {
+          s.model = { providerID: model.providerID!, modelID: model.id!, variant: model.variant }
+        })
+      }
+    }
+
     // Track meaningful activity from streaming events for stuck detection
     if (eventType === "message.part.delta") {
       const sessionID = props?.sessionID as string | undefined
