@@ -28,6 +28,27 @@ export function createEventRouter(ctx: EventRouterHookContext) {
 
   const infoLog = createInfoLog("[plugin] [tokens]");
 
+  /** Fetch model info from session API on cache miss */
+  async function ensureModelInfo(sessionID: string): Promise<string | null> {
+    const cached = ctx.sessionStore.get(sessionID)?.model
+    if (cached) return `${cached.providerID}/${cached.modelID}`
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const client = ctx.client as any
+      if (typeof client?.session?.get !== "function") return null
+      const result = await client.session.get({ path: { id: sessionID } })
+      const model = result?.data?.model
+      if (model?.id && model?.providerID) {
+        ctx.sessionStore.upsert(sessionID, (s) => {
+          s.model = { providerID: model.providerID, modelID: model.id }
+        })
+        return `${model.providerID}/${model.id}`
+      }
+    } catch { /* best-effort */ }
+    return null
+  }
+
   async function onEvent(
     input: { event: { type: string; properties?: Record<string, unknown> } },
   ): Promise<void> {
@@ -53,18 +74,7 @@ export function createEventRouter(ctx: EventRouterHookContext) {
       ctx.taskDebugLog(`[onEvent] received event: ${eventType}${eventSessionID ? ` session=${eventSessionID}` : ''}`)
     }
 
-    // Cache model info from session lifecycle events
-    if (eventType === "session.created" || eventType === "session.updated") {
-      const sessionID = props?.sessionID as string | undefined
-      const info = props?.info as { model?: { id?: string; providerID?: string; variant?: string } } | undefined
-      if (sessionID && info?.model?.id && info?.model?.providerID) {
-        ctx.sessionStore.upsert(sessionID, (s) => {
-          s.model = { providerID: info.model!.providerID!, modelID: info.model!.id!, variant: info.model!.variant }
-        })
-      }
-    }
-
-    // Update model cache when user switches model mid-session
+    // Update model cache on live model switch (fast path, avoids API call)
     if (eventType === "session.next.model.switched") {
       const sessionID = props?.sessionID as string | undefined
       const model = props?.model as { id?: string; providerID?: string; variant?: string } | undefined
@@ -92,9 +102,8 @@ export function createEventRouter(ctx: EventRouterHookContext) {
       if (sessionID && part?.type === "step-finish" && part?.tokens) {
         const t = part.tokens
         const cache = t.cache ?? {}
-        const modelInfo = ctx.sessionStore.get(sessionID)?.model
-        const model = modelInfo ? ` model=${modelInfo.providerID}/${modelInfo.modelID}` : ""
-        infoLog(`${sessionID.slice(0, 8)} tokens: input=${t.input ?? 0} output=${t.output ?? 0} cache_read=${cache.read ?? 0} cache_write=${cache.write ?? 0}${model}`)
+        const model = await ensureModelInfo(sessionID)
+        infoLog(`${sessionID.slice(0, 8)} tokens: input=${t.input ?? 0} output=${t.output ?? 0} cache_read=${cache.read ?? 0} cache_write=${cache.write ?? 0}${model ? ` model=${model}` : ""}`)
       }
 
       if (sessionID) {
