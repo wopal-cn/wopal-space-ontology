@@ -20,15 +20,13 @@ import { join } from "path";
 
 
 const debugLog = createDebugLog();
-const warnLog = createWarnLog("[plugin]");
-
-// 按 directory 缓存的初始化结果（幂等守卫）
-const pluginRegistry = new Map<string, Promise<Hooks>>();
+const warnLog = createWarnLog();
 
 function loadWopalEnv(rootDir: string): void {
   const envPath = join(rootDir, ".env");
   if (!existsSync(envPath)) return;
 
+  debugLog(`Loading env: ${envPath}`);
   try {
     const content = readFileSync(envPath, "utf-8");
     for (const line of content.split("\n")) {
@@ -42,8 +40,8 @@ function loadWopalEnv(rootDir: string): void {
         process.env[key] = value;
       }
     }
-  } catch {
-    // Silently ignore .env read errors
+  } catch (err) {
+    warnLog(`Failed to load .env: ${err}`);
   }
 }
 
@@ -90,26 +88,8 @@ async function ensureMemorySystem(): Promise<typeof _memorySystem> {
 const openCodeRulesPlugin = async (pluginInput: PluginInput): Promise<Hooks> => {
   const { directory } = pluginInput;
 
-  // 幂等守卫：同一 directory 已初始化 → 直接返回
-  const existing = pluginRegistry.get(directory);
-  if (existing) {
-    debugLog(`[plugin] Duplicate init skipped for ${directory}`);
-    return existing;
-  }
-
-  // 首次初始化：缓存 Promise，失败时清除缓存允许重试
-  const initPromise = initializePlugin(pluginInput).catch(err => {
-    pluginRegistry.delete(directory);
-    throw err;
-  });
-  pluginRegistry.set(directory, initPromise);
-  return initPromise;
-};
-
-async function initializePlugin(pluginInput: PluginInput): Promise<Hooks> {
-  debugLog(`[plugin] Initializing (directory: ${pluginInput.directory})`);
-
-  loadWopalEnv(pluginInput.directory);
+  debugLog(`Loading plugin: ${directory}`);
+  loadWopalEnv(directory);
 
   // Read switches after loadWopalEnv (ensure .env has taken effect)
   const rulesInjectionEnabled = process.env.WOPAL_RULES_INJECTION_ENABLED !== "false";
