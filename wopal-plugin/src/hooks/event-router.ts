@@ -67,7 +67,7 @@ export function createEventRouter(ctx: EventRouterHookContext) {
     } else if (eventType === "message.part.updated") {
       const part = props?.part as EventPart | undefined
 
-            // Token usage logging for all step-finish events (always-on, no debug flag needed)
+      // Token usage logging for all step-finish events (always-on, no debug flag needed)
       if (sessionID && part?.type === "step-finish" && part?.tokens) {
         const t = part.tokens
         const cache = t.cache ?? {}
@@ -91,13 +91,12 @@ export function createEventRouter(ctx: EventRouterHookContext) {
     }
 
     if (eventType === "session.idle") {
-      const sessionID = props?.sessionID as string | undefined
       if (!sessionID) return
 
       // 检查是否是 wopal_task 子会话
       const task = ctx.taskManager?.findBySession(sessionID)
       if (!task) {
-        ctx.taskDebugLog(`[onEvent] session.idle for ${sessionID.slice(0, 8)}: no matching task found`)
+        ctx.taskDebugLog(`[onEvent] session.idle for ${sessionID.slice(0, 16)}: no matching task found`)
         return
       }
 
@@ -127,7 +126,6 @@ export function createEventRouter(ctx: EventRouterHookContext) {
     }
 
     if (eventType === "session.compacted") {
-      const sessionID = props?.sessionID as string | undefined;
       if (sessionID) {
         ctx.sessionStore.markCompacted(sessionID);
         ctx.contextDebugLog(`Session ${sessionID} compact completed (event-driven)`);
@@ -142,7 +140,6 @@ export function createEventRouter(ctx: EventRouterHookContext) {
         return
       }
 
-      const sessionID = props?.sessionID as string | undefined
       const error = stringifyEventError(props?.error)
 
       if (sessionID) {
@@ -158,7 +155,6 @@ export function createEventRouter(ctx: EventRouterHookContext) {
 
     // 权限请求事件
     if (eventType === "permission.asked") {
-      const sessionID = props?.sessionID as string | undefined
       const requestID = props?.id as string | undefined // OpenCode uses 'id', not 'requestID'
       const permission = props?.permission as string | undefined
 
@@ -178,7 +174,6 @@ export function createEventRouter(ctx: EventRouterHookContext) {
 
     // 问题请求事件
     if (eventType === "question.asked") {
-      const sessionID = props?.sessionID as string | undefined
       const requestID = props?.id as string | undefined
 
       if (sessionID && requestID && props?.questions) {

@@ -260,7 +260,7 @@ export class SimpleTaskManager {
       const pct = await getContextUsagePercent(this.client, this.directory, sessionID, this.debugLog)
       if (pct !== null) {
         task.lastContextUsage = pct
-        this.debugLog(`[ctxCache] session=${sessionID.slice(0, 8)} cached=${pct}%`)
+        this.debugLog(`[ctxCache] session=${sessionID.slice(0, 16)} cached=${pct}%`)
       }
     } catch {
       // Graceful degradation
@@ -304,11 +304,11 @@ export class SimpleTaskManager {
         }
         this.tasks.set(taskID, task)
         recovered++
-        this.debugLog(`[recover] restored task=${taskID} session=${childSessionID.slice(0, 8)} title="${child.title?.substring(0, 40) ?? ''}"`)
+        this.debugLog(`[recover] restored task=${taskID} session=${childSessionID.slice(0, 16)} title="${child.title?.substring(0, 40) ?? ''}"`)
       }
 
       if (recovered > 0) {
-        this.debugLog(`[recover] recovered ${recovered} task(s) from parent=${parentSessionID.slice(0, 8)}`)
+        this.debugLog(`[recover] recovered ${recovered} task(s) from parent=${parentSessionID.slice(0, 16)}`)
       }
     } catch (err) {
       this.debugLog(`[recover] error: ${err instanceof Error ? err.message : String(err)}`)

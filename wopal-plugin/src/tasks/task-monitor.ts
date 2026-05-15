@@ -110,7 +110,7 @@ export async function fetchContextPercent(
   sessionID: string,
   debugLog: DebugLog,
 ): Promise<ContextUsageInfo | null> {
-  const ctxLog = (msg: string) => debugLog(`[ctxUsage:${sessionID.slice(0, 8)}] ${msg}`)
+  const ctxLog = (msg: string) => debugLog(`[ctxUsage:${sessionID.slice(0, 16)}] ${msg}`)
   try {
     if (typeof client.session?.messages !== "function") {
       ctxLog("no session.messages API")
