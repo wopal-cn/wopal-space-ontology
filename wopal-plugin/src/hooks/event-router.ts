@@ -54,9 +54,11 @@ export function createEventRouter(ctx: EventRouterHookContext) {
       if (sessionID && part?.type === "step-finish" && part?.tokens) {
         const t = part.tokens
         const cache = t.cache ?? {}
+        const isTask = !!ctx.taskManager?.findBySession(sessionID)
+        const role = isTask ? "task" : "main"
         const modelInfo = await getSessionModelInfo(ctx.client, sessionID)
         const model = modelInfo ? ` model=${modelInfo.providerID}/${modelInfo.modelID}` : ""
-        infoLog(`${sessionID.slice(0, 8)} tokens: input=${t.input ?? 0} output=${t.output ?? 0} cache_read=${cache.read ?? 0} cache_write=${cache.write ?? 0}${model}`)
+        infoLog(`${sessionID.slice(0, 8)}(${role}) tokens: input=${t.input ?? 0} output=${t.output ?? 0} cache_read=${cache.read ?? 0} cache_write=${cache.write ?? 0}${model}`)
       }
 
       if (sessionID) {
