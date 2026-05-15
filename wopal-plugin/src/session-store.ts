@@ -17,6 +17,12 @@ export interface SessionState {
   loadedSkills: Set<string>;
   /** Set to true after compact completes when loadedSkills is non-empty */
   needsSkillReload?: boolean;
+  /** Model info from session events (providerID + modelID for token logs) */
+  model?: {
+    providerID: string;
+    modelID: string;
+    variant?: string;
+  };
 }
 
 export interface SessionStoreOptions {

@@ -43,13 +43,14 @@ Memory 双开关：`WOPAL_MEMORY_ENABLED=false` 时 `WOPAL_MEMORY_INJECTION_ENAB
 | 会话状态/snapshot/compaction | Context | `[context]` | `context` |
 | Token 用量（input/output/cache_read/cache_write） | Plugin | `[plugin] [tokens]` | N/A（createInfoLog 始终输出） |
 
-Token 用量日志格式：`ses_<id> tokens: input=N output=N cache_read=N cache_write=N`
+Token 用量日志格式：`ses_<id> tokens: input=N output=N cache_read=N cache_write=N model=<provider>/<model>`
 
 - `input`：本次请求新增的 prompt token
 - `output`：LLM 回复生成的 token
 - `cache_read`：命中 prompt cache 的 token（约 90% 折扣计费）
 - `cache_write`：首次写入 prompt cache 的 token（仅新会话前 1-2 次请求出现，约 25% 加价）
 - 三项之和 ≈ 完整 prompt token 数：input + cache_read + cache_write
+- `model`：请求使用的模型（providerID/modelID，从 session.created/updated 事件缓存）
 
 禁用状态在 Global 层（`[plugin]`）报告**一次**，禁用时模块代码**完全不执行**。
 

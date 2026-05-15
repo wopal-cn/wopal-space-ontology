@@ -53,6 +53,17 @@ export function createEventRouter(ctx: EventRouterHookContext) {
       ctx.taskDebugLog(`[onEvent] received event: ${eventType}${eventSessionID ? ` session=${eventSessionID}` : ''}`)
     }
 
+    // Cache model info from session lifecycle events
+    if (eventType === "session.created" || eventType === "session.updated") {
+      const sessionID = props?.sessionID as string | undefined
+      const info = props?.info as { model?: { id?: string; providerID?: string; variant?: string } } | undefined
+      if (sessionID && info?.model?.id && info?.model?.providerID) {
+        ctx.sessionStore.upsert(sessionID, (s) => {
+          s.model = { providerID: info.model!.providerID!, modelID: info.model!.id!, variant: info.model!.variant }
+        })
+      }
+    }
+
     // Track meaningful activity from streaming events for stuck detection
     if (eventType === "message.part.delta") {
       const sessionID = props?.sessionID as string | undefined
@@ -70,7 +81,9 @@ export function createEventRouter(ctx: EventRouterHookContext) {
       if (sessionID && part?.type === "step-finish" && part?.tokens) {
         const t = part.tokens
         const cache = t.cache ?? {}
-        infoLog(`${sessionID.slice(0, 8)} tokens: input=${t.input ?? 0} output=${t.output ?? 0} cache_read=${cache.read ?? 0} cache_write=${cache.write ?? 0}`)
+        const modelInfo = ctx.sessionStore.get(sessionID)?.model
+        const model = modelInfo ? ` model=${modelInfo.providerID}/${modelInfo.modelID}` : ""
+        infoLog(`${sessionID.slice(0, 8)} tokens: input=${t.input ?? 0} output=${t.output ?? 0} cache_read=${cache.read ?? 0} cache_write=${cache.write ?? 0}${model}`)
       }
 
       if (sessionID) {
