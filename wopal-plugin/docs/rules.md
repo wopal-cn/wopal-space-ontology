@@ -1,101 +1,60 @@
-# OpenCode Rules
+# Wopal Rules
 
-This document explains how to use OpenCode Rules to inject custom instructions into the agent's system prompt. Rules are automatically discovered and injected via OpenCode's hook system, enabling context-aware rule filtering based on file paths, user prompts, and available tools.
+This document explains how to use Wopal Rules to inject custom instructions into agent messages. Rules are automatically discovered and injected via messages.transform hook, enabling keyword-based rule filtering with agent scope support.
 
 ## Rule Files
 
 Rules are defined in Markdown files (`.md` or `.mdc`). These files can be located in two places:
 
-- **Global Rules:** `~/.config/opencode/rules/`
-- **Project Rules:** `.opencode/rules/` in the root of your project.
+- **Global Rules:** `~/.wopal/rules/` (primary) or `$XDG_CONFIG_HOME/wopal/rules/` (fallback)
+- **Project Rules:** `.wopal/rules/` in the root of your project
 
 Both directories are scanned **recursively**, so you can organize your rules into subdirectories. Rule discovery happens once when the plugin initializes.
 
-### Organizing Rules with Subdirectories
+### Agent Scope (Subdirectory Organization)
 
-You can create subdirectories to group related rules:
+Rules can be scoped to specific agents by placing them in subdirectories:
 
 ```
-~/.config/opencode/rules/
-├── coding-standards.md       # Root-level rule (always applied)
-├── languages/
-│   ├── typescript.mdc        # TypeScript-specific (conditional)
-│   └── python.mdc            # Python-specific (conditional)
-├── frameworks/
-│   ├── react.mdc             # React rules
-│   └── nextjs.mdc            # Next.js rules
-└── workflows/
-    ├── testing.md            # Testing guidelines
-    └── git.md                # Git commit conventions
+~/.wopal/rules/
+├── typescript.md       # Root-level rule (applies to all agents)
+├── python.md           # Root-level rule (applies to all agents)
+├── fae/                # Fae-specific rules
+│   ├── execution.md    # Only applies when agentName = "fae"
+│   └── refactoring.md  # Only applies when agentName = "fae"
+└── wopal/              # Wopal-specific rules
+    ├── planning.md     # Only applies when agentName = "wopal"
+    └── workflow.md     # Only applies when agentName = "wopal"
 ```
+
+- **Root-level rules** (`*.md` in rules directory): Apply to all agents
+- **Agent-scoped rules** (`<agent-name>/<rule>.md`): Only apply when `agentName` matches the subdirectory name
+
+### Exclusions
 
 Hidden files and directories (starting with `.`) are automatically excluded from discovery.
 
-## Conditional Rules
+## Keyword-Based Matching
 
-You can define conditional rules in both `.md` and `.mdc` files using YAML frontmatter with `globs` and/or `keywords` fields.
-
-### File-Based Conditions (globs)
-
-The `globs` key contains a list of glob patterns. The rule applies if any file in the conversation context matches one of the patterns.
-
-```markdown
----
-globs:
-  - 'src/components/**/*.ts'
----
-
-This is a rule for TypeScript components.
-```
-
-### Prompt-Based Conditions (keywords)
-
-The `keywords` key contains a list of keywords. The rule applies if the user's prompt contains any of the keywords (case-insensitive matching).
+Rules use keyword matching to determine when to inject. Keywords are defined in YAML frontmatter:
 
 ```markdown
 ---
 keywords:
-  - 'testing'
-  - 'unit test'
-  - 'jest'
+  - 'typescript'
+  - 'ts'
+  - '.ts'
 ---
 
-Follow these testing best practices.
+TypeScript coding standards...
 ```
 
-#### Keyword Matching Behavior
+### Keyword Matching Behavior
 
-The matching system is language-aware and supports wildcards:
-
-**English Keywords:**
-- Word-boundary matching is applied (e.g., "test" matches "testing")
-- Does NOT match mid-word (e.g., "test" does NOT match "contest")
-
-**Chinese/CJK Keywords:**
-- Substring matching by default (no word boundaries in CJK languages)
-- `开发技能` matches "帮我开发技能吧", "开发技能很重要"
-
-**Wildcard Support (`*`):**
-Use `*` for flexible matching when you need to handle variations:
-
-```markdown
----
-keywords:
-  - '开发*技能'
-  - 'deploy*skill'
----
-```
-
-- `开发*技能` matches "请开发一个技能", "开发游戏技能"
-- `deploy*skill` matches "deploy my skill", "deploy an awesome skill"
-- `*deploy*` removes leading boundary, matches "autodeploy"
-
-**Mixed Language Keywords:**
-Boundary behavior is determined by the first character:
-- `app部署` (English first) → word boundary applies → matches "start app部署", NOT "testapp部署"
-- `部署app` (Chinese first) → no boundary → matches "自动部署app"
-
-#### Quick Reference
+- **Case-insensitive**: Keywords match regardless of case
+- **Word boundary for English**: "test" matches "testing" but NOT "contest"
+- **Substring for Chinese/CJK**: "开发技能" matches "帮我开发技能吧"
+- **Wildcard support**: Use `*` for flexible matching
 
 | Pattern | Type | Example Match |
 |---------|------|---------------|
@@ -104,71 +63,61 @@ Boundary behavior is determined by the first character:
 | `开发*技能` | Wildcard | "开发一个新技能" ✓ |
 | `*test*` | Wildcard | "contest", "testing" ✓ |
 
-### Combined Conditions (OR logic)
+### No Keywords = No Injection
 
-You can use both `globs` and `keywords` together. The rule applies if EITHER condition matches:
-
-```markdown
----
-globs:
-  - '**/*.test.ts'
-keywords:
-  - 'testing'
----
-
-Testing standards for the project.
-```
-
-This rule applies when EITHER a test file is in context OR the user mentions testing.
-
-### Unconditional Rules
-
-If no `globs` or `keywords` are specified, the rule is applied unconditionally to all prompts.
+Rules without keywords are **skipped**. There is no "unconditional" injection. Every rule must have keywords to be eligible for injection.
 
 ## How Rules are Loaded and Injected
 
-The plugin uses OpenCode's hook system to track context and inject rules:
-
-1. **Context Tracking**:
-   - `tool.execute.before` hook captures file paths as tools execute (read, edit, write, glob, grep, etc.)
-   - `chat.message` hook captures the latest user prompt as messages arrive
-   - `experimental.chat.messages.transform` hook seeds session state from message history on first call only
-
-2. **Rule Injection**:
-   - `experimental.chat.system.transform` hook evaluates all discovered rules against the accumulated context
-   - Rules are filtered based on:
-     - **File paths**: Glob patterns matched against files in context (from tool calls and message history)
-     - **User prompts**: Keyword matching against the latest user message
-     - **Available tools**: Exact match against tool IDs available in the current environment
-   - Matching rules are formatted and appended to the system prompt
-
-3. **Session Persistence**:
-   - `experimental.session.compacting` hook preserves context paths during session compression
-   - This ensures rules remain applicable after session compaction
+1. **Discovery**: Plugin scans `~/.wopal/rules/` and `.wopal/rules/` recursively at initialization
+2. **Agent Filtering**: Agent-scoped rules are filtered based on current agent name
+3. **Keyword Matching**: Only rules whose keywords match the user prompt are selected
+4. **Injection**: Matching rules are formatted and injected as synthetic parts into user messages via `messages.transform` hook
 
 ## Rule Matching Examples
 
-### Scenario 1: TypeScript File Context
+### Scenario 1: Root-level Rule
 
-- User edits `src/components/Button.tsx` (captured by `tool.execute.before`)
-- Plugin evaluates rules with `globs: ['**/*.ts', '**/*.tsx']`
-- TypeScript rules are injected into system prompt
+- User prompt: "help me with typescript types"
+- Rule: `typescript.md` with `keywords: ['typescript', 'ts']`
+- Result: Rule injected (keyword "typescript" matches)
 
-### Scenario 2: User Mentions Testing
+### Scenario 2: Agent-scoped Rule
 
-- User types prompt: "How do I write unit tests for this function?"
-- `chat.message` hook captures the prompt
-- Plugin evaluates rules with `keywords: ['testing', 'unit test']`
-- Testing rules are injected into system prompt
+- Agent: "fae"
+- User prompt: "refactor this code"
+- Rules:
+  - `fae/refactoring.md` with `keywords: ['refactor']`
+  - `wopal/planning.md` with `keywords: ['plan']`
+- Result: Only `fae/refactoring.md` injected (agent scope + keyword match)
 
-### Scenario 3: Tool-Based Rules
+### Scenario 3: Multiple Agents
 
-- OpenCode provides websearch tool
-- Plugin evaluates rules with `tools: ['mcp_websearch']`
-- Web search best practices rules are injected
+- Agent: undefined (generic)
+- Rules:
+  - `typescript.md` (root-level)
+  - `fae/execution.md` (agent-scoped)
+- Result: Only `typescript.md` injected (root-level rules apply to all agents)
 
-### Scenario 4: Combined Conditions
+### Scenario 4: No Match
 
-- A rule has both `globs: ['**/*.test.ts']` and `keywords: ['testing']`
-- Rule is injected if EITHER condition matches (OR logic)
-- File context OR user prompt will trigger the rule
+- User prompt: "create a database schema"
+- Rule: `typescript.md` with `keywords: ['typescript']`
+- Result: No rule injected (keyword doesn't match)
+
+## Frontmatter Format
+
+```yaml
+---
+keywords:
+  - keyword1
+  - keyword2
+  - keyword_with_wildcard*
+---
+
+Rule content here...
+```
+
+- Keywords array is required for rule to be considered
+- Multiple keywords use OR logic (any match triggers injection)
+- Wildcard `*` provides flexible matching

@@ -7,7 +7,7 @@ import {
   parseRuleMetadata,
   clearRuleCache,
   type DiscoveredRule,
-} from "./index.js";
+} from "./discoverer.js";
 
 // Test directories - initialized in setupTestDirs
 let testDir: string;
@@ -17,18 +17,22 @@ let projectRulesDir: string;
 /**
  * Helper to convert file paths to DiscoveredRule objects for testing
  */
-function toRules(paths: string[]): DiscoveredRule[] {
+function toRules(
+  paths: string[],
+  agentScope?: string,
+): DiscoveredRule[] {
   return paths.map((filePath) => ({
     filePath,
     relativePath: path.basename(filePath),
+    agentScope,
   }));
 }
 
 function setupTestDirs() {
   // Create a unique temporary directory for each test run
-  testDir = mkdtempSync(path.join(os.tmpdir(), "opencode-rules-test-"));
-  globalRulesDir = path.join(testDir, ".config", "opencode", "rules");
-  projectRulesDir = path.join(testDir, "project", ".opencode", "rules");
+  testDir = mkdtempSync(path.join(os.tmpdir(), "wopal-rules-test-"));
+  globalRulesDir = path.join(testDir, ".wopal", "rules");
+  projectRulesDir = path.join(testDir, "project", ".wopal", "rules");
   mkdirSync(globalRulesDir, { recursive: true });
   mkdirSync(projectRulesDir, { recursive: true });
 }
@@ -40,69 +44,6 @@ function teardownTestDirs() {
 }
 
 describe("parseRuleMetadata", () => {
-  it("should parse YAML metadata from .mdc files", () => {
-    // Arrange
-    const content = `---
-globs:
-  - "src/components/**/*.ts"
----
-
-This is a rule for TypeScript components.`;
-
-    // Act
-    const metadata = parseRuleMetadata(content);
-
-    // Assert
-    expect(metadata).toBeDefined();
-    expect(metadata?.globs).toEqual(["src/components/**/*.ts"]);
-  });
-
-  it("should return undefined for files without metadata", () => {
-    // Arrange
-    const content = "This rule should always apply.";
-
-    // Act
-    const metadata = parseRuleMetadata(content);
-
-    // Assert
-    expect(metadata).toBeUndefined();
-  });
-
-  it("should extract rule content without metadata", () => {
-    // Arrange
-    const content = `---
-globs:
-  - "src/**/*.ts"
----
-
-Rule content here`;
-
-    // Act
-    const metadata = parseRuleMetadata(content);
-    const ruleContent = content.replace(/^---[\s\S]*?---\n/, "");
-
-    // Assert
-    expect(metadata?.globs).toBeDefined();
-    expect(ruleContent).toBe("\nRule content here");
-  });
-
-  it("should handle multiple globs in metadata", () => {
-    // Arrange
-    const content = `---
-globs:
-  - "src/**/*.ts"
-  - "lib/**/*.js"
----
-
-Rule content`;
-
-    // Act
-    const metadata = parseRuleMetadata(content);
-
-    // Assert
-    expect(metadata?.globs).toEqual(["src/**/*.ts", "lib/**/*.js"]);
-  });
-
   it("should parse keywords from YAML metadata", () => {
     // Arrange
     const content = `---
@@ -121,101 +62,51 @@ Follow testing best practices.`;
     expect(metadata?.keywords).toEqual(["testing", "unit test"]);
   });
 
-  it("should parse both globs and keywords from metadata", () => {
+  it("should return undefined for files without metadata", () => {
     // Arrange
-    const content = `---
-globs:
-  - "**/*.test.ts"
-keywords:
-  - "testing"
----
-
-Testing rule content.`;
+    const content = "This rule should always apply.";
 
     // Act
     const metadata = parseRuleMetadata(content);
 
     // Assert
-    expect(metadata?.globs).toEqual(["**/*.test.ts"]);
-    expect(metadata?.keywords).toEqual(["testing"]);
+    expect(metadata).toBeUndefined();
   });
 
-  it("should handle keywords before globs in YAML", () => {
+  it("should extract rule content without metadata", () => {
     // Arrange
     const content = `---
 keywords:
-  - "refactor"
-globs:
-  - "src/**/*.ts"
+  - "test"
 ---
 
-Refactoring rules.`;
+Rule content here`;
 
     // Act
     const metadata = parseRuleMetadata(content);
+    const ruleContent = content.replace(/^---[\s\S]*?---\n/, "");
 
     // Assert
-    expect(metadata?.keywords).toEqual(["refactor"]);
-    expect(metadata?.globs).toEqual(["src/**/*.ts"]);
+    expect(metadata?.keywords).toBeDefined();
+    expect(ruleContent).toBe("\nRule content here");
   });
 
-  it("should parse tools from YAML metadata", () => {
+  it("should handle multiple keywords in metadata", () => {
     // Arrange
     const content = `---
-tools:
-  - "mcp_websearch"
-  - "mcp_codesearch"
----
-
-Use web search best practices.`;
-
-    // Act
-    const metadata = parseRuleMetadata(content);
-
-    // Assert
-    expect(metadata).toBeDefined();
-    expect(metadata?.tools).toEqual(["mcp_websearch", "mcp_codesearch"]);
-  });
-
-  it("should parse tools alongside globs and keywords", () => {
-    // Arrange
-    const content = `---
-globs:
-  - "**/*.test.ts"
 keywords:
-  - "testing"
-tools:
-  - "mcp_bash"
+  - "typescript"
+  - "ts"
+  - ".ts"
 ---
 
-Testing rule with all conditions.`;
+Rule content`;
 
     // Act
     const metadata = parseRuleMetadata(content);
 
     // Assert
-    expect(metadata?.globs).toEqual(["**/*.test.ts"]);
-    expect(metadata?.keywords).toEqual(["testing"]);
-    expect(metadata?.tools).toEqual(["mcp_bash"]);
-  });
-
-  it("should handle tools-only metadata", () => {
-    // Arrange
-    const content = `---
-tools:
-  - "mcp_lsp"
----
-
-LSP-specific guidelines.`;
-
-    // Act
-    const metadata = parseRuleMetadata(content);
-
-    // Assert
-    expect(metadata).toBeDefined();
-    expect(metadata?.tools).toEqual(["mcp_lsp"]);
-    expect(metadata?.globs).toBeUndefined();
-    expect(metadata?.keywords).toBeUndefined();
+    expect(metadata?.keywords).toEqual(["typescript", "ts", ".ts"]);
   });
 });
 
@@ -230,14 +121,14 @@ describe("discoverRuleFiles", () => {
   });
 
   describe("global rules discovery", () => {
-    it("should discover markdown files from XDG_CONFIG_HOME/opencode/rules", async () => {
+    it("should discover markdown files from ~/.wopal/rules/", async () => {
       // Arrange
       writeFileSync(path.join(globalRulesDir, "rule1.md"), "# Rule 1");
       writeFileSync(path.join(globalRulesDir, "rule2.md"), "# Rule 2");
 
-      // Mock XDG_CONFIG_HOME
-      const originalEnv = process.env.XDG_CONFIG_HOME;
-      process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+      // Mock HOME
+      const originalHome = process.env.HOME;
+      process.env.HOME = testDir;
 
       try {
         // Act
@@ -255,23 +146,26 @@ describe("discoverRuleFiles", () => {
           ),
         ).toBe(true);
       } finally {
-        process.env.XDG_CONFIG_HOME = originalEnv;
+        process.env.HOME = originalHome;
       }
     });
 
-    it("should use ~/.config/opencode/rules as fallback when XDG_CONFIG_HOME not set", async () => {
+    it("should use XDG_CONFIG_HOME/wopal/rules as fallback", async () => {
       // Arrange
-      const homeDir = path.join(testDir, "home");
-      mkdirSync(homeDir, { recursive: true });
-      const fallbackDir = path.join(homeDir, ".config", "opencode", "rules");
-      mkdirSync(fallbackDir, { recursive: true });
-      writeFileSync(path.join(fallbackDir, "rule.md"), "# Rule");
+      const xdgDir = path.join(testDir, "xdg-config");
+      mkdirSync(xdgDir, { recursive: true });
+      const xdgRulesDir = path.join(xdgDir, "wopal", "rules");
+      mkdirSync(xdgRulesDir, { recursive: true });
+      writeFileSync(path.join(xdgRulesDir, "rule.md"), "# Rule");
 
       // Mock environment
-      const originalHome = process.env.HOME;
       const originalXDG = process.env.XDG_CONFIG_HOME;
-      process.env.HOME = homeDir;
-      delete process.env.XDG_CONFIG_HOME;
+      const originalHome = process.env.HOME;
+      process.env.XDG_CONFIG_HOME = xdgDir;
+      process.env.HOME = path.join(testDir, "empty-home");
+      mkdirSync(path.join(testDir, "empty-home", ".wopal", "rules"), {
+        recursive: true,
+      });
 
       try {
         // Act
@@ -279,28 +173,26 @@ describe("discoverRuleFiles", () => {
 
         // Assert
         expect(
-          files.some((f) => f.filePath === path.join(fallbackDir, "rule.md")),
+          files.some((f) => f.filePath === path.join(xdgRulesDir, "rule.md")),
         ).toBe(true);
       } finally {
-        process.env.HOME = originalHome;
         process.env.XDG_CONFIG_HOME = originalXDG;
+        process.env.HOME = originalHome;
       }
     });
 
     it("should handle missing global rules directory gracefully", async () => {
       // Arrange
-      const originalEnv = process.env.XDG_CONFIG_HOME;
-      process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+      const originalHome = process.env.HOME;
+      process.env.HOME = path.join(testDir, "no-rules-home");
+      mkdirSync(path.join(testDir, "no-rules-home"), { recursive: true });
 
       try {
-        // Remove the directory to test graceful handling
-        rmSync(globalRulesDir, { recursive: true, force: true });
-
         // Act & Assert - should not throw
         const files = await discoverRuleFiles();
         expect(files).toEqual([]);
       } finally {
-        process.env.XDG_CONFIG_HOME = originalEnv;
+        process.env.HOME = originalHome;
       }
     });
 
@@ -314,8 +206,8 @@ describe("discoverRuleFiles", () => {
       writeFileSync(path.join(globalRulesDir, "rule.txt"), "Not markdown");
       writeFileSync(path.join(globalRulesDir, "rule.json"), "{}");
 
-      const originalEnv = process.env.XDG_CONFIG_HOME;
-      process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+      const originalHome = process.env.HOME;
+      process.env.HOME = testDir;
 
       try {
         // Act
@@ -326,7 +218,7 @@ describe("discoverRuleFiles", () => {
         expect(files.some((f) => f.filePath.endsWith(".md"))).toBe(true);
         expect(files.some((f) => f.filePath.endsWith(".mdc"))).toBe(true);
       } finally {
-        process.env.XDG_CONFIG_HOME = originalEnv;
+        process.env.HOME = originalHome;
       }
     });
 
@@ -335,8 +227,8 @@ describe("discoverRuleFiles", () => {
       writeFileSync(path.join(globalRulesDir, "rule.md"), "# Rule");
       writeFileSync(path.join(globalRulesDir, ".hidden.md"), "# Hidden");
 
-      const originalEnv = process.env.XDG_CONFIG_HOME;
-      process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+      const originalHome = process.env.HOME;
+      process.env.HOME = testDir;
 
       try {
         // Act
@@ -347,46 +239,60 @@ describe("discoverRuleFiles", () => {
           true,
         );
       } finally {
-        process.env.XDG_CONFIG_HOME = originalEnv;
+        process.env.HOME = originalHome;
       }
     });
   });
 
   describe("project rules discovery", () => {
-    it("should discover markdown files from .opencode/rules directory", async () => {
+    it("should discover markdown files from .wopal/rules directory", async () => {
       // Arrange
       const projectDir = path.join(testDir, "project");
       mkdirSync(projectDir, { recursive: true });
-      const projRulesDir = path.join(projectDir, ".opencode", "rules");
+      const projRulesDir = path.join(projectDir, ".wopal", "rules");
       mkdirSync(projRulesDir, { recursive: true });
       writeFileSync(path.join(projRulesDir, "local-rule.md"), "# Local Rule");
 
-      // Act
-      const files = await discoverRuleFiles(projectDir);
+      // Mock HOME to avoid finding test global rules
+      const originalHome = process.env.HOME;
+      process.env.HOME = path.join(testDir, "empty-home");
+      mkdirSync(path.join(testDir, "empty-home", ".wopal", "rules"), {
+        recursive: true,
+      });
 
-      // Assert
-      expect(
-        files.some(
-          (f) => f.filePath === path.join(projRulesDir, "local-rule.md"),
-        ),
-      ).toBe(true);
+      try {
+        // Act
+        const files = await discoverRuleFiles(projectDir);
+
+        // Assert
+        expect(
+          files.some(
+            (f) => f.filePath === path.join(projRulesDir, "local-rule.md"),
+          ),
+        ).toBe(true);
+      } finally {
+        process.env.HOME = originalHome;
+      }
     });
 
-    it("should handle missing .opencode directory gracefully", async () => {
+    it("should handle missing .wopal directory gracefully", async () => {
       // Arrange
       const projectDir = path.join(testDir, "empty-project");
       mkdirSync(projectDir, { recursive: true });
 
-      const originalEnv = process.env.XDG_CONFIG_HOME;
-      process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+      const originalHome = process.env.HOME;
+      process.env.HOME = path.join(testDir, "empty-home");
+      mkdirSync(path.join(testDir, "empty-home", ".wopal", "rules"), {
+        recursive: true,
+      });
 
       try {
         // Act & Assert - should not throw
         const files = await discoverRuleFiles(projectDir);
-        // Should return empty since we set XDG_CONFIG_HOME to test dir with no rules
+        // Should return empty since global rules dir is also empty
         expect(files).toEqual([]);
       } finally {
-        process.env.XDG_CONFIG_HOME = originalEnv;
+        process.env.HOME = originalHome;
       }
     });
 
@@ -396,12 +302,12 @@ describe("discoverRuleFiles", () => {
 
       const projectDir = path.join(testDir, "project");
       mkdirSync(projectDir, { recursive: true });
-      const projRulesDir = path.join(projectDir, ".opencode", "rules");
+      const projRulesDir = path.join(projectDir, ".wopal", "rules");
       mkdirSync(projRulesDir, { recursive: true });
       writeFileSync(path.join(projRulesDir, "local.md"), "# Local");
 
-      const originalEnv = process.env.XDG_CONFIG_HOME;
-      process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+      const originalHome = process.env.HOME;
+      process.env.HOME = testDir;
 
       try {
         // Act
@@ -412,7 +318,7 @@ describe("discoverRuleFiles", () => {
         expect(files.some((f) => f.filePath.includes("global.md"))).toBe(true);
         expect(files.some((f) => f.filePath.includes("local.md"))).toBe(true);
       } finally {
-        process.env.XDG_CONFIG_HOME = originalEnv;
+        process.env.HOME = originalHome;
       }
     });
   });
@@ -424,8 +330,8 @@ describe("discoverRuleFiles", () => {
       mkdirSync(nestedDir, { recursive: true });
       writeFileSync(path.join(nestedDir, "react.md"), "# React Rules");
 
-      const originalEnv = process.env.XDG_CONFIG_HOME;
-      process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+      const originalHome = process.env.HOME;
+      process.env.HOME = testDir;
 
       try {
         // Act
@@ -436,7 +342,7 @@ describe("discoverRuleFiles", () => {
           files.some((f) => f.filePath === path.join(nestedDir, "react.md")),
         ).toBe(true);
       } finally {
-        process.env.XDG_CONFIG_HOME = originalEnv;
+        process.env.HOME = originalHome;
       }
     });
 
@@ -451,8 +357,8 @@ describe("discoverRuleFiles", () => {
       mkdirSync(deepDir, { recursive: true });
       writeFileSync(path.join(deepDir, "nextjs.md"), "# Next.js Rules");
 
-      const originalEnv = process.env.XDG_CONFIG_HOME;
-      process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+      const originalHome = process.env.HOME;
+      process.env.HOME = testDir;
 
       try {
         // Act
@@ -463,7 +369,7 @@ describe("discoverRuleFiles", () => {
           files.some((f) => f.filePath === path.join(deepDir, "nextjs.md")),
         ).toBe(true);
       } finally {
-        process.env.XDG_CONFIG_HOME = originalEnv;
+        process.env.HOME = originalHome;
       }
     });
 
@@ -474,8 +380,8 @@ describe("discoverRuleFiles", () => {
       writeFileSync(path.join(hiddenDir, "secret.md"), "# Secret Rule");
       writeFileSync(path.join(globalRulesDir, "visible.md"), "# Visible Rule");
 
-      const originalEnv = process.env.XDG_CONFIG_HOME;
-      process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+      const originalHome = process.env.HOME;
+      process.env.HOME = testDir;
 
       try {
         // Act
@@ -492,7 +398,7 @@ describe("discoverRuleFiles", () => {
           ),
         ).toBe(true);
       } finally {
-        process.env.XDG_CONFIG_HOME = originalEnv;
+        process.env.HOME = originalHome;
       }
     });
 
@@ -503,8 +409,8 @@ describe("discoverRuleFiles", () => {
       mkdirSync(nestedDir, { recursive: true });
       writeFileSync(path.join(nestedDir, "child.md"), "# Child Rule");
 
-      const originalEnv = process.env.XDG_CONFIG_HOME;
-      process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+      const originalHome = process.env.HOME;
+      process.env.HOME = testDir;
 
       try {
         // Act
@@ -521,20 +427,23 @@ describe("discoverRuleFiles", () => {
           files.some((f) => f.filePath === path.join(nestedDir, "child.md")),
         ).toBe(true);
       } finally {
-        process.env.XDG_CONFIG_HOME = originalEnv;
+        process.env.HOME = originalHome;
       }
     });
 
     it("should discover rules in project subdirectories", async () => {
       // Arrange
       const projectDir = path.join(testDir, "project");
-      const projRulesDir = path.join(projectDir, ".opencode", "rules");
+      const projRulesDir = path.join(projectDir, ".wopal", "rules");
       const nestedDir = path.join(projRulesDir, "frontend");
       mkdirSync(nestedDir, { recursive: true });
       writeFileSync(path.join(nestedDir, "react.md"), "# React Rules");
 
-      const originalEnv = process.env.XDG_CONFIG_HOME;
-      process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+      const originalHome = process.env.HOME;
+      process.env.HOME = path.join(testDir, "empty-home");
+      mkdirSync(path.join(testDir, "empty-home", ".wopal", "rules"), {
+        recursive: true,
+      });
 
       try {
         // Act
@@ -545,7 +454,112 @@ describe("discoverRuleFiles", () => {
           files.some((f) => f.filePath === path.join(nestedDir, "react.md")),
         ).toBe(true);
       } finally {
-        process.env.XDG_CONFIG_HOME = originalEnv;
+        process.env.HOME = originalHome;
+      }
+    });
+  });
+
+  describe("agentScope inference", () => {
+    it("should infer agentScope from single-level subdirectory", async () => {
+      // Arrange
+      const faeDir = path.join(globalRulesDir, "fae");
+      mkdirSync(faeDir, { recursive: true });
+      writeFileSync(path.join(faeDir, "execution.md"), "# Fae Execution Rules");
+
+      const originalHome = process.env.HOME;
+      process.env.HOME = testDir;
+
+      try {
+        // Act
+        const files = await discoverRuleFiles();
+
+        // Assert
+        const faeRule = files.find(
+          (f) => f.filePath === path.join(faeDir, "execution.md"),
+        );
+        expect(faeRule).toBeDefined();
+        expect(faeRule?.agentScope).toBe("fae");
+        expect(faeRule?.relativePath).toBe("fae/execution.md");
+      } finally {
+        process.env.HOME = originalHome;
+      }
+    });
+
+    it("should return undefined agentScope for root-level files", async () => {
+      // Arrange
+      writeFileSync(path.join(globalRulesDir, "typescript.md"), "# TypeScript");
+
+      const originalHome = process.env.HOME;
+      process.env.HOME = testDir;
+
+      try {
+        // Act
+        const files = await discoverRuleFiles();
+
+        // Assert
+        const tsRule = files.find(
+          (f) => f.filePath === path.join(globalRulesDir, "typescript.md"),
+        );
+        expect(tsRule).toBeDefined();
+        expect(tsRule?.agentScope).toBeUndefined();
+        expect(tsRule?.relativePath).toBe("typescript.md");
+      } finally {
+        process.env.HOME = originalHome;
+      }
+    });
+
+    it("should return undefined agentScope for deeply nested files", async () => {
+      // Arrange
+      const deepDir = path.join(globalRulesDir, "lang", "ts");
+      mkdirSync(deepDir, { recursive: true });
+      writeFileSync(path.join(deepDir, "strict.md"), "# Strict TS");
+
+      const originalHome = process.env.HOME;
+      process.env.HOME = testDir;
+
+      try {
+        // Act
+        const files = await discoverRuleFiles();
+
+        // Assert
+        const deepRule = files.find(
+          (f) => f.filePath === path.join(deepDir, "strict.md"),
+        );
+        expect(deepRule).toBeDefined();
+        expect(deepRule?.agentScope).toBeUndefined();
+        expect(deepRule?.relativePath).toBe("lang/ts/strict.md");
+      } finally {
+        process.env.HOME = originalHome;
+      }
+    });
+
+    it("should infer agentScope from project-level subdirectory", async () => {
+      // Arrange
+      const projectDir = path.join(testDir, "project");
+      const projRulesDir = path.join(projectDir, ".wopal", "rules");
+      const wopalDir = path.join(projRulesDir, "wopal");
+      mkdirSync(wopalDir, { recursive: true });
+      writeFileSync(path.join(wopalDir, "workflow.md"), "# Wopal Workflow");
+
+      const originalHome = process.env.HOME;
+      process.env.HOME = path.join(testDir, "empty-home");
+      mkdirSync(path.join(testDir, "empty-home", ".wopal", "rules"), {
+        recursive: true,
+      });
+
+      try {
+        // Act
+        const files = await discoverRuleFiles(projectDir);
+
+        // Assert
+        const wopalRule = files.find(
+          (f) => f.filePath === path.join(wopalDir, "workflow.md"),
+        );
+        expect(wopalRule).toBeDefined();
+        expect(wopalRule?.agentScope).toBe("wopal");
+        expect(wopalRule?.relativePath).toBe("wopal/workflow.md");
+      } finally {
+        process.env.HOME = originalHome;
       }
     });
   });
@@ -575,9 +589,6 @@ describe("YAML Parsing Edge Cases", () => {
 
   it("should handle complex YAML structures", () => {
     const content = `---
-globs:
-  - "**/*.ts"
-  - "**/*.tsx"
 keywords:
   - refactoring
   - cleanup
@@ -585,7 +596,6 @@ keywords:
 ---
 Rule content`;
     const metadata = parseRuleMetadata(content);
-    expect(metadata?.globs).toEqual(["**/*.ts", "**/*.tsx"]);
     expect(metadata?.keywords).toEqual([
       "refactoring",
       "cleanup",
@@ -596,26 +606,23 @@ Rule content`;
   it("should handle inline array syntax in YAML", () => {
     // Note: inline array syntax is valid YAML
     const content = `---
-globs: ["**/*.js", "**/*.jsx"]
+keywords: ["typescript", "ts"]
 ---
 Rule content`;
     const metadata = parseRuleMetadata(content);
-    expect(metadata?.globs).toEqual(["**/*.js", "**/*.jsx"]);
+    expect(metadata?.keywords).toEqual(["typescript", "ts"]);
   });
 
   it("should ignore non-string array elements", () => {
     const content = `---
-globs:
-  - "**/*.ts"
-  - 123
-  - true
 keywords:
   - test
+  - 123
+  - true
 ---
 Rule content`;
     const metadata = parseRuleMetadata(content);
     // Only string elements should be included
-    expect(metadata?.globs).toEqual(["**/*.ts"]);
     expect(metadata?.keywords).toEqual(["test"]);
   });
 });
@@ -635,18 +642,18 @@ describe("Cache Functionality", () => {
     const rulePath = path.join(globalRulesDir, "cached-rule.md");
     writeFileSync(rulePath, "# Cached Rule\n\nThis should be cached.");
 
-    // Import readAndFormatRules for cache testing
-    const { readAndFormatRules } = await import("./formatter.js");
-    const rules = toRules([rulePath]);
+    // Import getCachedRule for cache testing
+    const { getCachedRule } = await import("./discoverer.js");
 
     // Act - read the file twice
-    const result1 = await readAndFormatRules(rules);
-    const result2 = await readAndFormatRules(rules);
+    const result1 = await getCachedRule(rulePath);
+    const result2 = await getCachedRule(rulePath);
 
     // Assert - both should have the same content
-    expect(result1.content).toContain("Cached Rule");
-    expect(result2.content).toContain("Cached Rule");
-    expect(result1.content).toBe(result2.content);
+    expect(result1?.strippedContent).toContain("Cached Rule");
+    expect(result2?.strippedContent).toContain("Cached Rule");
+    expect(result1?.strippedContent).toBe(result2?.strippedContent);
+    expect(result1?.mtime).toBe(result2?.mtime);
   });
 
   it("should invalidate cache when file is modified", async () => {
@@ -654,12 +661,11 @@ describe("Cache Functionality", () => {
     const rulePath = path.join(globalRulesDir, "mutable-rule.md");
     writeFileSync(rulePath, "# Original Content");
 
-    const { readAndFormatRules } = await import("./formatter.js");
-    const rules = toRules([rulePath]);
+    const { getCachedRule } = await import("./discoverer.js");
 
     // Act - read the file
-    const result1 = await readAndFormatRules(rules);
-    expect(result1.content).toContain("Original Content");
+    const result1 = await getCachedRule(rulePath);
+    expect(result1?.strippedContent).toContain("Original Content");
 
     // Wait a bit to ensure mtime changes
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -668,11 +674,11 @@ describe("Cache Functionality", () => {
     writeFileSync(rulePath, "# Modified Content");
 
     // Read again
-    const result2 = await readAndFormatRules(rules);
+    const result2 = await getCachedRule(rulePath);
 
     // Assert - should get the new content
-    expect(result2.content).toContain("Modified Content");
-    expect(result2.content).not.toContain("Original Content");
+    expect(result2?.strippedContent).toContain("Modified Content");
+    expect(result2?.strippedContent).not.toContain("Original Content");
   });
 
   it("should handle clearRuleCache correctly", async () => {
@@ -680,15 +686,14 @@ describe("Cache Functionality", () => {
     const rulePath = path.join(globalRulesDir, "clear-test.md");
     writeFileSync(rulePath, "# Test Content");
 
-    const { readAndFormatRules } = await import("./formatter.js");
-    const rules = toRules([rulePath]);
+    const { getCachedRule } = await import("./discoverer.js");
 
     // Act - read, clear cache, read again
-    await readAndFormatRules(rules);
+    await getCachedRule(rulePath);
     clearRuleCache();
 
-    // File should be re-read from disk (we can verify by checking the result is still correct)
-    const result = await readAndFormatRules(rules);
-    expect(result.content).toContain("Test Content");
+    // File should be re-read from disk
+    const result = await getCachedRule(rulePath);
+    expect(result?.strippedContent).toContain("Test Content");
   });
 });

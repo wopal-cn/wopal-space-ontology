@@ -1,4 +1,3 @@
-import { normalizeContextPath } from "./message-context.js";
 import type { SessionStore } from "../session-store.js";
 import type { DebugLog } from "../debug.js";
 
@@ -85,52 +84,21 @@ export function createCommandHooks(ctx: CommandHookContext) {
 
   async function onToolExecuteBefore(
     input: ToolExecuteBeforeInput,
-    output: ToolExecuteBeforeOutput,
+    _output: ToolExecuteBeforeOutput,
   ): Promise<void> {
     const sessionID = input?.sessionID;
     const toolName = input?.tool;
-    const args = output?.args;
 
-    if (!sessionID || !toolName || !args) {
+    if (!sessionID || !toolName) {
       return;
     }
 
-    let filePath: string | undefined;
-
-    if (["read", "edit", "write"].includes(toolName)) {
-      const arg = args.filePath;
-      if (typeof arg === "string" && arg.length > 0) {
-        filePath = arg;
-      }
-    } else if (["glob", "grep"].includes(toolName)) {
-      const arg = args.path;
-      if (typeof arg === "string" && arg.length > 0) {
-        filePath = arg;
-      }
-    } else if (toolName === "bash") {
-      const arg = args.workdir;
-      if (typeof arg === "string" && arg.length > 0) {
-        filePath = arg;
-      }
-    }
-
     if (toolName === "skill") {
-      const skillName = args.name;
+      const skillName = _output?.args?.name;
       if (typeof skillName === "string" && skillName.length > 0) {
         ctx.sessionStore.recordSkillLoaded(sessionID, skillName);
         ctx.contextDebugLog(`Recorded loaded skill: ${skillName} for session ${sessionID}`);
       }
-    }
-
-    if (filePath) {
-      const normalized = normalizeContextPath(filePath, ctx.projectDirectory);
-      ctx.sessionStore.upsert(sessionID, (state) => {
-        state.contextPaths.add(normalized);
-      });
-
-      ctx.contextDebugLog(
-        `Recorded context path from tool ${toolName}: ${normalized}`,
-      );
     }
   }
 

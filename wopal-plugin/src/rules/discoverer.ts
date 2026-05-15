@@ -11,21 +11,17 @@ import { createWarnLog, type DebugLog } from "../debug.js";
 const warnLog = createWarnLog();
 
 /**
- * Metadata extracted from .mdc file frontmatter
+ * Metadata extracted from rule file frontmatter
  */
 export interface RuleMetadata {
-  globs?: string[];
   keywords?: string[];
-  tools?: string[];
 }
 
 /**
  * Raw parsed YAML frontmatter structure
  */
 interface ParsedFrontmatter {
-  globs?: unknown;
   keywords?: unknown;
-  tools?: unknown;
 }
 
 /**
@@ -128,17 +124,6 @@ export function parseRuleMetadata(content: string): RuleMetadata | undefined {
 
     const metadata: RuleMetadata = {};
 
-    // Extract globs array
-    if (Array.isArray(parsed.globs)) {
-      const globs = parsed.globs
-        .filter((g): g is string => typeof g === "string")
-        .map((g) => g.trim())
-        .filter((g) => g.length > 0);
-      if (globs.length > 0) {
-        metadata.globs = globs;
-      }
-    }
-
     // Extract keywords array
     if (Array.isArray(parsed.keywords)) {
       const keywords = parsed.keywords
@@ -147,17 +132,6 @@ export function parseRuleMetadata(content: string): RuleMetadata | undefined {
         .filter((k) => k.length > 0);
       if (keywords.length > 0) {
         metadata.keywords = keywords;
-      }
-    }
-
-    // Extract tools array
-    if (Array.isArray(parsed.tools)) {
-      const tools = parsed.tools
-        .filter((t): t is string => typeof t === "string")
-        .map((t) => t.trim())
-        .filter((t) => t.length > 0);
-      if (tools.length > 0) {
-        metadata.tools = tools;
       }
     }
 
@@ -191,16 +165,26 @@ export function stripFrontmatter(content: string): string {
 }
 
 /**
- * Get the global rules directory path
+ * Get candidate global rules directory paths (multiple candidates).
+ * Priority: ~/.wopal/rules/ > $XDG_CONFIG_HOME/wopal/rules/ > ~/.config/wopal/rules/
  */
-function getGlobalRulesDir(): string | null {
+function getGlobalRulesDirCandidates(): string[] {
+  const candidates: string[] = [];
+  const homeDir = process.env.HOME || os.homedir();
+
+  // Primary: ~/.wopal/rules/
+  candidates.push(path.join(homeDir, ".wopal", "rules"));
+
+  // Fallback 1: $XDG_CONFIG_HOME/wopal/rules/
   const xdgConfigHome = process.env.XDG_CONFIG_HOME;
   if (xdgConfigHome) {
-    return path.join(xdgConfigHome, "opencode", "rules");
+    candidates.push(path.join(xdgConfigHome, "wopal", "rules"));
   }
 
-  const homeDir = process.env.HOME || os.homedir();
-  return path.join(homeDir, ".config", "opencode", "rules");
+  // Fallback 2: ~/.config/wopal/rules/
+  candidates.push(path.join(homeDir, ".config", "wopal", "rules"));
+
+  return candidates;
 }
 
 /**
@@ -258,14 +242,31 @@ export interface DiscoveredRule {
   filePath: string;
   /** Relative path from the rules directory root (for unique headings) */
   relativePath: string;
+  /** Agent scope inferred from subdirectory name (e.g., "fae" for rules/fae/*.md) */
+  agentScope?: string;
+}
+
+/**
+ * Infer agent scope from relative path.
+ * If the file is in a direct subdirectory (e.g., "fae/rules.md"), returns the directory name.
+ * Root-level files or deeply nested files return undefined.
+ */
+function inferAgentScope(relativePath: string): string | undefined {
+  const parts = relativePath.split(path.sep);
+  // Only single-level subdirectory is treated as agent scope
+  if (parts.length === 2) {
+    return parts[0];
+  }
+  return undefined;
 }
 
 /**
  * Discover markdown rule files from standard directories
  * Searches recursively in:
- * - $XDG_CONFIG_HOME/opencode/rules/ (or ~/.config/opencode/rules as fallback)
- * - .opencode/rules/ (in project directory if provided)
+ * - ~/.wopal/rules/ (primary global, fallback: $XDG_CONFIG_HOME/wopal/rules/)
+ * - .wopal/rules/ (in project directory if provided)
  * Finds all .md and .mdc files including nested subdirectories.
+ * Direct subdirectories are interpreted as agent scopes (e.g., rules/fae/*.md → agentScope="fae").
  *
  * @param projectDir - Optional project directory for local rules discovery
  * @param rulesDebugLog - Debug log function for rules module (if omitted, no logs)
@@ -276,27 +277,46 @@ export async function discoverRuleFiles(
 ): Promise<DiscoveredRule[]> {
   const files: DiscoveredRule[] = [];
 
-  // Discover global rules (recursively)
-  const globalRulesDir = getGlobalRulesDir();
-  if (globalRulesDir) {
+  // Discover global rules from all candidate directories
+  const globalCandidates = getGlobalRulesDirCandidates();
+  for (const globalRulesDir of globalCandidates) {
     const globalRules = await scanDirectoryRecursively(
       globalRulesDir,
       globalRulesDir,
     );
     for (const { filePath, relativePath } of globalRules) {
-      files.push({ filePath, relativePath });
+      // Deduplicate by filePath (avoid duplicate entries if same path appears in multiple candidates)
+      if (!files.some((f) => f.filePath === filePath)) {
+        const agentScope = inferAgentScope(relativePath);
+        const entry: DiscoveredRule = {
+          filePath,
+          relativePath,
+        };
+        if (agentScope) {
+          entry.agentScope = agentScope;
+        }
+        files.push(entry);
+      }
     }
   }
 
   // Discover project-local rules (recursively) if project directory is provided
   if (projectDir) {
-    const projectRulesDir = path.join(projectDir, ".opencode", "rules");
+    const projectRulesDir = path.join(projectDir, ".wopal", "rules");
     const projectRules = await scanDirectoryRecursively(
       projectRulesDir,
       projectRulesDir,
     );
     for (const { filePath, relativePath } of projectRules) {
-      files.push({ filePath, relativePath });
+      const agentScope = inferAgentScope(relativePath);
+      const entry: DiscoveredRule = {
+        filePath,
+        relativePath,
+      };
+      if (agentScope) {
+        entry.agentScope = agentScope;
+      }
+      files.push(entry);
     }
   }
 

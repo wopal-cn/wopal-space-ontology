@@ -97,7 +97,6 @@ export function createAllHooks(ctx: HookContext): Record<string, unknown> {
     ruleMessageCtx: {
       sessionStore: ctx.sessionStore,
       ruleInjectorCtx: {
-        client: ctx.client,
         directory: ctx.directory,
         ruleFiles: ctx.ruleFiles,
         rulesDebugLog: ctx.rulesDebugLog,

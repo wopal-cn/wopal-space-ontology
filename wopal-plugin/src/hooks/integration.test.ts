@@ -12,9 +12,9 @@ let savedInjectionEnv: Record<string, string | undefined>;
 
 function setupTestDirs() {
   // Create a unique temporary directory for each test run
-  testDir = mkdtempSync(path.join(os.tmpdir(), "opencode-rules-test-"));
-  globalRulesDir = path.join(testDir, ".config", "opencode", "rules");
-  projectRulesDir = path.join(testDir, "project", ".opencode", "rules");
+  testDir = mkdtempSync(path.join(os.tmpdir(), "wopal-rules-test-"));
+  globalRulesDir = path.join(testDir, ".wopal", "rules");
+  projectRulesDir = path.join(testDir, "project", ".wopal", "rules");
   mkdirSync(globalRulesDir, { recursive: true });
   mkdirSync(projectRulesDir, { recursive: true });
 }
@@ -64,10 +64,10 @@ describe("OpenCodeRulesPlugin", () => {
   });
 
   it("should return transform hooks even when no rules exist", async () => {
-    // Arrange
-    const originalEnv = process.env.XDG_CONFIG_HOME;
-    process.env.XDG_CONFIG_HOME = path.join(testDir, "empty-config");
-    mkdirSync(path.join(testDir, "empty-config", "opencode", "rules"), {
+    // Arrange - mock HOME to empty directory
+    const originalHome = process.env.HOME;
+    process.env.HOME = path.join(testDir, "empty-home");
+    mkdirSync(path.join(testDir, "empty-home", ".wopal", "rules"), {
       recursive: true,
     });
 
@@ -97,19 +97,25 @@ describe("OpenCodeRulesPlugin", () => {
         "function",
       );
     } finally {
-      process.env.XDG_CONFIG_HOME = originalEnv;
+      process.env.HOME = originalHome;
     }
   });
 
   it("should inject rules into user message via messages.transform hook", async () => {
-    // Arrange
+    // Arrange - create rule with keywords
     writeFileSync(
       path.join(globalRulesDir, "rule.md"),
-      "# Test Rule\nDo this always",
+      `---
+keywords:
+  - "hello"
+---
+
+# Test Rule
+Do this always`,
     );
 
-    const originalEnv = process.env.XDG_CONFIG_HOME;
-    process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+    const originalHome = process.env.HOME;
+    process.env.HOME = testDir;
 
     const { default: pluginDef } = await import("../index.js");
       const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
@@ -135,7 +141,7 @@ describe("OpenCodeRulesPlugin", () => {
             {
               role: "user",
               info: { sessionID: "test-ses", role: "user" },
-              parts: [{ type: "text", text: "hello" }],
+              parts: [{ type: "text", text: "hello world" }],
             },
           ],
         },
@@ -150,16 +156,24 @@ describe("OpenCodeRulesPlugin", () => {
       expect(rulesText).toContain("OpenCode Rules");
       expect(rulesText).toContain("Test Rule");
     } finally {
-      process.env.XDG_CONFIG_HOME = originalEnv;
+      process.env.HOME = originalHome;
     }
   });
 
   it("should inject rules into user message with empty system prompt", async () => {
-    // Arrange
-    writeFileSync(path.join(globalRulesDir, "rule.md"), "# Rule Content");
+    // Arrange - create rule with keywords
+    writeFileSync(
+      path.join(globalRulesDir, "rule.md"),
+      `---
+keywords:
+  - "rule"
+---
 
-    const originalEnv = process.env.XDG_CONFIG_HOME;
-    process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+# Rule Content`,
+    );
+
+    const originalHome = process.env.HOME;
+    process.env.HOME = testDir;
 
     const { default: pluginDef } = await import("../index.js");
       const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
@@ -185,7 +199,7 @@ describe("OpenCodeRulesPlugin", () => {
             {
               role: "user",
               info: { sessionID: "test-ses", role: "user" },
-              parts: [{ type: "text", text: "hello" }],
+              parts: [{ type: "text", text: "use rule content" }],
             },
           ],
         },
@@ -200,16 +214,24 @@ describe("OpenCodeRulesPlugin", () => {
       expect(rulesText).toContain("OpenCode Rules");
       expect(rulesText).toContain("Rule Content");
     } finally {
-      process.env.XDG_CONFIG_HOME = originalEnv;
+      process.env.HOME = originalHome;
     }
   });
 
   it("should not modify messages in messages.transform hook when no skill reload needed", async () => {
-    // Arrange
-    writeFileSync(path.join(globalRulesDir, "rule.md"), "# Rule");
+    // Arrange - create rule with keywords
+    writeFileSync(
+      path.join(globalRulesDir, "rule.md"),
+      `---
+keywords:
+  - "test"
+---
 
-    const originalEnv = process.env.XDG_CONFIG_HOME;
-    process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+# Rule`,
+    );
+
+    const originalHome = process.env.HOME;
+    process.env.HOME = testDir;
 
     const { default: pluginDef } = await import("../index.js");
       const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
@@ -240,16 +262,19 @@ describe("OpenCodeRulesPlugin", () => {
         { messages: originalMessages },
       );
 
-      // Assert - messages unchanged when no skill reload needed
+      // Assert - messages unchanged when keywords don't match
       // (Skill Reload only adds synthetic part when needsSkillReload is true)
       expect(result.messages).toEqual(originalMessages);
     } finally {
-      process.env.XDG_CONFIG_HOME = originalEnv;
+      process.env.HOME = originalHome;
     }
   });
 
   it("seeds session state once from messages.transform and does not rescan", async () => {
     // Arrange
+    const originalHome = process.env.HOME;
+    process.env.HOME = testDir;
+    
     const { default: pluginDef } = await import("../index.js");
       const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
@@ -281,29 +306,34 @@ describe("OpenCodeRulesPlugin", () => {
       ],
     };
 
-    // Act - call transform twice with same messages
-    await transform({}, messages);
-    await transform({}, messages);
+    try {
+      // Act - call transform twice with same messages
+      await transform({}, messages);
+      await transform({}, messages);
 
-    // Assert - should only seed once
-    expect(getSeedCount("ses_seed")).toBe(1);
+      // Assert - should only seed once
+      expect(getSeedCount("ses_seed")).toBe(1);
+    } finally {
+      process.env.HOME = originalHome;
+    }
   });
 
   describe("conditional rules integration", () => {
-    it("should include conditional rule when message context matches glob", async () => {
-      // Arrange
+    it("should include conditional rule when keyword matches prompt", async () => {
+      // Arrange - create rule with keywords
       writeFileSync(
         path.join(globalRulesDir, "typescript.mdc"),
         `---
-globs:
-  - "src/components/**/*.tsx"
+keywords:
+  - "react"
+  - "component"
 ---
 
 Use React best practices for components.`,
       );
 
-      const originalEnv = process.env.XDG_CONFIG_HOME;
-      process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+      const originalHome = process.env.HOME;
+      process.env.HOME = testDir;
 
       const { default: pluginDef } = await import("../index.js");
       const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
@@ -327,24 +357,12 @@ Use React best practices for components.`,
             {
               role: "user",
               info: { sessionID: testSessionID, role: "user" },
-              parts: [{ type: "text", text: "write a component" }],
-            },
-            {
-              role: "assistant",
-              parts: [
-                {
-                  type: "tool-invocation",
-                  toolInvocation: {
-                    toolName: "read",
-                    args: { filePath: "src/components/Button.tsx" },
-                  },
-                },
-              ],
+              parts: [{ type: "text", text: "write a react component" }],
             },
           ],
         };
 
-        // messages.transform seeds context AND injects rules
+        // messages.transform injects rules based on keywords
         const messagesTransform = hooks[
           "experimental.chat.messages.transform"
         ] as any;
@@ -358,24 +376,24 @@ Use React best practices for components.`,
         const rulesText = syntheticParts.map((p: any) => p.text).join("\n");
         expect(rulesText).toContain("React best practices");
       } finally {
-        process.env.XDG_CONFIG_HOME = originalEnv;
+        process.env.HOME = originalHome;
       }
     });
 
-    it("should exclude conditional rule when message context does not match glob", async () => {
-      // Arrange
+    it("should exclude conditional rule when keyword does not match prompt", async () => {
+      // Arrange - create rule with keywords
       writeFileSync(
         path.join(globalRulesDir, "typescript.mdc"),
         `---
-globs:
-  - "src/components/**/*.tsx"
+keywords:
+  - "react"
 ---
 
 Use React best practices for components.`,
       );
 
-      const originalEnv = process.env.XDG_CONFIG_HOME;
-      process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+      const originalHome = process.env.HOME;
+      process.env.HOME = testDir;
 
       const { default: pluginDef } = await import("../index.js");
       const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
@@ -399,24 +417,12 @@ Use React best practices for components.`,
             {
               role: "user",
               info: { sessionID: testSessionID, role: "user" },
-              parts: [{ type: "text", text: "hi" }],
-            },
-            {
-              role: "assistant",
-              parts: [
-                {
-                  type: "tool-invocation",
-                  toolInvocation: {
-                    toolName: "read",
-                    args: { filePath: "src/utils/helpers.ts" },
-                  },
-                },
-              ],
+              parts: [{ type: "text", text: "hi there" }],
             },
           ],
         };
 
-        // Process messages with NON-matching file reference
+        // Process messages with NON-matching prompt
         const messagesTransform = hooks[
           "experimental.chat.messages.transform"
         ] as any;
@@ -430,12 +436,12 @@ Use React best practices for components.`,
         const rulesText = syntheticParts.map((p: any) => p.text).join("\n");
         expect(rulesText).not.toContain("React best practices");
       } finally {
-        process.env.XDG_CONFIG_HOME = originalEnv;
+        process.env.HOME = originalHome;
       }
     });
 
-    it("should include unconditional rules regardless of context", async () => {
-      // Arrange
+    it("should exclude rules without keywords (no unconditional injection)", async () => {
+      // Arrange - create rule WITHOUT keywords
       writeFileSync(
         path.join(globalRulesDir, "always.md"),
         "# Always Apply\nThis rule always applies.",
@@ -443,15 +449,15 @@ Use React best practices for components.`,
       writeFileSync(
         path.join(globalRulesDir, "conditional.mdc"),
         `---
-globs:
-  - "src/special/**/*"
+keywords:
+  - "special"
 ---
 
 Special rule content.`,
       );
 
-      const originalEnv = process.env.XDG_CONFIG_HOME;
-      process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+      const originalHome = process.env.HOME;
+      process.env.HOME = testDir;
 
       const { default: pluginDef } = await import("../index.js");
       const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
@@ -468,7 +474,7 @@ Special rule content.`,
         // Act
         const hooks = await plugin(mockInput);
 
-        // Process with non-matching context
+        // Process with non-matching prompt
         const messagesTransform = hooks[
           "experimental.chat.messages.transform"
         ] as any;
@@ -485,34 +491,36 @@ Special rule content.`,
           },
         );
 
-        // Assert
+        // Assert - rule without keywords is NOT injected (no unconditional)
         const userMsg = result.messages[0];
         const syntheticParts = (userMsg.parts as any[]).filter(
           (p: any) => p.synthetic,
         );
         const rulesText = syntheticParts.map((p: any) => p.text).join("\n");
-        expect(rulesText).toContain("Always Apply");
-        expect(rulesText).toContain("This rule always applies");
+        expect(rulesText).not.toContain("Always Apply");
+        expect(rulesText).not.toContain("This rule always applies");
         expect(rulesText).not.toContain("Special rule content");
       } finally {
-        process.env.XDG_CONFIG_HOME = originalEnv;
+        process.env.HOME = originalHome;
       }
     });
 
-    it("should handle multiple matching files for conditional rules", async () => {
-      // Arrange
+    it("should handle multiple keyword matches", async () => {
+      // Arrange - create rule with keywords
       writeFileSync(
         path.join(globalRulesDir, "multi.mdc"),
         `---
-globs:
-  - "**/*.test.ts"
+keywords:
+  - "testing"
+  - "test"
+  - "jest"
 ---
 
 Follow testing best practices.`,
       );
 
-      const originalEnv = process.env.XDG_CONFIG_HOME;
-      process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+      const originalHome = process.env.HOME;
+      process.env.HOME = testDir;
 
       const { default: pluginDef } = await import("../index.js");
       const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
@@ -535,37 +543,18 @@ Follow testing best practices.`,
             {
               role: "user",
               info: { sessionID: testSessionID, role: "user" },
-              parts: [{ type: "text", text: "add tests" }],
-            },
-            {
-              role: "assistant",
-              parts: [
-                {
-                  type: "tool-invocation",
-                  toolInvocation: {
-                    toolName: "read",
-                    args: { filePath: "src/utils.ts" },
-                  },
-                },
-                {
-                  type: "tool-invocation",
-                  toolInvocation: {
-                    toolName: "read",
-                    args: { filePath: "src/utils.test.ts" },
-                  },
-                },
-              ],
+              parts: [{ type: "text", text: "add tests for this function" }],
             },
           ],
         };
 
-        // Process with one matching and one non-matching file
+        // Process with matching prompt
         const messagesTransform = hooks[
           "experimental.chat.messages.transform"
         ] as any;
         const result = await messagesTransform({}, messagesOutput);
 
-        // Assert - rule should be included because at least one file matches
+        // Assert - rule should be included because keywords match
         const userMsg = result.messages[0];
         const syntheticParts = (userMsg.parts as any[]).filter(
           (p: any) => p.synthetic,
@@ -573,22 +562,22 @@ Follow testing best practices.`,
         const rulesText = syntheticParts.map((p: any) => p.text).join("\n");
         expect(rulesText).toContain("testing best practices");
       } finally {
-        process.env.XDG_CONFIG_HOME = originalEnv;
+        process.env.HOME = originalHome;
       }
     });
   });
 
   it("system.transform no longer injects rules (rules moved to messages.transform)", async () => {
     // Arrange - create conditional rule
-    const originalEnv = process.env.XDG_CONFIG_HOME;
-    process.env.XDG_CONFIG_HOME = path.join(testDir, ".config");
+    const originalHome = process.env.HOME;
+    process.env.HOME = testDir;
 
     try {
       writeFileSync(
         path.join(globalRulesDir, "conditional.mdc"),
         `---
-globs:
-  - "src/special/**/*"
+keywords:
+  - "special"
 ---
 
 Special rule content.`,
@@ -607,9 +596,9 @@ Special rule content.`,
       });
 
       // Seed state directly (without calling messages.transform)
-      upsertSessionState("ses_x", (s) =>
-        s.contextPaths.add("src/special/a.txt"),
-      );
+      upsertSessionState("ses_x", (s) => {
+        s.seededFromHistory = true;
+      });
 
       // Act: call system.transform directly
       const systemTransform = hooks[
@@ -624,7 +613,7 @@ Special rule content.`,
       expect(result.system.join("\n")).not.toContain("Special rule content");
       expect(result.system.join("\n")).toContain("Base prompt.");
     } finally {
-      process.env.XDG_CONFIG_HOME = originalEnv;
+      process.env.HOME = originalHome;
     }
   });
 });
@@ -644,6 +633,9 @@ describe("Skill Reload Migration", () => {
 
   it("injects Skill Reload reminder as synthetic part in user message (U1)", async () => {
     // Arrange
+    const originalHome = process.env.HOME;
+    process.env.HOME = testDir;
+    
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
@@ -666,22 +658,29 @@ describe("Skill Reload Migration", () => {
       { info: { role: "assistant", sessionID }, parts: [{ type: "text", text: "response" }] },
     ];
 
-    // Act
-    const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
-    const result = await messagesTransform({}, { messages });
+    try {
+      // Act
+      const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
+      const result = await messagesTransform({}, { messages });
 
-    // Assert - last user message contains synthetic Skill Reload part
-    const lastUserMsg = result.messages[0];
-    const syntheticPart = lastUserMsg.parts.find((p: any) => p.synthetic === true);
-    expect(syntheticPart).toBeDefined();
-    expect(syntheticPart.type).toBe("text");
-    expect(syntheticPart.text).toContain("<system-reminder>");
-    expect(syntheticPart.text).toContain("dev-flow");
-    expect(syntheticPart.text).toContain("fae-collab");
+      // Assert - last user message contains synthetic Skill Reload part
+      const lastUserMsg = result.messages[0];
+      const syntheticPart = lastUserMsg.parts.find((p: any) => p.synthetic === true);
+      expect(syntheticPart).toBeDefined();
+      expect(syntheticPart.type).toBe("text");
+      expect(syntheticPart.text).toContain("<system-reminder>");
+      expect(syntheticPart.text).toContain("dev-flow");
+      expect(syntheticPart.text).toContain("fae-collab");
+    } finally {
+      process.env.HOME = originalHome;
+    }
   });
 
   it("Skill Reload is one-time consumption (U2)", async () => {
     // Arrange
+    const originalHome = process.env.HOME;
+    process.env.HOME = testDir;
+    
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
@@ -707,24 +706,31 @@ describe("Skill Reload Migration", () => {
       { info: { role: "user", sessionID }, parts: [{ type: "text", text: "second" }] },
     ];
 
-    // Act - first call
-    const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
-    const result1 = await messagesTransform({}, { messages: messages1 });
+    try {
+      // Act - first call
+      const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
+      const result1 = await messagesTransform({}, { messages: messages1 });
 
-    // Assert - Skill Reload injected
-    const synthetic1 = result1.messages[0].parts.find((p: any) => p.synthetic === true);
-    expect(synthetic1).toBeDefined();
+      // Assert - Skill Reload injected
+      const synthetic1 = result1.messages[0].parts.find((p: any) => p.synthetic === true);
+      expect(synthetic1).toBeDefined();
 
-    // Act - second call
-    const result2 = await messagesTransform({}, { messages: messages2 });
+      // Act - second call
+      const result2 = await messagesTransform({}, { messages: messages2 });
 
-    // Assert - no Skill Reload (already consumed)
-    const synthetic2 = result2.messages[0].parts.find((p: any) => p.synthetic === true);
-    expect(synthetic2).toBeUndefined();
+      // Assert - no Skill Reload (already consumed)
+      const synthetic2 = result2.messages[0].parts.find((p: any) => p.synthetic === true);
+      expect(synthetic2).toBeUndefined();
+    } finally {
+      process.env.HOME = originalHome;
+    }
   });
 
   it("does not inject when no Skill Reload needed (U3)", async () => {
     // Arrange
+    const originalHome = process.env.HOME;
+    process.env.HOME = testDir;
+    
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
@@ -746,17 +752,24 @@ describe("Skill Reload Migration", () => {
       { info: { role: "user", sessionID }, parts: [{ type: "text", text: "hello" }] },
     ];
 
-    // Act
-    const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
-    const result = await messagesTransform({}, { messages });
+    try {
+      // Act
+      const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
+      const result = await messagesTransform({}, { messages });
 
-    // Assert - no synthetic part
-    const syntheticPart = result.messages[0].parts.find((p: any) => p.synthetic === true);
-    expect(syntheticPart).toBeUndefined();
+      // Assert - no synthetic part
+      const syntheticPart = result.messages[0].parts.find((p: any) => p.synthetic === true);
+      expect(syntheticPart).toBeUndefined();
+    } finally {
+      process.env.HOME = originalHome;
+    }
   });
 
   it("skips Skill Reload injection when no user message (U4)", async () => {
     // Arrange
+    const originalHome = process.env.HOME;
+    process.env.HOME = testDir;
+    
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
@@ -778,16 +791,23 @@ describe("Skill Reload Migration", () => {
       { info: { role: "assistant", sessionID }, parts: [{ type: "text", text: "response" }] },
     ];
 
-    // Act
-    const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
-    const result = await messagesTransform({}, { messages });
+    try {
+      // Act
+      const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
+      const result = await messagesTransform({}, { messages });
 
-    // Assert - no error, no synthetic part (no user message to inject into)
-    expect(result.messages).toEqual(messages);
+      // Assert - no error, no synthetic part (no user message to inject into)
+      expect(result.messages).toEqual(messages);
+    } finally {
+      process.env.HOME = originalHome;
+    }
   });
 
   it("stores transformed messages in map (U5)", async () => {
     // Arrange
+    const originalHome = process.env.HOME;
+    process.env.HOME = testDir;
+    
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
@@ -809,17 +829,24 @@ describe("Skill Reload Migration", () => {
       { info: { role: "user", sessionID }, parts: [{ type: "text", text: "hello" }] },
     ];
 
-    // Act
-    const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
-    const result = await messagesTransform({}, { messages });
+    try {
+      // Act
+      const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
+      const result = await messagesTransform({}, { messages });
 
-    // Assert - transformedMessagesMap should contain the messages with synthetic part
-    // The map is internal to hooks, so we verify via result having synthetic part
-    expect(result.messages[0].parts.find((p: any) => p.synthetic === true)).toBeDefined();
+      // Assert - transformedMessagesMap should contain the messages with synthetic part
+      // The map is internal to hooks, so we verify via result having synthetic part
+      expect(result.messages[0].parts.find((p: any) => p.synthetic === true)).toBeDefined();
+    } finally {
+      process.env.HOME = originalHome;
+    }
   });
 
   it("seededFromHistory does not block Skill Reload injection (U6)", async () => {
     // Arrange
+    const originalHome = process.env.HOME;
+    process.env.HOME = testDir;
+    
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
@@ -842,18 +869,25 @@ describe("Skill Reload Migration", () => {
       { info: { role: "user", sessionID }, parts: [{ type: "text", text: "continue" }] },
     ];
 
-    // Act
-    const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
-    const result = await messagesTransform({}, { messages });
+    try {
+      // Act
+      const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
+      const result = await messagesTransform({}, { messages });
 
-    // Assert - Skill Reload injected despite seededFromHistory
-    const syntheticPart = result.messages[0].parts.find((p: any) => p.synthetic === true);
-    expect(syntheticPart).toBeDefined();
-    expect(syntheticPart.text).toContain("dev-flow");
+      // Assert - Skill Reload injected despite seededFromHistory
+      const syntheticPart = result.messages[0].parts.find((p: any) => p.synthetic === true);
+      expect(syntheticPart).toBeDefined();
+      expect(syntheticPart.text).toContain("dev-flow");
+    } finally {
+      process.env.HOME = originalHome;
+    }
   });
 
   it("does not consume Skill Reload when no user message (U7)", async () => {
     // Arrange
+    const originalHome = process.env.HOME;
+    process.env.HOME = testDir;
+    
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
@@ -876,27 +910,34 @@ describe("Skill Reload Migration", () => {
       { info: { role: "assistant", sessionID }, parts: [{ type: "text", text: "response" }] },
     ];
 
-    const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
-    await messagesTransform({}, { messages: messages1 });
+    try {
+      const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
+      await messagesTransform({}, { messages: messages1 });
 
-    // Assert - needsSkillReload still true (not consumed)
-    const state1 = getSessionStateSnapshot(sessionID);
-    expect(state1?.needsSkillReload).toBe(true);
+      // Assert - needsSkillReload still true (not consumed)
+      const state1 = getSessionStateSnapshot(sessionID);
+      expect(state1?.needsSkillReload).toBe(true);
 
-    // Second call - with user message
-    const messages2 = [
-      { info: { role: "user", sessionID }, parts: [{ type: "text", text: "hello" }] },
-    ];
+      // Second call - with user message
+      const messages2 = [
+        { info: { role: "user", sessionID }, parts: [{ type: "text", text: "hello" }] },
+      ];
 
-    const result2 = await messagesTransform({}, { messages: messages2 });
+      const result2 = await messagesTransform({}, { messages: messages2 });
 
-    // Assert - Skill Reload now injected (consumed)
-    const synthetic2 = result2.messages[0].parts.find((p: any) => p.synthetic === true);
-    expect(synthetic2).toBeDefined();
+      // Assert - Skill Reload now injected (consumed)
+      const synthetic2 = result2.messages[0].parts.find((p: any) => p.synthetic === true);
+      expect(synthetic2).toBeDefined();
+    } finally {
+      process.env.HOME = originalHome;
+    }
   });
 
   it("system.transform no longer injects Skill Reload (I1)", async () => {
     // Arrange
+    const originalHome = process.env.HOME;
+    process.env.HOME = testDir;
+    
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
@@ -914,16 +955,20 @@ describe("Skill Reload Migration", () => {
       s.needsSkillReload = true;
     });
 
-    // Act
-    const systemTransform = hooks["experimental.chat.system.transform"] as any;
-    const result = await systemTransform(
-      { sessionID, model: { providerID: "test", modelID: "test" } },
-      { system: ["Base prompt."] },
-    );
+    try {
+      // Act
+      const systemTransform = hooks["experimental.chat.system.transform"] as any;
+      const result = await systemTransform(
+        { sessionID, model: { providerID: "test", modelID: "test" } },
+        { system: ["Base prompt."] },
+      );
 
-    // Assert - system[] does not contain Skill Reload
-    const systemText = result.system.join("\n");
-    expect(systemText).not.toContain("[系统提醒]");
-    expect(systemText).not.toContain("技能");
+      // Assert - system[] does not contain Skill Reload
+      const systemText = result.system.join("\n");
+      expect(systemText).not.toContain("[系统提醒]");
+      expect(systemText).not.toContain("技能");
+    } finally {
+      process.env.HOME = originalHome;
+    }
   });
 });
