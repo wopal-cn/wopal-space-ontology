@@ -134,4 +134,15 @@ export function createWarnLog(prefix = "[plugin]"): LogFn {
   };
 }
 
+/**
+ * Create an info log function (always outputs to log file, ignores debug filter).
+ * Unlike createWarnLog, does not add [WARN] suffix — suitable for informational
+ * messages that should always be visible (e.g., token usage stats).
+ */
+export function createInfoLog(prefix = "[plugin]"): LogFn {
+  return (message: string): void => {
+    writeLog(prefix, message);
+  };
+}
+
 // DIFF-TEST-FINAL: 验证 v2 SDK 调用修复成功 [2026-04-14 17:04:24]

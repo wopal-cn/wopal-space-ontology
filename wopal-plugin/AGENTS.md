@@ -41,6 +41,7 @@ Memory 双开关：`WOPAL_MEMORY_ENABLED=false` 时 `WOPAL_MEMORY_INJECTION_ENAB
 | LanceDB/Embedding/LLM 初始化, 记忆检索/注入 | Memory | `[memory]` | `memory` |
 | 任务委派/监控/通信 | Task | `[task]` | `task` |
 | 会话状态/snapshot/compaction | Context | `[context]` | `context` |
+| Token 用量（input/output/cache_read/cache_write） | Tokens | `[tokens]` | N/A（createInfoLog 始终输出） |
 
 禁用状态在 Global 层（`[plugin]`）报告**一次**，禁用时模块代码**完全不执行**。
 

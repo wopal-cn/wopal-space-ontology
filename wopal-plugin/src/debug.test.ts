@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { existsSync, readFileSync, unlinkSync, mkdtempSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { createDebugLog, createWarnLog } from "./debug.js";
+import { createDebugLog, createWarnLog, createInfoLog } from "./debug.js";
 
 describe("createDebugLog", () => {
   let tempDir: string;
@@ -236,6 +236,65 @@ describe("createWarnLog", () => {
     
     const content = readFileSync(logFile, "utf-8");
     // Match format: 2026-03-15 16:30:45 [plugin] [WARN] timestamp test
+    const timestampPattern = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} /m;
+    expect(timestampPattern.test(content)).toBe(true);
+  });
+});
+
+describe("createInfoLog", () => {
+  let tempDir: string;
+  let logFile: string;
+  let savedVitest: string | undefined;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), "info-test-"));
+    logFile = join(tempDir, "info.log");
+    process.env.WOPAL_PLUGIN_LOG_FILE = logFile;
+    savedVitest = process.env.VITEST;
+    delete process.env.VITEST;
+  });
+
+  afterEach(() => {
+    delete process.env.WOPAL_PLUGIN_DEBUG;
+    delete process.env.WOPAL_PLUGIN_LOG_FILE;
+    if (savedVitest !== undefined) process.env.VITEST = savedVitest;
+    if (existsSync(logFile)) {
+      unlinkSync(logFile);
+    }
+  });
+
+  it("writes to log file even without WOPAL_PLUGIN_DEBUG", () => {
+    const info = createInfoLog();
+    info("info message");
+    
+    expect(existsSync(logFile)).toBe(true);
+    const content = readFileSync(logFile, "utf-8");
+    expect(content).toContain("[plugin] info message");
+    expect(content).not.toContain("[WARN]");
+  });
+
+  it("uses custom prefix", () => {
+    const info = createInfoLog("[tokens]");
+    info("token data");
+    
+    const content = readFileSync(logFile, "utf-8");
+    expect(content).toContain("[tokens] token data");
+  });
+
+  it("does not include [WARN] suffix", () => {
+    const info = createInfoLog("[test]");
+    info("no warn");
+    
+    const content = readFileSync(logFile, "utf-8");
+    expect(content).toContain("[test] no warn");
+    expect(content).not.toContain("[WARN]");
+  });
+
+  it("uses China Standard Time format (YYYY-MM-DD HH:mm:ss)", () => {
+    const info = createInfoLog();
+    info("timestamp test");
+    
+    const content = readFileSync(logFile, "utf-8");
     const timestampPattern = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} /m;
     expect(timestampPattern.test(content)).toBe(true);
   });

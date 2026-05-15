@@ -2,7 +2,18 @@ import type { SessionStore } from "../session-store.js";
 import type { SimpleTaskManager } from "../tasks/simple-task-manager.js";
 import type { DebugLog } from "../debug.js";
 import { trackActivity } from "../tasks/progress.js";
+import { createInfoLog } from "../debug.js";
 import type { IdleDiagnostic } from "../tasks/idle-diagnostic.js";
+
+interface EventPart {
+  type?: string;
+  tokens?: {
+    input?: number;
+    output?: number;
+    reasoning?: number;
+    cache?: { read?: number; write?: number };
+  };
+}
 
 export interface EventRouterHookContext {
   client: unknown;
@@ -14,6 +25,8 @@ export interface EventRouterHookContext {
 
 export function createEventRouter(ctx: EventRouterHookContext) {
   let recovered = false
+
+  const infoLog = createInfoLog("[tokens]");
 
   async function onEvent(
     input: { event: { type: string; properties?: Record<string, unknown> } },
@@ -51,7 +64,15 @@ export function createEventRouter(ctx: EventRouterHookContext) {
       }
     } else if (eventType === "message.part.updated") {
       const sessionID = props?.sessionID as string | undefined
-      const part = props?.part as { type?: string } | undefined
+      const part = props?.part as EventPart | undefined
+
+      // Token usage logging for all step-finish events (always-on, no debug flag needed)
+      if (sessionID && part?.type === "step-finish" && part?.tokens) {
+        const t = part.tokens
+        const cache = t.cache ?? {}
+        infoLog(`${sessionID.slice(0, 8)} tokens: input=${t.input ?? 0} output=${t.output ?? 0} cache_read=${cache.read ?? 0} cache_write=${cache.write ?? 0}`)
+      }
+
       if (sessionID) {
         const task = ctx.taskManager?.findBySession(sessionID)
         if (task && task.status === "running") {
