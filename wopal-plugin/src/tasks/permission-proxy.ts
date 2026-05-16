@@ -1,5 +1,5 @@
 import type { SimpleTaskManager } from "./simple-task-manager.js"
-import { createDebugLog, createWarnLog, type DebugLog } from "../debug.js"
+import { createDebugLog, createWarnLog, formatSessionID, type DebugLog } from "../debug.js"
 import { toErrorMessage } from "./utils.js"
 import { sendNotification } from "./task-notifier.js"
 
@@ -39,7 +39,7 @@ export async function handlePermissionAsked(
   const task = taskManager.findBySession(sessionID)
   if (!task) {
     // 主会话，让 TUI 处理
-    log(`[permission] main session, skipping auto-reply: sessionID=${sessionID}`)
+    log(`[permission] ${formatSessionID(sessionID, false)} skipping auto-reply (main session)`)
     return false
   }
 

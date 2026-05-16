@@ -1,5 +1,6 @@
 import type { SessionStore } from "../session-store.js";
 import type { DebugLog } from "../debug.js";
+import { formatSessionID } from "../debug.js";
 
 export interface CompactionHookContext {
   sessionStore: SessionStore;
@@ -19,7 +20,7 @@ export function createCompactionHooks(ctx: CompactionHookContext) {
     }
 
     ctx.sessionStore.markCompacting(sessionID, ctx.now());
-    ctx.contextDebugLog(`Marked session ${sessionID} as compacting`);
+    ctx.contextDebugLog(`${formatSessionID(sessionID, false)} marked as compacting`);
   }
 
   return {

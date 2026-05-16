@@ -1,5 +1,6 @@
 import type { SessionMessage, WopalTask } from "../types.js"
 import type { DebugLog } from "../debug.js"
+import { formatSessionID } from "../debug.js"
 
 // --- merged from stuck-detector.ts ---
 
@@ -110,7 +111,7 @@ export async function fetchContextPercent(
   sessionID: string,
   debugLog: DebugLog,
 ): Promise<ContextUsageInfo | null> {
-  const ctxLog = (msg: string) => debugLog(`[ctxUsage:${sessionID.slice(0, 16)}] ${msg}`)
+  const ctxLog = (msg: string) => debugLog(`[ctxUsage] ${formatSessionID(sessionID, true)} ${msg}`)
   try {
     if (typeof client.session?.messages !== "function") {
       ctxLog("no session.messages API")

@@ -6,7 +6,7 @@ import type {
 } from "../types.js"
 import type { DebugLog } from "../debug.js"
 import type { IdleDiagnostic } from "./idle-diagnostic.js"
-import { createDebugLog } from "../debug.js"
+import { createDebugLog, formatSessionID } from "../debug.js"
 import { clearStuckState } from "./task-monitor.js"
 import { ConcurrencyManager } from "./concurrency-manager.js"
 import { registerManagerForCleanup, unregisterManagerForCleanup } from "./process-cleanup.js"
@@ -261,7 +261,7 @@ export class SimpleTaskManager {
       const pct = await getContextUsagePercent(this.client, this.directory, sessionID, this.debugLog)
       if (pct !== null) {
         task.lastContextUsage = pct
-        this.debugLog(`[ctxCache] session=${sessionID.slice(0, 16)} cached=${pct}%`)
+        this.debugLog(`[ctxCache] ${formatSessionID(sessionID, true)} cached=${pct}%`)
       }
     } catch {
       // Graceful degradation

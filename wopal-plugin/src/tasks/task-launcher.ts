@@ -4,6 +4,7 @@ import type {
   WopalTask,
 } from "../types.js"
 import type { DebugLog } from "../debug.js"
+import { formatSessionID } from "../debug.js"
 import type { ConcurrencyManager } from "./concurrency-manager.js"
 import { toErrorMessage, isPromiseLike } from "./utils.js"
 
@@ -162,7 +163,7 @@ export async function launchTask(
     }
   })
 
-  debugLog(`[launch] success: taskId=${taskId} sessionID=${task.sessionID}`)
+  debugLog(`[launch] success: taskId=${taskId} session=${formatSessionID(task.sessionID, true)}`)
 
   return { ok: true, taskId, status: 'running' }
 }

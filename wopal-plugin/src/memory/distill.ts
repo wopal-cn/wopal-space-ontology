@@ -10,7 +10,7 @@ import type { MemoryCategory } from "./types.js";
 import type { EmbeddingClient } from "./embedder.js";
 import type { DistillLLMClient } from "./llm-client.js";
 import type { SessionMessage } from "../types.js";
-import { createDebugLog, createWarnLog } from "../debug.js";
+import { createDebugLog, createWarnLog, formatSessionID } from "../debug.js";
 import { loadSessionContext, saveSessionContext, clearSessionContext, type SessionContext } from "./session-context.js";
 import { CATEGORY_LABELS, validateCategory, getDefaultImportance } from "./categories.js";
 import { MIN_CONVERSATION_LENGTH, extractConversationText } from "./conversation.js";
@@ -88,7 +88,7 @@ export class DistillEngine {
    * Distill memories from session messages
    */
   async distill(sessionID: string, messages: SessionMessage[], project: string = "wopal-space"): Promise<DistillResult> {
-    debugLog(`[distill] session=${sessionID}, project=${project}, messages=${messages.length}`);
+    debugLog(`[distill] ${formatSessionID(sessionID, false)} project=${project} messages=${messages.length}`);
 
     const existingState = loadExtractionState(sessionID);
     if (existingState?.distill) {
@@ -143,7 +143,7 @@ export class DistillEngine {
    * Preview memories from session messages without writing to database
    */
   async preview(sessionID: string, messages: SessionMessage[]): Promise<{ candidates: PreviewCandidate[]; title: string | null }> {
-    debugLog(`[preview] session=${sessionID}, messages=${messages.length}`);
+    debugLog(`[preview] ${formatSessionID(sessionID, false)} messages=${messages.length}`);
 
     const conversation = extractConversationText(messages);
     if (conversation.length < MIN_CONVERSATION_LENGTH) {

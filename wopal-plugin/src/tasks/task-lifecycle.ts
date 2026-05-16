@@ -1,5 +1,6 @@
 import type { CancelResult, WopalTask } from "../types.js"
 import type { DebugLog } from "../debug.js"
+import { formatSessionID } from "../debug.js"
 import type { IdleDiagnostic } from "./idle-diagnostic.js"
 import { toErrorMessage } from "./utils.js"
 import { sessionIDToTaskID } from "./task-launcher.js"
@@ -56,7 +57,7 @@ export async function abortSession(
       path: { id: sessionID },
     })
   } catch (err) {
-    debugLog(`[abortSession] error for ${sessionID}: ${toErrorMessage(err)}`)
+    debugLog(`[abortSession] error for ${formatSessionID(sessionID, true)}: ${toErrorMessage(err)}`)
   }
 }
 
@@ -69,7 +70,7 @@ export function markTaskErrorBySession(
 
   const task = tasks.get(sessionIDToTaskID(sessionID))
   if (!task) {
-    debugLog(`[markError] skipped: no task found for sessionID=${sessionID}`)
+    debugLog(`[markError] skipped: no task found for ${formatSessionID(sessionID, true)}`)
     return undefined
   }
 
@@ -84,7 +85,7 @@ export function markTaskErrorBySession(
     return undefined
   }
 
-  debugLog(`[markError] taskId=${task.id} sessionID=${sessionID} error="${error.substring(0, 100)}"`)
+  debugLog(`[markError] taskId=${task.id} ${formatSessionID(sessionID, true)} error="${error.substring(0, 100)}"`)
   return task
 }
 
@@ -106,7 +107,7 @@ export function markTaskWaitingBySession(
   if (diagnostic.lastMessage !== undefined) {
     task.lastAssistantMessage = diagnostic.lastMessage
   }
-  debugLog(`[markWaiting] taskId=${task.id} sessionID=${sessionID} reason=${diagnostic.reason}`)
+  debugLog(`[markWaiting] taskId=${task.id} ${formatSessionID(sessionID, true)} reason=${diagnostic.reason}`)
   return task
 }
 

@@ -1,6 +1,6 @@
 import { tool, type ToolContext, type ToolDefinition } from "@opencode-ai/plugin"
 import type { SimpleTaskManager } from "../tasks/simple-task-manager.js"
-import { createDebugLog } from "../debug.js"
+import { createDebugLog, formatSessionID } from "../debug.js"
 
 const debugLog = createDebugLog("[task]", "task")
 
@@ -31,7 +31,7 @@ export function createWopalTaskDiffTool(manager: SimpleTaskManager): ToolDefinit
       }
 
       try {
-        debugLog(`[diff] querying for task.sessionID=${task.sessionID}`)
+        debugLog(`[diff] querying for ${formatSessionID(task.sessionID, true)}`)
 
         // First, get session messages to diagnose snapshot availability
         let snapshotDiagnosis = ""
@@ -77,7 +77,7 @@ export function createWopalTaskDiffTool(manager: SimpleTaskManager): ToolDefinit
         }
 
         const directory = manager.getDirectory()
-        debugLog(`[diff] calling session.diff with sessionID=${task.sessionID} directory=${directory}`)
+        debugLog(`[diff] calling session.diff: ${formatSessionID(task.sessionID, true)} directory=${directory}`)
         const result = await v2Client.session.diff({
           sessionID: task.sessionID,
           directory,

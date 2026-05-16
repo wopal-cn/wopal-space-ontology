@@ -49,7 +49,7 @@ export function createEventRouter(ctx: EventRouterHookContext) {
           const result = await client.session.get({ path: { id: sessionID } })
           const session = result?.data
           if (session && !session.parentID) {
-            ctx.taskDebugLog(`[recover] main session detected: ${sessionID.slice(0, 16)}, triggering recovery`)
+            ctx.taskDebugLog(`[recover] main session detected: ${formatSessionID(sessionID, false)}, triggering recovery`)
             void ctx.taskManager.recoverFromSession(sessionID)
           }
         } catch {
@@ -129,7 +129,7 @@ if (sessionID && part?.type === "step-finish" && part?.tokens) {
     if (eventType === "session.compacted") {
       if (sessionID) {
         ctx.sessionStore.markCompacted(sessionID);
-        ctx.contextDebugLog(`Session ${sessionID} compact completed (event-driven)`);
+        ctx.contextDebugLog(`${formatSessionID(sessionID, false)} compact completed (event-driven)`);
       }
     }
 
@@ -159,7 +159,7 @@ if (sessionID && part?.type === "step-finish" && part?.tokens) {
       const requestID = props?.id as string | undefined // OpenCode uses 'id', not 'requestID'
       const permission = props?.permission as string | undefined
 
-      ctx.taskDebugLog(`[permission.asked] event received: sessionID=${sessionID} id=${requestID} permission=${permission}`)
+      ctx.taskDebugLog(`[permission.asked] ${formatSessionID(sessionID ?? "?", !!ctx.taskManager?.findBySession(sessionID ?? ""))} id=${requestID} permission=${permission}`)
 
       if (sessionID && requestID && permission) {
         const { handlePermissionAsked } = await import("../tasks/permission-proxy.js")

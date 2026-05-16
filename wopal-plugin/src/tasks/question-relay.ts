@@ -1,5 +1,5 @@
 import type { SimpleTaskManager } from "./simple-task-manager.js"
-import { createDebugLog, type DebugLog } from "../debug.js"
+import { createDebugLog, formatSessionID, type DebugLog } from "../debug.js"
 import { toErrorMessage } from "./utils.js"
 
 const defaultDebugLog = createDebugLog("[task]", "task")
@@ -38,7 +38,7 @@ export async function handleQuestionAsked(
   const task = taskManager.findBySession(sessionID)
   if (!task) {
     // 主会话，让 TUI 处理
-    log(`[question] main session, skipping relay: sessionID=${sessionID}`)
+    log(`[question] ${formatSessionID(sessionID, false)} skipping relay (main session)`)
     return false
   }
 

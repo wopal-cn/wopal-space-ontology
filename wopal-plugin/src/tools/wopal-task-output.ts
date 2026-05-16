@@ -4,7 +4,7 @@ import { getErrorMessage, extractMessages, extractAssistantContent, extractBySec
 import { consumeNewMessages } from "../tasks/session-cursor.js"
 import { analyzeProgress } from "../tasks/progress.js"
 import { detectLoop } from "../tasks/loop-detector.js"
-import { createDebugLog } from "../debug.js"
+import { createDebugLog, formatSessionID } from "../debug.js"
 import {
   getSessionModelInfo,
   getContextUsage,
@@ -91,7 +91,7 @@ export function createWopalOutputTool(manager: SimpleTaskManager): ToolDefinitio
         let sessionStatus = "unknown"
         try {
           if (typeof client.session?.status === "function") {
-            debugLog(`[progress] fetching session status for ${task.sessionID}`)
+            debugLog(`[progress] fetching session status for ${formatSessionID(task.sessionID, true)}`)
             const statusResult = await client.session.status()
             if (statusResult && typeof statusResult === "object") {
               const statusMap = (statusResult.data ?? statusResult) as Record<string, { type?: string }>

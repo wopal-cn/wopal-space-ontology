@@ -15,7 +15,7 @@ import {
 } from "../memory/session-context.js";
 import type { SessionMessage, SystemPromptMetadata } from "../types.js";
 import type { MessageWithInfo } from "../hooks/message-context.js";
-import { createDebugLog } from "../debug.js";
+import { createDebugLog, formatSessionID } from "../debug.js";
 import { writeContextDump, findActualKey } from "./dump-formatter.js";
 
 const debugLog = createDebugLog("[context]", "context");
@@ -77,7 +77,7 @@ export function createContextManageTool(
     execute: async (args, context: ToolContext): Promise<string> => {
       const sessionID = context.sessionID;
 
-      debugLog(`[context_manage] Action: ${args.action}, Session: ${sessionID ?? "N/A"}`);
+      debugLog(`[context_manage] action=${args.action} ${formatSessionID(sessionID ?? "?", false)}`);
 
       if (args.action === "dump") {
         const rawSessionID = args.session_id ?? sessionID;

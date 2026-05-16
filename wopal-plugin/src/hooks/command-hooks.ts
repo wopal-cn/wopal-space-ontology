@@ -1,5 +1,6 @@
 import type { SessionStore } from "../session-store.js";
 import type { DebugLog } from "../debug.js";
+import { formatSessionID } from "../debug.js";
 
 interface CommandExecuteBeforeInput {
   command: string;
@@ -97,7 +98,7 @@ export function createCommandHooks(ctx: CommandHookContext) {
       const skillName = _output?.args?.name;
       if (typeof skillName === "string" && skillName.length > 0) {
         ctx.sessionStore.recordSkillLoaded(sessionID, skillName);
-        ctx.contextDebugLog(`Recorded loaded skill: ${skillName} for session ${sessionID}`);
+        ctx.contextDebugLog(`[skill] ${formatSessionID(sessionID, false)} loaded: ${skillName}`);
       }
     }
   }
