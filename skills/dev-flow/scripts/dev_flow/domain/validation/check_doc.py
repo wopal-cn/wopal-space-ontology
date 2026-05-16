@@ -437,34 +437,70 @@ def check_acceptance_criteria(plan_file: str) -> None:
 
 def check_step_completion(plan_file: str) -> None:
     """
-    Check if all step checkboxes in Implementation and Test Plan are completed.
+    Check if all done/step checkboxes in Implementation are completed.
     
     This is a hard gate for complete command.
     
-    Scans:
-    - Implementation section: each Task's **Changes** and **Verification** step checkboxes
-    - Test Plan section: each Case's Execution step checkboxes
-    
-    Only checks checkboxes that match Step pattern: '- [ ] Step N:' or '- [x] Step N:'
+    New template: each Task's **Done** checkbox (- [ ] must become - [x])
+    Old template: each Task's **Changes** and **Verification** step checkboxes,
+                  plus Test Plan case execution step checkboxes
     
     Args:
         plan_file: Path to plan file
         
     Raises:
-        ValidationError: If any step checkboxes are unchecked
+        ValidationError: If any required checkboxes are unchecked
     """
     with open(plan_file, 'r', encoding='utf-8') as f:
         content = f.read()
     
-    unchecked_steps = []
+    version = detect_template_version(content)
     
-    # ============================================
-    # 1. Check Implementation section
-    # ============================================
+    if version == 'new':
+        _check_done_completion(content, plan_file)
+    else:
+        _check_legacy_step_completion(content, plan_file)
+
+
+def _check_done_completion(content: str, plan_file: str) -> None:
+    """Check all Task Done checkboxes are checked in new template."""
+    unchecked = []
     impl_section = _extract_level2_section(content, "## Implementation")
     
     if impl_section:
-        # Find each Task section
+        tasks = re.findall(TASK_PATTERN, impl_section, re.MULTILINE | re.DOTALL)
+        for task_title, task_content in tasks:
+            done_match = re.search(
+                r'\*\*Done\*\*:\s*\n(.*?)(?=^###|\Z)',
+                task_content, re.MULTILINE | re.DOTALL
+            )
+            if done_match:
+                done_block = done_match.group(1).strip()
+                unchecked_in_done = re.findall(
+                    r'^\s*-\s+\[\s*\]\s+',
+                    done_block,
+                    re.MULTILINE
+                )
+                for _ in unchecked_in_done:
+                    unchecked.append(f"Task '{task_title}' Done: checkbox not completed")
+    
+    if unchecked:
+        unchecked_str = "\n".join(unchecked)
+        raise ValidationError(
+            f"Task Done checkboxes not completed:\n\n{unchecked_str}\n\n"
+            f"Please check the completed tasks in the Plan file:\n  {plan_file}\n\n"
+            f"After completing, run: flow.sh complete"
+        )
+
+
+def _check_legacy_step_completion(content: str, plan_file: str) -> None:
+    """Check all step checkboxes in legacy template are completed."""
+    unchecked_steps = []
+    
+    # 1. Check Implementation section
+    impl_section = _extract_level2_section(content, "## Implementation")
+    
+    if impl_section:
         tasks = re.findall(TASK_PATTERN, impl_section, re.MULTILINE | re.DOTALL)
         
         for task_title, task_content in tasks:
@@ -498,18 +534,14 @@ def check_step_completion(plan_file: str) -> None:
                 for step in unchecked_in_verification:
                     unchecked_steps.append(f"Task '{task_title}' Verification: {step.strip()}")
     
-    # ============================================
     # 2. Check Test Plan section
-    # ============================================
     testplan_section = _extract_level2_section(content, "## Test Plan")
     
     if testplan_section:
-        # Find each Case (level-4 or level-5 heading)
         case_pattern = r'^#{4,5}\s*Case\s*([^#\n]+)\n(.*?)(?=^#{4,5}[^#]|\Z)'
         cases = re.findall(case_pattern, testplan_section, re.MULTILINE | re.DOTALL)
         
         for case_name, case_content in cases:
-            # Extract Execution block
             execution_match = re.search(
                 r'-\s*Execution:\s*\n(.*?)(?=-\s*Expected|\Z)',
                 case_content,
