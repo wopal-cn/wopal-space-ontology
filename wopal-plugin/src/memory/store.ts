@@ -63,13 +63,9 @@ export class MemoryStore {
       }
 
       this.db = await lancedb.connect(this.dbPath);
-      debugLog(`Connected to LanceDB at: ${this.dbPath}`);
 
       try {
         this.table = await this.db.openTable(this.tableName);
-        debugLog(`Table '${this.tableName}' opened`);
-        const schema = await this.table.schema();
-        debugLog(`Memory schema: ${schema.fields.map((f) => `${f.name}:${f.type}`).join(", ")}`);
       } catch {
         // Bun environment has schema inference issues with Float32Array.
         // Convert to plain array so makeArrowTable auto-infers vector as FixedSizeList<Float32>.
@@ -137,7 +133,6 @@ export class MemoryStore {
           ngramMaxLength: 4,
         }),
       });
-      debugLog(`FTS index created on 'text' column (ngram tokenizer)`);
 
       try {
         await this.table.createIndex("tags", {
@@ -147,13 +142,12 @@ export class MemoryStore {
             ngramMaxLength: 4,
           }),
         });
-        debugLog(`FTS index created on 'tags' column (ngram tokenizer)`);
       } catch (idxErr) {
         debugLog(`FTS index on 'tags' skipped (may already exist): ${idxErr}`);
       }
 
       this.initialized = true;
-      debugLog(`MemoryStore initialized successfully`);
+      debugLog(`MemoryStore initialized (LanceDB at ${this.dbPath})`);
     } catch (error) {
       warnLog(`MemoryStore init failed, gracefully degrading: ${error}`);
       this.initialized = false;

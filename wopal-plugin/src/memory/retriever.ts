@@ -63,8 +63,6 @@ export class MemoryRetriever {
   ): Promise<Memory[]> {
     const limit = options?.limit ?? DEFAULT_LIMIT;
 
-    debugLog(`Retrieving memories for query:\n${query}`);
-
     const queryVector = this.embedder.toFloat32Array(
       await this.embedder.embedSingle(query),
     );
@@ -82,12 +80,6 @@ export class MemoryRetriever {
 
     const threshold = this.computeDynamicThreshold(deduplicated);
     const filtered = deduplicated.filter(m => m.similarityScore >= threshold);
-
-    debugLog(
-      `Vector: ${vectorResults.length}, After dedup: ${deduplicated.length}, ` +
-      `Threshold: ${threshold.toFixed(3)}, Passed: ${filtered.length}, ` +
-      `Similarities: [${deduplicated.map(m => m.similarityScore.toFixed(3)).join(", ")}]`,
-    );
 
     return filtered.slice(0, limit);
   }

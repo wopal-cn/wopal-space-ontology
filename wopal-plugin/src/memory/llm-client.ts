@@ -37,14 +37,12 @@ export class DistillLLMClient {
 
     this.model = process.env.WOPAL_LLM_MODEL ?? "gpt-4o-mini";
 
-    debugLog(`DistillLLMClient initializing: baseURL=${baseURL}, model=${this.model}`);
-
     this.client = new OpenAI({
       baseURL,
       apiKey,
     });
 
-    debugLog(`DistillLLMClient ready: model=${this.model}`);
+    debugLog(`DistillLLMClient ready: ${this.model}`);
   }
 
   /**
@@ -54,8 +52,6 @@ export class DistillLLMClient {
    * @returns Raw text response
    */
   async complete(prompt: string): Promise<string> {
-    debugLog(`[LLM.complete] ========== PROMPT START (${prompt.length} chars) ==========\n${prompt}\n[LLM.complete] ========== PROMPT END ==========`);
-
     try {
       const response = await this.client.chat.completions.create(
         {
@@ -68,8 +64,6 @@ export class DistillLLMClient {
       );
 
       const content = response.choices[0]?.message?.content ?? "";
-
-      debugLog(`[LLM.complete] ========== RESPONSE START (${content.length} chars) ==========\n${content}\n[LLM.complete] ========== RESPONSE END ==========`);
 
       return content;
     } catch (error) {

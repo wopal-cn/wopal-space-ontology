@@ -41,15 +41,13 @@ export class EmbeddingClient {
       );
     }
 
-    debugLog(`EmbeddingClient initializing: baseURL=${baseURL}, model=${this.model}`);
-
     this.client = new OpenAI({
       baseURL,
       apiKey: apiKey ?? "ollama",
       timeout: 60_000,
     });
 
-    debugLog(`EmbeddingClient ready: model=${this.model}`);
+    debugLog(`EmbeddingClient ready: ${this.model} @ ${baseURL}`);
   }
 
   /**
@@ -63,8 +61,6 @@ export class EmbeddingClient {
       return [];
     }
 
-    debugLog(`Embedding ${texts.length} texts`);
-
     try {
       const response = await this.client.embeddings.create({
         model: this.model,
@@ -72,7 +68,6 @@ export class EmbeddingClient {
       });
 
       const embeddings = response.data.map((item) => item.embedding);
-      debugLog(`Embedding complete: ${embeddings.length} vectors, dim=${embeddings[0]?.length ?? 0}`);
 
       return embeddings;
     } catch (error) {
