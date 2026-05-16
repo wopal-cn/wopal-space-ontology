@@ -546,6 +546,33 @@ function extractSkillNames(content: string): string[] {
   return names;
 }
 
+/**
+ * Find value in a Map using prefix matching.
+ * OpenCode internally appends suffixes to sessionIDs (e.g. "ses_abc" → "ses_abcXYZ123"),
+ * so map keys may have extra characters. This function first tries exact match,
+ * then falls back to finding a key that starts with the given prefix.
+ */
+function findInMap<T>(map: Map<string, T>, key: string): T | undefined {
+  const exact = map.get(key);
+  if (exact !== undefined) return exact;
+
+  for (const [k, v] of map) {
+    if (k.startsWith(key)) return v;
+  }
+  return undefined;
+}
+
+/**
+ * Get the actual key from a Map using prefix matching (for diagnostic logging).
+ */
+export function findActualKey(map: Map<string, unknown>, prefix: string): string | undefined {
+  if (map.has(prefix)) return prefix;
+  for (const k of map.keys()) {
+    if (k.startsWith(prefix)) return k;
+  }
+  return undefined;
+}
+
 export interface ContextDumpOptions {
   sessionID: string;
   baseDir: string;
@@ -605,9 +632,9 @@ export async function writeContextDump(options: ContextDumpOptions): Promise<Con
   }
   lines.push("", "---", "");
 
-  const metadata = systemMetadataMap.get(sessionID);
-  const snapshot = systemSnapshots.get(sessionID);
-  const injections = systemInjectionsMap?.get(sessionID);
+  const metadata = findInMap(systemMetadataMap, sessionID);
+  const snapshot = findInMap(systemSnapshots, sessionID);
+  const injections = systemInjectionsMap ? findInMap(systemInjectionsMap, sessionID) : undefined;
 
   // Exclude plugin injections from raw blocks before parsing
   const rawBlocks = snapshot && injections && injections.length > 0
@@ -662,7 +689,7 @@ export async function writeContextDump(options: ContextDumpOptions): Promise<Con
   let messages: DumpMessage[] = [];
 
   // Priority: use transformedMessagesMap (contains synthetic parts)
-  const transformed = transformedMessagesMap?.get(sessionID);
+  const transformed = transformedMessagesMap ? findInMap(transformedMessagesMap, sessionID) : undefined;
   if (transformed && transformed.length > 0) {
     messages = transformed;
   } else {

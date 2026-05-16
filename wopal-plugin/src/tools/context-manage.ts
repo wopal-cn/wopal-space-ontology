@@ -16,7 +16,7 @@ import {
 import type { SessionMessage, SystemPromptMetadata } from "../types.js";
 import type { MessageWithInfo } from "../hooks/message-context.js";
 import { createDebugLog } from "../debug.js";
-import { writeContextDump } from "./dump-formatter.js";
+import { writeContextDump, findActualKey } from "./dump-formatter.js";
 
 const debugLog = createDebugLog("[context]", "context");
 
@@ -56,8 +56,10 @@ export function createContextManageTool(
       "Session context tool. Actions:\n" +
       "- 'summary': Generate ≤50 char summary via LLM and update session title.\n" +
       "  MUST only call when user explicitly requests (e.g. \"摘要本次会话\"). Do not repeat after success.\n" +
-      "- 'dump': Export session context to file. session_id accepts 'ses_xxx' or 'wopal-task-xxx' (auto-converted).\n" +
-      "  Default is compact mode (truncates long content, recommended). Only use detail=true when user explicitly requests full content.",
+      "- 'dump': Export session context to file.\n" +
+      "  Default: dump current session (no session_id needed).\n" +
+      "  Optional session_id: dump specific session (accepts 'ses_xxx' or 'wopal-task-xxx').\n" +
+      "  Default is compact mode (truncates long content, recommended). Use detail=true only when user requests full content.",
     args: {
       action: tool.schema
         .enum(["summary", "dump"] as const)
@@ -65,7 +67,7 @@ export function createContextManageTool(
       session_id: tool.schema
         .string()
         .optional()
-        .describe("Session ID for dump, accepts ses_xxx or wopal-task-xxx format"),
+        .describe("Optional session ID for cross-session dump. Default: dump current session. Accepts ses_xxx or wopal-task-xxx format."),
       detail: tool.schema
         .boolean()
         .optional()
@@ -109,8 +111,10 @@ export function createContextManageTool(
           title,
         });
 
-        const metaKeys = Array.from(metadataMap.keys());
-        const metaLabel = metaKeys.includes(dumpSessionID) ? "hit" : `miss (map keys: ${metaKeys.length > 0 ? metaKeys.join(", ") : "empty"})`;
+        const actualKey = findActualKey(metadataMap, dumpSessionID);
+        const metaLabel = actualKey
+          ? (actualKey === dumpSessionID ? "hit" : `prefix-matched → ${actualKey}`)
+          : `miss (map keys: ${metadataMap.size > 0 ? Array.from(metadataMap.keys()).join(", ") : "empty"})`;
         const sysPromptLabel = result.hasMetadata
           ? result.parsedFromRaw
             ? `parsed from ${result.blockCount} raw blocks`
