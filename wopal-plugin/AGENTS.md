@@ -71,7 +71,6 @@ Memory 双开关：`WOPAL_MEMORY_ENABLED=false` 时 `WOPAL_MEMORY_INJECTION_ENAB
 - 启动：`task-launcher.ts`
 - 监控：`task-monitor.ts` + `progress.ts`
 - 诊断：`idle-diagnostic.ts` + `loop-detector.ts` + `error-classifier.ts`
-- 通知：`task-notifier.ts`（进度） + `task-completion-notify.ts`（完成 marker + 声音）
 - 并发：`concurrency-manager.ts`
 
 ### memory
