@@ -2,10 +2,13 @@
     "ellamaka": {
         "$schema": "https://opencode.ai/config.json",
         "default_agent": "wopal",
+        "compaction": {
+            "tail_turns": 0
+        },
         "agent": {
             "plan": { "disable": true },
             "build": { "disable": true },
-            "compaction": {
+            "compaction": {                
                 "model": "wopal-ai/qwen-3.6-plus"
             },
             "fae": {
