@@ -63,11 +63,18 @@ export const CONTEXT_WARN_THRESHOLD = 45
 export const CONTEXT_NOTIFY_MODULO = 10
 export const CONTEXT_WARN_NOTIFY_MODULO = 5
 
+export type ProgressNotifyTrigger =
+  | 'time_quota'
+  | 'message_count'
+  | 'context_threshold'
+  | 'context_normal'
+
 export interface ProgressTaskInfo {
   taskId: string
   messageCount: number
   wasNotified: boolean
   contextUsage: number | null
+  triggerReason?: ProgressNotifyTrigger
 }
 
 export interface TaskMonitorDeps {
@@ -94,7 +101,7 @@ export interface TaskMonitorDeps {
   debugLog: DebugLog
   directory: string
   notifyParentStuckFn: (task: WopalTask, durationText: string) => Promise<void>
-  sendProgressNotificationFn: (task: WopalTask, messageCount: number, contextUsage: number | null) => Promise<void>
+  sendProgressNotificationFn: (task: WopalTask, messageCount: number, contextUsage: number | null, triggerReason?: ProgressNotifyTrigger) => Promise<void>
 }
 
 /**
@@ -281,7 +288,8 @@ export async function checkProgressNotifications(
 
       const messageCount = messagesResult.data.length
 
-      let shouldNotify = messageCount > 0 && messageCount % PROGRESS_NOTIFY_MESSAGE_MODULO === 0
+      let shouldNotify = false
+      let triggerReason: ProgressNotifyTrigger | undefined = undefined
 
       // Time-based fallback: notify once per time quota slot (3 min each)
       const now = new Date()
@@ -291,26 +299,50 @@ export async function checkProgressNotifications(
       if (timeQuota > lastQuota) {
         task.lastNotifyTimeQuota = timeQuota
         shouldNotify = true
+        triggerReason = 'time_quota'
+      }
+
+      // Message count threshold: notify once per modulo (dedup by lastNotifyMessageCount)
+      if (messageCount > 0 && messageCount % PROGRESS_NOTIFY_MESSAGE_MODULO === 0) {
+        const lastMsgCount = task.lastNotifyMessageCount ?? 0
+        if (messageCount !== lastMsgCount) {
+          shouldNotify = true
+          triggerReason = 'message_count'
+        }
       }
 
       // Cache-first: prefer sessionStore.lastTokens to avoid streaming window returning null
       const ctxInfo = await fetchContextPercent(client, sessionStore, directory, task.sessionID, debugLog)
       const contextUsage = ctxInfo?.pct ?? null
 
+      // Context threshold: notify once per modulo value (dedup by lastNotifyContextPct)
       if (contextUsage !== null && contextUsage >= CONTEXT_WARN_THRESHOLD) {
         const modulo = CONTEXT_WARN_NOTIFY_MODULO
         if (contextUsage > 0 && contextUsage % modulo === 0) {
-          shouldNotify = true
+          const lastCtxPct = task.lastNotifyContextPct ?? 0
+          if (contextUsage !== lastCtxPct) {
+            shouldNotify = true
+            triggerReason = 'context_threshold'
+          }
         }
       } else if (contextUsage !== null) {
         const modulo = CONTEXT_NOTIFY_MODULO
         if (contextUsage > 0 && contextUsage % modulo === 0) {
-          shouldNotify = true
+          const lastCtxPct = task.lastNotifyContextPct ?? 0
+          if (contextUsage !== lastCtxPct) {
+            shouldNotify = true
+            triggerReason = 'context_normal'
+          }
         }
       }
 
       if (shouldNotify) {
-        await sendProgressNotificationFn(task, messageCount, contextUsage)
+        // Update dedup fields before sending
+        task.lastNotifyMessageCount = messageCount
+        if (contextUsage !== null) {
+          task.lastNotifyContextPct = contextUsage
+        }
+        await sendProgressNotificationFn(task, messageCount, contextUsage, triggerReason)
       }
 
       taskInfos.push({
@@ -318,6 +350,7 @@ export async function checkProgressNotifications(
         messageCount,
         wasNotified: shouldNotify,
         contextUsage,
+        triggerReason,
       })
     } catch (err) {
       debugLog(`[progressNotify] error for ${task.id}: ${err instanceof Error ? err.message : String(err)}`)

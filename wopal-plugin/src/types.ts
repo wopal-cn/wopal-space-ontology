@@ -39,8 +39,10 @@ export interface WopalTask {
   // Stuck detection
   stuckNotified?: boolean
   stuckNotifiedAt?: Date
-  // Progress notification: time quota for dedup
+  // Progress notification: dedup fields
   lastNotifyTimeQuota?: number
+  lastNotifyContextPct?: number
+  lastNotifyMessageCount?: number
   // Concurrency slot key for waiting tasks
   waitingConcurrencyKey?: string
   // Idle notification (Phase 3: judgment delegated to Wopal)

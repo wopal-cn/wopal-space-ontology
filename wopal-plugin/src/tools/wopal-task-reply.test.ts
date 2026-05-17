@@ -278,7 +278,7 @@ describe("wopal_task_reply", () => {
     expect(mockClient.session.promptAsync).toHaveBeenCalledWith(
       expect.objectContaining({
         path: { id: runningTask.sessionID },
-        body: { parts: [{ type: "text", text: "Change direction" }] },
+        body: { agent: runningTask.agent, parts: [{ type: "text", text: "Change direction" }] },
       }),
     )
     expect(runningTask.status).toBe("running")

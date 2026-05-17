@@ -126,6 +126,7 @@ export function createWopalReplyTool(manager: SimpleTaskManager): ToolDefinition
           await client.session.promptAsync({
             path: { id: task.sessionID },
             body: {
+              agent: task.agent,
               parts: [{ type: "text", text: message }],
             },
           })
@@ -170,6 +171,7 @@ export function createWopalReplyTool(manager: SimpleTaskManager): ToolDefinition
         await client.session.promptAsync({
           path: { id: task.sessionID },
           body: {
+            agent: task.agent,
             parts: [{ type: "text", text: message }],
           },
         })

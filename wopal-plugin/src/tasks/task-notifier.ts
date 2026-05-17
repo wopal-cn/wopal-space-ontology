@@ -1,5 +1,6 @@
 import type { WopalTask } from "../types.js"
 import type { DebugLog } from "../debug.js"
+import type { ProgressNotifyTrigger } from "./task-monitor.js"
 import { toErrorMessage } from "./utils.js"
 import { CONTEXT_WARN_THRESHOLD } from "./task-monitor.js"
 
@@ -18,11 +19,19 @@ export interface TaskNotifierDeps {
   debugLog: DebugLog
 }
 
+const TRIGGER_LABELS: Record<ProgressNotifyTrigger, string> = {
+  time_quota: 'time quota elapsed',
+  message_count: 'message count threshold',
+  context_threshold: `context warning (≥${CONTEXT_WARN_THRESHOLD}%)`,
+  context_normal: 'context usage milestone',
+}
+
 export async function sendProgressNotification(
   deps: TaskNotifierDeps,
   task: WopalTask,
   messageCount: number,
   contextUsage: number | null,
+  triggerReason?: ProgressNotifyTrigger,
 ): Promise<void> {
   const { debugLog } = deps
 
@@ -32,17 +41,21 @@ export async function sendProgressNotification(
     contextLine = `\n**Context:** ${contextUsage}% used${warn}`
   }
 
+  const triggerLine = triggerReason
+    ? `\n**Trigger:** ${TRIGGER_LABELS[triggerReason]}`
+    : ''
+
   const notification = `<system-reminder>
 [WOPAL TASK PROGRESS]
 **ID:** \`${task.id}\`
 **Description:** ${task.description}
-**Progress:** ${messageCount} messages${contextLine}
+**Progress:** ${messageCount} messages${contextLine}${triggerLine}
 
 Task is still running. Use \`wopal_task_output(task_id="${task.id}")\` for details.
 </system-reminder>`
 
   await sendNotification(deps, task.parentSessionID, notification)
-  debugLog(`[progressNotify] sent: taskId=${task.id} messages=${messageCount}`)
+  debugLog(`[progressNotify] sent: taskId=${task.id} messages=${messageCount} trigger=${triggerReason ?? 'unknown'}`)
 }
 
 export async function sendNotification(

@@ -21,6 +21,7 @@ import {
   checkProgressNotifications,
   checkStuckTasksAndNotify,
   logTickStatus,
+  type ProgressNotifyTrigger,
 } from "./task-monitor.js"
 import {
   failTask,
@@ -340,8 +341,8 @@ export class SimpleTaskManager {
       directory: this.directory,
       notifyParentStuckFn: async (task: WopalTask, durationText: string) =>
         await notifyParentStuck({ client: this.client, debugLog: this.debugLog }, task, durationText),
-      sendProgressNotificationFn: async (task: WopalTask, msgCount: number, ctx: number | null) =>
-        await sendProgressNotification({ client: this.client, debugLog: this.debugLog }, task, msgCount, ctx),
+      sendProgressNotificationFn: async (task: WopalTask, msgCount: number, ctx: number | null, trigger?: string) =>
+        await sendProgressNotification({ client: this.client, debugLog: this.debugLog }, task, msgCount, ctx, trigger as ProgressNotifyTrigger | undefined),
     }
   }
 }
