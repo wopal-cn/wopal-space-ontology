@@ -100,7 +100,10 @@ def _plan_has_new_template_subsections(plan_file: str) -> bool:
 
 
 def _extract_acceptance_criteria(plan_file: str) -> str:
-    """Extract Acceptance Criteria section (including Agent/User sub-sections)."""
+    """Extract Acceptance Criteria section (including Agent/User sub-sections).
+    
+    Converts numbered checkboxes (1. [ ]) to GitHub-compatible format (- [ ]).
+    """
     content = []
     in_section = False
     
@@ -116,7 +119,15 @@ def _extract_acceptance_criteria(plan_file: str) -> str:
             if in_section:
                 content.append(line)
     
-    return ''.join(content).strip()
+    raw_content = ''.join(content).strip()
+    
+    # Convert numbered checkboxes to GitHub-compatible format:
+    # 1. [ ] → - [ ]  (unchecked)
+    # 2. [x] → - [x]  (checked)
+    converted = re.sub(r'^(\s*)(\d+)\.\s+\[\s*\]', r'\1- [ ]', raw_content, flags=re.MULTILINE)
+    converted = re.sub(r'^(\s*)(\d+)\.\s+\[x\]', r'\1- [x]', converted, flags=re.MULTILINE)
+    
+    return converted
 
 
 def _extract_technical_context_top(plan_file: str) -> str:
