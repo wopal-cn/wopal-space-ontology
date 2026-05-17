@@ -5,7 +5,6 @@ import { SessionStore } from "../session-store.js"
 function createEventRouterWithTaskManager(taskManager: {
   markTaskCompletedBySession?: ReturnType<typeof vi.fn>
   markTaskErrorBySession: ReturnType<typeof vi.fn>
-  markTaskWaitingBySession?: ReturnType<typeof vi.fn>
   notifyParent: ReturnType<typeof vi.fn>
   findBySession?: ReturnType<typeof vi.fn>
   getClient?: ReturnType<typeof vi.fn>
@@ -19,7 +18,6 @@ function createEventRouterWithTaskManager(taskManager: {
         messages: vi.fn().mockResolvedValue({ data: [] }),
       },
     }),
-    markTaskWaitingBySession: vi.fn(),
     markTaskCompletedBySession: vi.fn(),
     releaseConcurrencySlot: vi.fn(),
     recoverFromSession: vi.fn().mockResolvedValue(undefined),
@@ -45,19 +43,12 @@ function createEventRouterWithTaskManager(taskManager: {
 describe("OpenCodeRulesRuntime event handling", () => {
   it("marks running task idle on session.idle and notifies parent", async () => {
     const mockTask = { id: "task-1", sessionID: "child-1", status: "running" }
-    // Mock messages with an assistant message that has finish: "stop" and no question
-    const mockMessages = [
-      {
-        info: { role: "assistant", finish: "stop" },
-        parts: [{ type: "text", text: "Task completed successfully." }],
-      },
-    ]
 
     const sessionStore = new SessionStore({ max: 10 });
     const ctx = {
       client: {
         session: {
-          messages: vi.fn().mockResolvedValue({ data: mockMessages }),
+          messages: vi.fn().mockResolvedValue({ data: [] }),
           promptAsync: vi.fn().mockResolvedValue(undefined),
         },
       },
@@ -68,7 +59,6 @@ describe("OpenCodeRulesRuntime event handling", () => {
         findBySession: vi.fn().mockReturnValue(mockTask),
         markTaskCompletedBySession: vi.fn(),
         markTaskErrorBySession: vi.fn(),
-        markTaskWaitingBySession: vi.fn(),
         notifyParent: vi.fn().mockResolvedValue(undefined),
         releaseConcurrencySlot: vi.fn(),
         recoverFromSession: vi.fn().mockResolvedValue(undefined),
@@ -81,7 +71,6 @@ describe("OpenCodeRulesRuntime event handling", () => {
     })
 
     expect(ctx.taskManager.findBySession).toHaveBeenCalledWith("child-1")
-    // Phase 3: idle sets idleNotified flag instead of markTaskCompletedBySession
     expect(mockTask.idleNotified).toBe(true)
     expect(ctx.taskManager.markTaskCompletedBySession).not.toHaveBeenCalled()
     expect(ctx.taskManager.notifyParent).toHaveBeenCalledWith("task-1")
@@ -146,7 +135,7 @@ describe("OpenCodeRulesRuntime event handling", () => {
   })
 
   it("does not notify when idle event arrives after task already finalized", async () => {
-    // Task is in completed state (not running), so markTaskCompletedBySession returns undefined
+    // Task is in completed state (not running), so no notification
     const completedTask = { id: "task-1", sessionID: "child-1", status: "completed" }
     const { hooks, taskManager } = createEventRouterWithTaskManager({
       findBySession: vi.fn().mockReturnValue(completedTask),

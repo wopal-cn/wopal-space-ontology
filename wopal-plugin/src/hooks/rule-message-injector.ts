@@ -41,7 +41,7 @@ export async function injectRulesToMessage(
 
   // Record that we've injected rules for this prompt
   ctx.sessionStore.upsert(sessionID, (s) => {
-    s.lastRulesPrompt = userPrompt;
+    if (userPrompt) s.lastRulesPrompt = userPrompt;
   });
 
   lastUserMsg.parts ??= [];

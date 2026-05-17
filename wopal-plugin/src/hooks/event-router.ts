@@ -4,9 +4,8 @@ import type { DebugLog } from "../debug.js";
 import { trackActivity } from "../tasks/progress.js";
 import { createDebugLog, formatSessionID } from "../debug.js";
 import { getSessionModelInfo } from "../tools/output-helpers.js";
-import type { IdleDiagnostic } from "../tasks/idle-diagnostic.js";
 
-import type { OpenCodeClient, SessionMessage } from "../types.js";
+import type { OpenCodeClient } from "../types.js";
 
 interface EventPart {
   type?: string;
@@ -78,9 +77,51 @@ if (sessionID && part?.type === "step-finish" && part?.tokens) {
   const cache = t.cache ?? {}
   const isTask = !!ctx.taskManager?.findBySession(sessionID)
   const agent = ctx.sessionStore.get(sessionID)?.agent ?? "?"
-  const modelInfo = await getSessionModelInfo(ctx.client, sessionID)
-  const model = modelInfo ? `${modelInfo.providerID}/${modelInfo.modelID}` : "?"
-  contextLog(`${formatSessionID(sessionID, isTask)} agent=${agent} model=${model} tokens: input=${t.input ?? 0} output=${t.output ?? 0} cache_read=${cache.read ?? 0} cache_write=${cache.write ?? 0}`)
+
+  const used = (t.input ?? 0) + (cache.read ?? 0)
+
+  // Get model info and context limit for percentage calculation
+  let model = "?"
+  let pctText = ""
+  try {
+    const modelInfo = await getSessionModelInfo(ctx.client, sessionID)
+    if (modelInfo) {
+      model = `${modelInfo.providerID}/${modelInfo.modelID}`
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const configClient = ctx.client as any
+      if (typeof configClient.config?.providers === "function") {
+        const providersResult = await configClient.config.providers({ query: { directory: "" } })
+        const providers = providersResult?.data?.providers ?? []
+        const provider = providers.find((p: { id: string }) => p.id === modelInfo.providerID)
+        const contextLimit = provider?.models?.[modelInfo.modelID]?.limit?.context
+        if (contextLimit && contextLimit > 0) {
+          pctText = ` pct=${Math.round((used / contextLimit) * 100)}%`
+        }
+      }
+    }
+  } catch {
+    // ignore — percentage is informational only
+  }
+
+  contextLog(`${formatSessionID(sessionID, isTask)} agent=${agent} model=${model} tokens: input=${t.input ?? 0} output=${t.output ?? 0} cache_read=${cache.read ?? 0} cache_write=${cache.write ?? 0}${pctText}`)
+
+  // Store token data in sessionStore for context usage calculation
+  if (t.input || cache.read) {
+    const modelInfo = await getSessionModelInfo(ctx.client, sessionID).catch(() => null)
+    ctx.sessionStore.upsert(sessionID, (state) => {
+      if (modelInfo) {
+        state.providerID = modelInfo.providerID
+        state.modelID = modelInfo.modelID
+      }
+      const cache = t.cache ? { ...t.cache } : undefined
+      state.lastTokens = {
+        input: t.input ?? 0,
+        output: t.output ?? 0,
+        ...(cache ? { cache } : {}),
+        updatedAt: Date.now(),
+      }
+    })
+  }
 }
 
       if (sessionID) {
@@ -98,10 +139,6 @@ if (sessionID && part?.type === "step-finish" && part?.tokens) {
       const task = ctx.taskManager?.findBySession(sessionID)
       if (!task) return
 
-      // 拉取消息并诊断
-      const diagnostic = await diagnoseIdleSession(sessionID)
-
-      // Phase 3: 所有 idle 统一走 idleNotified 路径，判断权交给 Wopal
       if (!task.idleNotified && task.status === 'running') {
         task.idleNotified = true
         // Release concurrency slot so new tasks can launch
@@ -110,16 +147,10 @@ if (sessionID && part?.type === "step-finish" && part?.tokens) {
           task.waitingConcurrencyKey = task.concurrencyKey
           task.concurrencyKey = undefined
         }
-        ctx.taskDebugLog(`task ${task.id} idle: verdict=${diagnostic.verdict}, reason=${diagnostic.reason}`)
+        ctx.taskDebugLog(`task ${task.id} idle`)
         ctx.taskManager.notifyParent(task.id).catch((err) => {
           ctx.taskDebugLog(`[notifyParent] error for ${task.id}: ${err instanceof Error ? err.message : String(err)}`)
         })
-
-        // Task completion notification (sound + marker file)
-        if (diagnostic.verdict === "completed") {
-          const { notifyTaskCompletion } = await import("../tasks/task-completion-notify.js")
-          notifyTaskCompletion(sessionID)
-        }
       }
     }
 
@@ -210,31 +241,8 @@ if (sessionID && part?.type === "step-finish" && part?.tokens) {
     return String(error)
   }
 
-  async function diagnoseIdleSession(sessionID: string): Promise<IdleDiagnostic> {
-    try {
-      const client = ctx.client;
-      if (typeof client?.session?.messages !== "function") {
-        return { verdict: 'error', reason: 'no_message_access' }
-      }
-
-      const result = await client.session.messages({
-        path: { id: sessionID },
-        query: { limit: 10 }
-      })
-      const messages = (result as { data?: SessionMessage[] } | undefined)?.data ?? []
-      ctx.taskDebugLog(`diagnoseIdleSession: fetched ${messages.length} messages (limit: 10)`)
-
-      const { diagnoseIdle } = await import("../tasks/idle-diagnostic.js")
-      return diagnoseIdle(messages)
-    } catch (err) {
-      ctx.taskDebugLog(`diagnoseIdleSession error: ${err}`)
-      return { verdict: 'error', reason: 'diagnostic_failed' }
-    }
-  }
-
   return {
     event: onEvent,
-    _diagnoseIdleSession: diagnoseIdleSession,
     _stringifyEventError: stringifyEventError,
   };
 }

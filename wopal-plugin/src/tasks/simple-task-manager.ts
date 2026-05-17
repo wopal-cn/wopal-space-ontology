@@ -5,8 +5,9 @@ import type {
   WopalTask,
 } from "../types.js"
 import type { DebugLog } from "../debug.js"
-import type { IdleDiagnostic } from "./idle-diagnostic.js"
+import type { SessionStore } from "../session-store.js"
 import { createDebugLog } from "../debug.js"
+import { sessionStore as globalSessionStore } from "../session-store-instance.js"
 import { clearStuckState } from "./task-monitor.js"
 import { ConcurrencyManager } from "./concurrency-manager.js"
 import { registerManagerForCleanup, unregisterManagerForCleanup } from "./process-cleanup.js"
@@ -25,7 +26,6 @@ import {
   failTask,
   abortSession,
   markTaskErrorBySession,
-  markTaskWaitingBySession,
   interruptTask,
   cleanup,
   shutdownManager,
@@ -44,6 +44,7 @@ export class SimpleTaskManager {
   private serverUrl?: URL
   private directory: string
   private debugLog: DebugLog
+  private sessionStore: SessionStore
   private cleanupInterval: ReturnType<typeof setInterval> | undefined = undefined
   private tickerInterval: ReturnType<typeof setInterval> | undefined = undefined
   private concurrency = new ConcurrencyManager()
@@ -60,6 +61,7 @@ export class SimpleTaskManager {
     v2Client: any,
     directory: string,
     serverUrl?: URL,
+    sessionStore?: SessionStore,
     debugLog?: DebugLog,
   ) {
     this.client = client
@@ -68,6 +70,7 @@ export class SimpleTaskManager {
     if (serverUrl !== undefined) {
       this.serverUrl = serverUrl
     }
+    this.sessionStore = sessionStore ?? globalSessionStore
     this.debugLog = debugLog ?? defaultManagerLog
 
     // Setup automatic cleanup interval
@@ -104,6 +107,10 @@ export class SimpleTaskManager {
 
   getDirectory(): string {
     return this.directory
+  }
+
+  getSessionStore(): SessionStore {
+    return this.sessionStore
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -172,10 +179,6 @@ export class SimpleTaskManager {
 
   markTaskErrorBySession(sessionID: string, error: string): WopalTask | undefined {
     return markTaskErrorBySession(this.getLifecycleDeps(), sessionID, error)
-  }
-
-  markTaskWaitingBySession(sessionID: string, diagnostic: IdleDiagnostic): WopalTask | undefined {
-    return markTaskWaitingBySession(this.getLifecycleDeps(), sessionID, diagnostic)
   }
 
   async interrupt(id: string, parentSessionID: string): Promise<CancelResult> {
@@ -331,6 +334,7 @@ export class SimpleTaskManager {
   private getMonitorDeps() {
     return {
       tasks: this.tasks,
+      sessionStore: this.sessionStore,
       client: this.client,
       debugLog: this.debugLog,
       directory: this.directory,

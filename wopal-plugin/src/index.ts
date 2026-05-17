@@ -135,6 +135,7 @@ const openCodeRulesPlugin = async (pluginInput: PluginInput): Promise<Hooks> => 
     v2Client,
     pluginInput.directory,
     pluginInput.serverUrl,
+    sessionStore,
   );
 
   const systemSnapshots = new Map<string, string[]>();

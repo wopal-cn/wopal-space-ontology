@@ -4,14 +4,11 @@ import { getErrorMessage, extractMessages, extractAssistantContent, extractBySec
 import { consumeNewMessages } from "../tasks/session-cursor.js"
 import { analyzeProgress } from "../tasks/progress.js"
 import { detectLoop } from "../tasks/loop-detector.js"
-import { createDebugLog, formatSessionID } from "../debug.js"
 import {
   getSessionModelInfo,
   getContextUsage,
   formatProgressOutput,
 } from "./output-helpers.js"
-
-const debugLog = createDebugLog("[task]", "task")
 
 export function createWopalOutputTool(manager: SimpleTaskManager): ToolDefinition {
   return tool({
@@ -91,7 +88,6 @@ export function createWopalOutputTool(manager: SimpleTaskManager): ToolDefinitio
         let sessionStatus = "unknown"
         try {
           if (typeof client.session?.status === "function") {
-            debugLog(`[progress] fetching session status for ${formatSessionID(task.sessionID, true)}`)
             const statusResult = await client.session.status()
             if (statusResult && typeof statusResult === "object") {
               const statusMap = (statusResult.data ?? statusResult) as Record<string, { type?: string }>
@@ -100,13 +96,11 @@ export function createWopalOutputTool(manager: SimpleTaskManager): ToolDefinitio
           }
         } catch {
           // Graceful degradation: session status not available
-          debugLog(`[progress] session.status not available, using unknown`)
         }
 
         // Fetch messages for progress analysis
         if (typeof client.session?.messages === "function") {
           try {
-            debugLog(`[progress] fetching messages for taskId=${task.id}`)
             const messagesResult = await client.session.messages({
               path: { id: task.sessionID },
             })
@@ -122,7 +116,7 @@ export function createWopalOutputTool(manager: SimpleTaskManager): ToolDefinitio
               const progress = analyzeProgress(messages, newMessages)
               const loopWarning = detectLoop(messages)
               const recentOutput = extractAssistantContent(newMessages) || null
-              const contextUsage = await getContextUsage(client, task.sessionID!, manager.getDirectory())
+              const contextUsage = await getContextUsage(client, task.sessionID!, manager.getDirectory(), manager.getSessionStore())
 
               result += formatProgressOutput(progress, loopWarning, sessionStatus, recentOutput)
               if (contextUsage) {
@@ -131,7 +125,6 @@ export function createWopalOutputTool(manager: SimpleTaskManager): ToolDefinitio
             }
           } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)
-            debugLog(`[progress] error fetching messages: ${errorMsg}`)
             result += `\n\n**Progress:** Unable to fetch (error: ${errorMsg})`
             result += `\nTask is still running.`
           }
@@ -151,7 +144,6 @@ export function createWopalOutputTool(manager: SimpleTaskManager): ToolDefinitio
         const client = manager.getClient()
         if (typeof client.session?.messages === "function") {
           try {
-            debugLog(`[section] fetching section="${fetchSection}" for waiting task ${task.id}`)
             const messagesResult = await client.session.messages({
               path: { id: task.sessionID },
             })
@@ -182,7 +174,6 @@ export function createWopalOutputTool(manager: SimpleTaskManager): ToolDefinitio
         const client = manager.getClient()
         if (typeof client.session?.messages === "function") {
           try {
-            debugLog(`[section] fetching section="${section}" for task ${task.id}`)
             const messagesResult = await client.session.messages({
               path: { id: task.sessionID },
             })

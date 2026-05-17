@@ -9,7 +9,7 @@ import type { SystemPromptMetadata } from "../types.js";
 import type { MessageWithInfo } from "../hooks/message-context.js";
 import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
-import { debugLog, localTimestamp, localDateTimeStr, findInMap } from "./dump-format-utils.js";
+import { localTimestamp, localDateTimeStr, findInMap } from "./dump-format-utils.js";
 import type { DumpMessage } from "./message-formatter.js";
 import { formatMessagesForDump, filterPreCompaction } from "./message-formatter.js";
 import { parseRawBlocks, formatSystemPromptSections } from "./system-prompt-formatter.js";

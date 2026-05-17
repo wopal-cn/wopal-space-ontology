@@ -22,6 +22,18 @@ export interface SessionState {
   isTask?: boolean | undefined;
   /** The user prompt for which rules were last injected (dedup) */
   lastRulesPrompt?: string;
+  /** Model provider ID (from step-finish event) */
+  providerID?: string;
+  /** Model ID (from step-finish event) */
+  modelID?: string;
+  /** Last token usage captured from step-finish event (cumulative) */
+  lastTokens?: {
+    input: number;
+    output: number;
+    reasoning?: number;
+    cache?: { read?: number; write?: number };
+    updatedAt: number; // timestamp for freshness check
+  };
 }
 
 export interface SessionStoreOptions {

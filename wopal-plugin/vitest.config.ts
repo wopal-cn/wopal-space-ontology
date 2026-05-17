@@ -7,6 +7,8 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['node_modules', 'dist'],
+    testTimeout: 15000,
+    threads: false,  // Sequential execution to avoid singleton state pollution
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

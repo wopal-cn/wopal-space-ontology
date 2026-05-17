@@ -1,5 +1,6 @@
 import type { SessionMessage, WopalTask } from "../types.js"
 import type { DebugLog } from "../debug.js"
+import type { SessionStore } from "../session-store.js"
 import { formatSessionID } from "../debug.js"
 
 // --- merged from stuck-detector.ts ---
@@ -71,6 +72,7 @@ export interface ProgressTaskInfo {
 
 export interface TaskMonitorDeps {
   tasks: Map<string, WopalTask>
+  sessionStore: SessionStore
   client: {
     session?: {
       messages?: (args: { path: { id: string } }) => Promise<{
@@ -96,8 +98,9 @@ export interface TaskMonitorDeps {
 }
 
 /**
- * Core context usage calculation — single source of truth for fetching
- * messages, extracting token counts, and computing the usage percentage.
+ * Core context usage calculation from already-fetched messages.
+ * Extracts token counts from the last assistant message and computes
+ * the usage percentage against the model's context limit.
  * Returns rich info (percentage + raw values) or null if unavailable.
  */
 export interface ContextUsageInfo {
@@ -106,74 +109,163 @@ export interface ContextUsageInfo {
   contextLimit: number
 }
 
+export function extractContextUsage(
+  messages: SessionMessage[],
+  providers: Array<{ id: string; models?: Record<string, { limit?: { context?: number } }> }>,
+  debugLog?: DebugLog,
+): ContextUsageInfo | null {
+  const lastAssistant = [...messages].reverse().find((m) =>
+    m?.info?.role === "assistant" && m?.info?.tokens
+  )
+  if (!lastAssistant?.info?.tokens) {
+    debugLog?.(`[extractCtx] no assistant with tokens found`)
+    return null
+  }
+
+  const tokens = lastAssistant.info.tokens
+  const used = (tokens.input ?? 0) + (tokens.cache?.read ?? 0)
+  if (used === 0) {
+    debugLog?.(`[extractCtx] tokens.input=0 (step still streaming)`)
+    return null
+  }
+
+  const providerID = lastAssistant.info.providerID ?? lastAssistant.info.model?.providerID
+  const modelID = lastAssistant.info.modelID ?? lastAssistant.info.model?.modelID
+  if (!providerID || !modelID) {
+    debugLog?.(`[extractCtx] missing IDs: providerID=${providerID ?? 'undefined'} modelID=${modelID ?? 'undefined'}`)
+    return null
+  }
+
+  const provider = providers.find((p) => p.id === providerID)
+  const contextLimit = provider?.models?.[modelID]?.limit?.context
+  if (!contextLimit) {
+    debugLog?.(`[extractCtx] no context limit for ${providerID}/${modelID}`)
+    return null
+  }
+
+  const pct = Math.round((used / contextLimit) * 100)
+  debugLog?.(`[extractCtx] ${used}/${contextLimit} = ${pct}%`)
+  return { pct, used, contextLimit }
+}
+
+/**
+ * Calculate context usage from sessionStore cached tokens (captured from step-finish).
+ * This is the preferred path since messages API returns tokens=0 during streaming.
+ */
+export function extractContextFromStore(
+  sessionStore: SessionStore,
+  sessionID: string,
+  providers: Array<{ id: string; models?: Record<string, { limit?: { context?: number } }> }>,
+  debugLog?: DebugLog,
+): ContextUsageInfo | null {
+  const state = sessionStore.get(sessionID)
+  const tokens = state?.lastTokens
+  if (!tokens) {
+    debugLog?.(`[ctxFromStore] ${formatSessionID(sessionID, true)} no lastTokens in store`)
+    return null
+  }
+
+  // Stale check: tokens older than 60s may be outdated
+  const ageMs = Date.now() - tokens.updatedAt
+  if (ageMs > 60_000) {
+    debugLog?.(`[ctxFromStore] ${formatSessionID(sessionID, true)} tokens stale (${Math.floor(ageMs / 1000)}s ago)`)
+    return null
+  }
+
+  const providerID = state.providerID
+  const modelID = state.modelID
+  if (!providerID || !modelID) {
+    debugLog?.(`[ctxFromStore] ${formatSessionID(sessionID, true)} missing provider/model info`)
+    return null
+  }
+
+  const used = (tokens.input ?? 0) + (tokens.cache?.read ?? 0)
+  if (used === 0) {
+    debugLog?.(`[ctxFromStore] ${formatSessionID(sessionID, true)} used=0`)
+    return null
+  }
+
+  const provider = providers.find((p) => p.id === providerID)
+  const contextLimit = provider?.models?.[modelID]?.limit?.context
+  if (!contextLimit) {
+    debugLog?.(`[ctxFromStore] ${formatSessionID(sessionID, true)} no contextLimit for ${providerID}/${modelID}`)
+    return null
+  }
+
+  const pct = Math.round((used / contextLimit) * 100)
+  debugLog?.(`[ctxFromStore] ${formatSessionID(sessionID, true)} ${used}/${contextLimit} = ${pct}%`)
+  return { pct, used, contextLimit }
+}
+
+/**
+ * Fetch context usage percentage with cache-first strategy.
+ * 1. Try sessionStore.lastTokens (captured from step-finish event)
+ * 2. Fallback to messages API (may return 0 during streaming)
+ */
 export async function fetchContextPercent(
   client: TaskMonitorDeps["client"],
+  sessionStore: SessionStore,
   directory: string,
   sessionID: string,
   debugLog: DebugLog,
 ): Promise<ContextUsageInfo | null> {
+  const ctxLog = (msg: string) => debugLog(`[ctxUsage] ${formatSessionID(sessionID, true)} ${msg}`)
+
   try {
-    if (typeof client.session?.messages !== "function") {
-      return null
-    }
-    const messagesResult = await client.session.messages({
-      path: { id: sessionID },
-    })
-    const messages = messagesResult?.data ?? []
-    const lastAssistant = [...messages].reverse().find((m) =>
-      m?.info?.role === "assistant" && m?.info?.tokens
-    )
-    if (!lastAssistant?.info?.tokens) {
-      return null
-    }
-
-    const tokens = lastAssistant.info.tokens
-    const used = (tokens.input ?? 0) + (tokens.cache?.read ?? 0)
-    if (used === 0) {
-      return null
-    }
-
+    // Get providers config (needed for contextLimit lookup)
     if (typeof client.config?.providers !== "function") {
+      ctxLog("no config.providers API")
       return null
     }
     const providersResult = await client.config.providers({
       query: { directory },
     })
     const providers = providersResult?.data?.providers ?? []
-    const providerID = lastAssistant.info.providerID ?? lastAssistant.info.model?.providerID
-    const modelID = lastAssistant.info.modelID ?? lastAssistant.info.model?.modelID
-    if (!providerID || !modelID) {
-      return null
+
+    // Cache-first: try sessionStore.lastTokens
+    const fromStore = extractContextFromStore(sessionStore, sessionID, providers, debugLog)
+    if (fromStore) {
+      ctxLog(`from store: ${fromStore.pct}%`)
+      return fromStore
     }
 
-    const provider = providers.find((p: { id: string }) => p.id === providerID)
-    const contextLimit = provider?.models?.[modelID]?.limit?.context
-    if (!contextLimit) {
+    // Fallback: messages API (may return tokens=0 during streaming)
+    if (typeof client.session?.messages !== "function") {
+      ctxLog("no session.messages API")
       return null
     }
+    const messagesResult = await client.session.messages({
+      path: { id: sessionID },
+    })
+    const messages = messagesResult?.data ?? []
+    ctxLog(`fetched ${messages.length} messages (fallback)`)
 
-    const pct = Math.round((used / contextLimit) * 100)
-    return { pct, used, contextLimit }
+    const result = extractContextUsage(messages, providers, debugLog)
+    if (result) {
+      ctxLog(`${result.used}/${result.contextLimit} = ${result.pct}%`)
+    }
+    return result
   } catch (err) {
-    debugLog(`[ctxUsage] ${formatSessionID(sessionID, true)} error: ${err instanceof Error ? err.message : String(err)}`)
+    ctxLog(`error: ${err instanceof Error ? err.message : String(err)}`)
     return null
   }
 }
 
 export async function getContextUsagePercent(
   client: TaskMonitorDeps["client"],
+  sessionStore: SessionStore,
   directory: string,
   sessionID: string,
   debugLog: DebugLog,
 ): Promise<number | null> {
-  const info = await fetchContextPercent(client, directory, sessionID, debugLog)
+  const info = await fetchContextPercent(client, sessionStore, directory, sessionID, debugLog)
   return info?.pct ?? null
 }
 
 export async function checkProgressNotifications(
   deps: TaskMonitorDeps,
 ): Promise<ProgressTaskInfo[]> {
-  const { tasks, client, debugLog, directory, sendProgressNotificationFn } = deps
+  const { tasks, sessionStore, client, debugLog, directory, sendProgressNotificationFn } = deps
   const taskInfos: ProgressTaskInfo[] = []
   const runningTasks = Array.from(tasks.values()).filter(t => t.status === 'running' && !t.idleNotified)
 
@@ -192,27 +284,26 @@ export async function checkProgressNotifications(
       let shouldNotify = messageCount > 0 && messageCount % PROGRESS_NOTIFY_MESSAGE_MODULO === 0
 
       // Time-based fallback: notify once per time quota slot (3 min each)
-      // This ensures stuck tasks (no message/context change) still get periodic notifications
       const now = new Date()
       const elapsedMs = now.getTime() - (task.startedAt?.getTime() ?? 0)
       const timeQuota = Math.floor(elapsedMs / PROGRESS_NOTIFY_TIME_THRESHOLD_MS)
-      const lastQuota = task.lastNotifyTimeQuota ?? -1
+      const lastQuota = task.lastNotifyTimeQuota ?? 0
       if (timeQuota > lastQuota) {
         task.lastNotifyTimeQuota = timeQuota
         shouldNotify = true
       }
 
-      let contextUsage: number | null = null
-      try {
-        contextUsage = await getContextUsagePercent(client, directory, task.sessionID, debugLog)
-      } catch {
-        // Graceful degradation
-      }
+      // Cache-first: prefer sessionStore.lastTokens to avoid streaming window returning null
+      const ctxInfo = await fetchContextPercent(client, sessionStore, directory, task.sessionID, debugLog)
+      const contextUsage = ctxInfo?.pct ?? null
 
-      if (contextUsage !== null) {
-        const modulo = contextUsage >= CONTEXT_WARN_THRESHOLD
-          ? CONTEXT_WARN_NOTIFY_MODULO
-          : CONTEXT_NOTIFY_MODULO
+      if (contextUsage !== null && contextUsage >= CONTEXT_WARN_THRESHOLD) {
+        const modulo = CONTEXT_WARN_NOTIFY_MODULO
+        if (contextUsage > 0 && contextUsage % modulo === 0) {
+          shouldNotify = true
+        }
+      } else if (contextUsage !== null) {
+        const modulo = CONTEXT_NOTIFY_MODULO
         if (contextUsage > 0 && contextUsage % modulo === 0) {
           shouldNotify = true
         }

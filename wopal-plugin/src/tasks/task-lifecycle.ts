@@ -1,7 +1,6 @@
 import type { CancelResult, WopalTask } from "../types.js"
 import type { DebugLog } from "../debug.js"
 import { formatSessionID } from "../debug.js"
-import type { IdleDiagnostic } from "./idle-diagnostic.js"
 import { toErrorMessage } from "./utils.js"
 import { sessionIDToTaskID } from "./task-launcher.js"
 
@@ -86,28 +85,6 @@ export function markTaskErrorBySession(
   }
 
   debugLog(`[markError] taskId=${task.id} ${formatSessionID(sessionID, true)} error="${error.substring(0, 100)}"`)
-  return task
-}
-
-export function markTaskWaitingBySession(
-  deps: TaskLifecycleDeps,
-  sessionID: string,
-  diagnostic: IdleDiagnostic,
-): WopalTask | undefined {
-  const { tasks, debugLog } = deps
-
-  const task = tasks.get(sessionIDToTaskID(sessionID))
-  if (!task || task.status !== 'running') {
-    return undefined
-  }
-
-  // Note: waiting state doesn't release concurrency slot, task may resume
-  task.status = 'waiting'
-  task.waitingReason = diagnostic.reason
-  if (diagnostic.lastMessage !== undefined) {
-    task.lastAssistantMessage = diagnostic.lastMessage
-  }
-  debugLog(`[markWaiting] taskId=${task.id} ${formatSessionID(sessionID, true)} reason=${diagnostic.reason}`)
   return task
 }
 

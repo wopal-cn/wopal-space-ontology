@@ -1,14 +1,11 @@
 // Merged from progress-tracker.ts + progress-analyzer.ts
 import type { SessionMessage, WopalTask } from "../types.js"
-import { createDebugLog } from "../debug.js"
 import {
   getMessageTime,
   extractToolCallSequence,
   hasAssistantTextContent,
   getFinishReason,
 } from "./session-messages.js"
-
-const debugLog = createDebugLog("[task]", "task")
 
 // --- progress-tracker ---
 
@@ -87,11 +84,6 @@ export function analyzeProgress(
     hasAssistantText,
     ...(finishReason !== undefined ? { finishReason } : {}),
   }
-
-  const toolSummary = toolCalls.length > 0
-    ? `, tools: ${toolCalls.map(t => `${t.tool}×${t.count}`).join(', ')}`
-    : ''
-  debugLog(`[progress] ${allMessages.length} msgs (+${newMessages.length})${toolSummary}`)
 
   return info
 }

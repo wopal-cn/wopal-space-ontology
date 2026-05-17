@@ -1,4 +1,5 @@
 import { createDebugLog } from "../debug.js"
+import type { SessionStore } from "../session-store.js"
 import type { ProgressInfo } from "../tasks/progress.js"
 import type { LoopWarning } from "../tasks/loop-detector.js"
 import { fetchContextPercent } from "../tasks/task-monitor.js"
@@ -61,8 +62,9 @@ export async function getContextUsage(
   client: any,
   sessionID: string,
   directory: string,
+  sessionStore: SessionStore,
 ): Promise<string | null> {
-  const info = await fetchContextPercent(client, directory, sessionID, debugLog)
+  const info = await fetchContextPercent(client, sessionStore, directory, sessionID, debugLog)
   if (!info) return null
 
   const warn = info.pct > 45 ? " ⚠️" : ""
