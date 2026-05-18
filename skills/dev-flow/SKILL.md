@@ -133,6 +133,12 @@ flow.sh plan --title "<type>(<scope>): <description>" --project <name> --type <t
 
 实施过程中，每完成一个 Task 就运行 Verify 命令通过后立即勾选对应 Done checkbox，不要积压到最后统一补勾。
 
+**委派原则**：
+- Wopal 是主控 Agent，所有实施类 Task 默认委派 fae 执行
+- Wopal 的职责：Plan 切片 → 委派 fae → 验证产出 → 推进下一 Wave
+- 例外（可由 Wopal 直接执行）：极小收尾工作（勾选 checkbox、同步 Issue body）、非代码操作（更新记忆、纯审查）
+- "代码复杂"或"需谨慎"不是跳过委派的理由 — 越复杂的任务越应该委派
+
 **Task 字段顺序与约束**：
 - Verification Intent → Behavior → Files → Pre-read → Design → TDD → Changes → Verify → Done
 - **Behavior 必填**：代码 Task（TDD=true）必须在 Behavior 中填写输入/输出映射；非代码 Task 可描述预期状态变化或跳过（TDD=false 时 Behavior 不强制）
