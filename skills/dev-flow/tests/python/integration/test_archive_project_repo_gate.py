@@ -1,22 +1,33 @@
 #!/usr/bin/env python3
-# test_archive_project_repo_gate.py - Test archive command gate on dirty project repo
+# test_archive_project_repo_gate.py - Test archive command behavior on project repo state
 #
-# Test Case: Archive prompts WARNING when target project repo has uncommitted changes
+# Test Case: Archive handles project repo with uncommitted changes
+#
+# Current behavior:
+#   - Auto-commit project changes (if no worktree)
+#   - Attempt push to origin/main
+#   - If push fails, archive fails
 #
 # Scenarios:
-#   1. dirty project repo + user confirms (y) -> archive succeeds with warning
-#   2. dirty project repo + user cancels (n) -> archive fails (user aborted)
-#   3. clean project repo -> archive succeeds normally (no prompt)
+#   1. dirty project repo + push succeeds -> archive succeeds
+#   2. dirty project repo + push fails -> archive fails
+#   3. clean project repo -> archive succeeds normally
 
 import unittest
 import subprocess
 import os
 import tempfile
 import shutil
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from support.bootstrap import ensure_scripts_path
+ensure_scripts_path()
 
 
 class TestArchiveProjectRepoGate(unittest.TestCase):
-    """Test archive command gate on project repo state"""
+    """Test archive command behavior on project repo state"""
 
     def setUp(self):
         # Get skill dir (tests/python/integration -> skill_dir)
@@ -45,6 +56,13 @@ class TestArchiveProjectRepoGate(unittest.TestCase):
 
     def _create_workspace_structure(self):
         """Create minimal workspace structure for archive test"""
+        # Create .wopal/.git worktree file (workspace root signature)
+        wopal_dir = os.path.join(self.tmp_dir, '.wopal')
+        os.makedirs(wopal_dir)
+        wopal_git = os.path.join(wopal_dir, '.git')
+        with open(wopal_git, 'w') as f:
+            f.write('gitdir: ../.git/worktrees/wopal-space-main\n')
+
         # docs/products/ontology/plans/ - for active plans (create first)
         plans_dir = os.path.join(
             self.tmp_dir, 'docs', 'products', 'ontology', 'plans')
@@ -92,6 +110,10 @@ class TestArchiveProjectRepoGate(unittest.TestCase):
                        cwd=self.tmp_dir, capture_output=True, check=True)
         subprocess.run(['git', 'config', 'user.name', 'Test'],
                        cwd=self.tmp_dir, capture_output=True, check=True)
+        # Add origin remote (required by detect_space_repo)
+        subprocess.run(['git', 'remote', 'add', 'origin',
+                        'https://github.com/sampx/wopal-space.git'],
+                       cwd=self.tmp_dir, capture_output=True, check=True)
 
         # Add docs to root git and commit (so git mv works)
         subprocess.run(['git', 'add', 'docs'], cwd=self.tmp_dir,
@@ -135,6 +157,8 @@ elif args[0] == 'issue' and args[1] == 'close':
 elif args[0] == 'label' and args[1] == 'create':
     # Accept label creation
     sys.exit(0)
+elif args[0] == 'label' and args[1] == 'list':
+    sys.exit(0)
 else:
     print('fake gh: ' + str(args), file=sys.stderr)
     sys.exit(0)  # Accept other calls for now
@@ -144,9 +168,9 @@ else:
             f.write(gh_script)
         os.chmod(gh_path, 0o755)
 
-    def test_archive_succeeds_when_user_confirms_on_dirty_repo(self):
-        """archive succeeds when user confirms (y) despite dirty project repo"""
-        # Create a file in project and DON'T commit (dirty state)
+    def test_archive_succeeds_with_auto_commit_and_mocked_push(self):
+        """archive succeeds when auto-commit works and push succeeds"""
+        # Create a file in project (dirty state)
         dirty_file = os.path.join(self.project_dir, 'dirty_file.txt')
         with open(dirty_file, 'w') as f:
             f.write('uncommitted changes')
@@ -155,32 +179,53 @@ else:
         env['PATH'] = self.bin_dir + ':' + env.get('PATH', '')
         env['GH_STATE_DIR'] = self.state_dir
 
-        # Simulate user confirming (input 'y')
+        # Mock push by creating fake git that succeeds on push
+        fake_git_path = os.path.join(self.bin_dir, 'git')
+        fake_git_script = '''#!/usr/bin/env python3
+import sys
+import os
+args = sys.argv[1:]
+# Intercept git push and return success
+if args[0] == 'push':
+    sys.exit(0)
+# Intercept git remote check
+if args[0] == 'remote':
+    if 'get-url' in args:
+        print('https://github.com/sampx/wopal-space.git')
+        sys.exit(0)
+# All other git commands: pass through to real git
+import subprocess
+result = subprocess.run(['/usr/bin/git'] + args, capture_output=True, text=True)
+sys.stdout.write(result.stdout)
+sys.stderr.write(result.stderr)
+sys.exit(result.returncode)
+'''
+        with open(fake_git_path, 'w') as f:
+            f.write(fake_git_script)
+        os.chmod(fake_git_path, 0o755)
+
         result = subprocess.run(
             [self.flow_bin, 'archive', '121'],
             cwd=self.tmp_dir,
             capture_output=True,
             text=True,
-            env=env,
-            input='y\n'  # User confirms to proceed
+            env=env
         )
 
-        # Archive should succeed with user confirmation
+        # Archive should succeed with auto-commit + mocked push
         self.assertEqual(result.returncode, 0,
-                         f'archive should succeed when user confirms: {result.stdout + result.stderr}')
+                         f'archive should succeed: {result.stdout + result.stderr}')
 
-        # Output should show warning about dirty state
+        # Output should show auto-commit
         output = result.stdout + result.stderr
-        self.assertIn('uncommitted', output.lower(),
-                      'output should warn about uncommitted changes')
-
-        # Output should show archived status
+        self.assertIn('Auto-committing', output,
+                      'output should show auto-commit step')
         self.assertIn('archived', output.lower(),
                       'output should mention archived status')
 
-    def test_archive_fails_when_user_cancels_on_dirty_repo(self):
-        """archive fails when user cancels (n) on dirty project repo"""
-        # Create a file in project and DON'T commit (dirty state)
+    def test_archive_fails_when_push_fails(self):
+        """archive fails when auto-commit succeeds but push fails"""
+        # Create a file in project (dirty state)
         dirty_file = os.path.join(self.project_dir, 'dirty_file.txt')
         with open(dirty_file, 'w') as f:
             f.write('uncommitted changes')
@@ -189,27 +234,50 @@ else:
         env['PATH'] = self.bin_dir + ':' + env.get('PATH', '')
         env['GH_STATE_DIR'] = self.state_dir
 
-        # Simulate user canceling (input 'n')
+        # Create fake git that fails on push
+        fake_git_path = os.path.join(self.bin_dir, 'git')
+        fake_git_script = '''#!/usr/bin/env python3
+import sys
+import subprocess
+args = sys.argv[1:]
+# Intercept git push and return failure
+if args[0] == 'push':
+    print('error: push failed (mocked)', file=sys.stderr)
+    sys.exit(1)
+# Intercept git remote check
+if args[0] == 'remote':
+    if 'get-url' in args:
+        print('https://github.com/sampx/wopal-space.git')
+        sys.exit(0)
+# All other git commands: pass through to real git
+result = subprocess.run(['/usr/bin/git'] + args, capture_output=True, text=True)
+sys.stdout.write(result.stdout)
+sys.stderr.write(result.stderr)
+sys.exit(result.returncode)
+'''
+        with open(fake_git_path, 'w') as f:
+            f.write(fake_git_script)
+        os.chmod(fake_git_path, 0o755)
+
         result = subprocess.run(
             [self.flow_bin, 'archive', '121'],
             cwd=self.tmp_dir,
             capture_output=True,
             text=True,
-            env=env,
-            input='n\n'  # User cancels
+            env=env
         )
 
-        # Archive should fail (user aborted)
+        # Archive should fail due to push failure
         self.assertNotEqual(result.returncode, 0,
-                            f'archive should fail when user cancels: {result.stdout + result.stderr}')
+                            f'archive should fail when push fails: {result.stdout + result.stderr}')
 
-        # Output should mention aborted or user decision
+        # Output should show push failure
         output = result.stdout + result.stderr
-        self.assertTrue('aborted' in output.lower() or 'cancel' in output.lower(),
-                        'output should mention user aborted/canceled')
+        self.assertIn('push', output.lower(),
+                      'output should mention push failure')
 
     def test_archive_passes_on_clean_project_repo(self):
-        """archive succeeds when project repo is clean (no prompt needed)"""
+        """archive succeeds when project repo is clean"""
         # Create a file and commit it (clean state)
         clean_file = os.path.join(self.project_dir, 'clean_file.txt')
         with open(clean_file, 'w') as f:
@@ -232,7 +300,7 @@ else:
             env=env
         )
 
-        # Archive should succeed with clean repo (no prompt)
+        # Archive should succeed with clean repo (no auto-commit needed)
         self.assertEqual(result.returncode, 0,
                          f'archive should succeed on clean project repo: {result.stderr}')
 

@@ -280,6 +280,38 @@ def sync_project_label_group(issue_number: int, target_label: str, repo: str) ->
     subprocess.run(args, capture_output=True)
 
 
+def sync_status_label_group(issue_number: int | str, target_label: str, repo: str) -> None:
+    """Sync status label group on Issue - command layer adapter.
+    
+    Takes a target label directly (e.g. 'status/in-progress') and performs
+    batch sync: removes other status/* labels, adds target.
+    
+    This is the unified interface for command layer callers that already
+    know the desired label, as opposed to sync_status_label which takes
+    a plan status string.
+    
+    Args:
+        issue_number: Issue number (int or str)
+        target_label: Target status label (e.g. 'status/in-progress')
+        repo: Repository in owner/repo format
+    """
+    current_labels = _get_issue_labels(issue_number, repo)
+    
+    labels_to_remove = [l for l in STATUS_LABELS if l in current_labels and l != target_label]
+    labels_to_add = [target_label] if target_label not in current_labels else []
+    
+    if not labels_to_add and not labels_to_remove:
+        return
+    
+    args = ['gh', 'issue', 'edit', str(issue_number), '--repo', repo]
+    for label in labels_to_remove:
+        args.extend(['--remove-label', label])
+    for label in labels_to_add:
+        args.extend(['--add-label', label])
+    
+    subprocess.run(args, capture_output=True)
+
+
 def ensure_label_exists(label_name: str, repo: str) -> None:
     """Ensure a label exists in the repo.
     

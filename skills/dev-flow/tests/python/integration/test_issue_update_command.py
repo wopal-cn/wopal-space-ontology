@@ -12,6 +12,14 @@ import os
 import tempfile
 import shutil
 import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from support.bootstrap import ensure_scripts_path
+ensure_scripts_path()
+
+from dev_flow.domain.issue.body import build_structured_issue_body
 
 
 class TestIssueUpdateCommand(unittest.TestCase):
@@ -34,7 +42,7 @@ class TestIssueUpdateCommand(unittest.TestCase):
         # Create fake gh stub
         self._create_fake_gh()
 
-        # Create initial issue body (using bash helper)
+        # Create initial issue body (using Python)
         self._create_initial_state()
 
     def tearDown(self):
@@ -44,7 +52,6 @@ class TestIssueUpdateCommand(unittest.TestCase):
         """Create fake gh stub that simulates issue view/edit"""
         gh_path = os.path.join(self.bin_dir, 'gh')
 
-        # Simplified gh stub matching Bash test behavior
         gh_script = '''#!/usr/bin/env python3
 import os
 import sys
@@ -88,6 +95,20 @@ elif cmd == 'issue view':
                 {"name": "status/planning"}
             ]
         }
+        
+        # Handle --jq query for labels
+        if '--jq' in rest_args:
+            jq_idx = rest_args.index('--jq')
+            jq_query = rest_args[jq_idx + 1] if jq_idx + 1 < len(rest_args) else ''
+            if jq_query == '.labels[].name':
+                # Return label names as newline-separated list
+                for label in issue_json['labels']:
+                    print(label['name'])
+                sys.exit(0)
+            # For other jq queries, return full JSON
+            print(json.dumps(issue_json))
+            sys.exit(0)
+        
         print(json.dumps(issue_json))
         sys.exit(0)
     
@@ -101,6 +122,16 @@ elif cmd == 'issue edit':
     
     # Body edit: gh issue edit N --repo R --body "..." --title "..."
     if '--body' in rest_args:
+        # Capture body value separately to preserve multi-line content
+        body_idx = rest_args.index('--body')
+        body_value = rest_args[body_idx + 1] if body_idx + 1 < len(rest_args) else ''
+        
+        # Write body to separate file for verification
+        body_file = os.path.join(state_dir, 'edit-body-value.txt')
+        with open(body_file, 'w') as f:
+            f.write(body_value)
+        
+        # Write all args for reference
         edit_file = os.path.join(state_dir, 'edit-body-args.txt')
         with open(edit_file, 'w') as f:
             for arg in rest_args:
@@ -124,60 +155,15 @@ else:
         os.chmod(gh_path, 0o755)
 
     def _create_initial_state(self):
-        """Create initial issue body using bash build_structured_issue_body"""
-        # Call bash to build the initial body (matches Bash test approach)
-        env = os.environ.copy()
-        env['PATH'] = self.bin_dir + ':' + env.get('PATH', '')
-
-        # Use bash inline to call build_structured_issue_body from lib/issue.sh
-        # This ensures we get the same body format as production
-        build_script = f'''
-source "{self.skill_dir}/lib/common.sh"
-source "{self.skill_dir}/lib/labels.sh"
-source "{self.skill_dir}/lib/issue.sh"
-body=$(build_structured_issue_body --type feature --goal "Old goal" --background "Old background" --scope "one,two" --reference "docs/original.md")
-printf '%s' "$body"
-'''
-
-        result = subprocess.run(
-            ['bash', '-c', build_script],
-            capture_output=True,
-            text=True,
-            cwd=self.skill_dir
+        """Create initial issue body using Python build_structured_issue_body"""
+        # Build structured body directly (no bash dependency)
+        body = build_structured_issue_body(
+            type='feature',
+            goal='Old goal',
+            background='Old background',
+            scope='one,two',
+            reference='docs/original.md'
         )
-
-        if result.returncode != 0:
-            # Fallback: construct body manually if bash fails
-            body = """## Goal
-
-Old goal
-
-## Background
-
-Old background
-
-## In Scope
-
-- one
-- two
-
-## Out of Scope
-
-
-
-## Acceptance Criteria
-
-待 plan 阶段细化
-
-## Related Resources
-
-| Resource | Link |
-|----------|------|
-| Research | docs/original.md |
-| Plan | _待关联_ |
-"""
-        else:
-            body = result.stdout
 
         # Write state files
         with open(os.path.join(self.state_dir, 'body.md'), 'w') as f:
@@ -207,17 +193,18 @@ Old background
                          f'issue update should succeed: {result.stderr}')
 
         # Check body edit captured new goal and preserved old sections
-        edit_file = os.path.join(self.state_dir, 'edit-body-args.txt')
-        self.assertTrue(os.path.exists(edit_file), 'edit-body-args.txt should exist')
+        # Use edit-body-value.txt which contains the full body string
+        body_file = os.path.join(self.state_dir, 'edit-body-value.txt')
+        self.assertTrue(os.path.exists(body_file), 'edit-body-value.txt should exist')
 
-        with open(edit_file) as f:
-            edit_args = f.read()
+        with open(body_file) as f:
+            updated_body = f.read()
 
-        self.assertIn('New goal', edit_args,
+        self.assertIn('New goal', updated_body,
                       'body edit should contain new goal')
-        self.assertIn('Old background', edit_args,
+        self.assertIn('Old background', updated_body,
                       'body edit should preserve old background')
-        self.assertIn('docs/original.md', edit_args,
+        self.assertIn('docs/original.md', updated_body,
                       'body edit should preserve reference')
 
         # Check label edits captured type and project syncs

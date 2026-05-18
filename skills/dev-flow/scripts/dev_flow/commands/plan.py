@@ -43,6 +43,7 @@ from dev_flow.domain.plan.find import find_plan, find_plan_by_issue, find_plan_b
 from dev_flow.domain.plan.naming import make_plan_name, validate_plan_name, ValidationError
 from dev_flow.domain.plan.metadata import get_plan_status
 from dev_flow.domain.issue.title import extract_scope, extract_type
+from dev_flow.domain.issue.sync import ensure_label_exists, sync_status_label_group
 from dev_flow.domain.labels import normalize_plan_type
 from dev_flow.domain.workflow import PLAN_STATES
 from dev_flow.domain.validation import check_doc_plan
@@ -134,21 +135,6 @@ def _resolve_plan_dir(project: str, workspace_root: Path) -> Path:
         return workspace_root / "docs" / "products" / project / "plans"
     else:
         return workspace_root / "docs" / "products" / "plans"
-
-
-def _ensure_issue_labels(issue_number: int, plan_file: str, repo: str) -> None:
-    """Ensure Issue has status/planning label."""
-    # Get current labels
-    issue_info = _get_issue_info(issue_number, repo)
-    current_labels = [l["name"] for l in issue_info.get("labels", [])]
-    
-    # Add status/planning if not present
-    if "status/planning" not in current_labels:
-        subprocess.run(
-            ["gh", "issue", "edit", str(issue_number), "--repo", repo, "--add-label", "status/planning"],
-            capture_output=True,
-            text=True,
-        )
 
 
 def _print_existing_plan_info(plan_file: str, target_ref: str) -> None:
@@ -553,7 +539,8 @@ def cmd_plan(args: argparse.Namespace) -> int:
     
     # Issue mode: Update Issue labels
     if issue_number:
-        _ensure_issue_labels(issue_number, str(plan_file), repo)
+        ensure_label_exists("status/planning", repo)
+        sync_status_label_group(issue_number, "status/planning", repo)
         
         # Output summary
         print(f"Plan: {plan_file}")

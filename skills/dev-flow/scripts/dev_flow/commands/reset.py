@@ -13,7 +13,7 @@ import re
 import subprocess
 
 from dev_flow.domain.plan.find import find_plan
-from dev_flow.domain.workflow import plan_status_to_issue_label
+from dev_flow.domain.issue.sync import sync_status_label_group
 from dev_flow.core.logging import log_info, log_success, log_warn, log_error
 from dev_flow.core.workspace import find_workspace_root, detect_space_repo
 
@@ -21,24 +21,6 @@ from dev_flow.core.workspace import find_workspace_root, detect_space_repo
 # ============================================
 # GitHub CLI Helpers
 # ============================================
-
-
-def sync_status_label_group(issue_number: str, label: str, repo: str) -> None:
-    """Sync Issue status label group - remove old status labels and add new one."""
-    # Remove all status/* labels
-    status_labels = ["status/planning", "status/in-progress", "status/verifying", "status/done"]
-    
-    for old_label in status_labels:
-        subprocess.run(
-            ["gh", "issue", "edit", issue_number, "--repo", repo, "--remove-label", old_label],
-            capture_output=True,
-        )
-    
-    # Add new status label
-    subprocess.run(
-        ["gh", "issue", "edit", issue_number, "--repo", repo, "--add-label", label],
-        capture_output=True,
-    )
 
 
 def remove_issue_label(issue_number: str, label: str, repo: str) -> None:

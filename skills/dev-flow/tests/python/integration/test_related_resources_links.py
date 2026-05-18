@@ -1,141 +1,119 @@
 #!/usr/bin/env python3
 # test_related_resources_links.py - Test Related Resources link update
 #
-# Test Case: update_issue_link updates existing English Related Resources row
+# Test Case: sync_plan_to_issue_body updates Related Resources Plan link
 #
 # Scenarios:
-#   1. update_issue_link updates existing English Related Resources row
+#   1. Plan with approved status -> Plan link rendered as GitHub URL
+#   2. Plan with planning status -> Plan link remains "_待关联_"
 
 import unittest
-import subprocess
-import os
+import sys
 import tempfile
-import shutil
+import os
+from pathlib import Path
+from unittest.mock import patch, MagicMock, call
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from support.bootstrap import ensure_scripts_path
+ensure_scripts_path()
+
+from dev_flow.domain.issue.sync import sync_plan_to_issue_body
 
 
 class TestRelatedResourcesLinks(unittest.TestCase):
-    """Test update_issue_link function for Related Resources table"""
+    """Test sync_plan_to_issue_body for Related Resources table"""
 
     def setUp(self):
-        # Get skill dir (tests/python/integration -> skill_dir)
-        test_file = os.path.abspath(__file__)
-        self.skill_dir = os.path.dirname(os.path.dirname(
-            os.path.dirname(os.path.dirname(test_file))))
-        self.flow_bin = os.environ.get('FLOW_BIN', 'scripts/flow.sh')
-
-        # Create temp directory for fake gh and state
+        # Create temp plan file
         self.tmp_dir = tempfile.mkdtemp()
-        self.bin_dir = os.path.join(self.tmp_dir, 'bin')
-        self.state_dir = os.path.join(self.tmp_dir, 'state')
-        os.makedirs(self.bin_dir)
-        os.makedirs(self.state_dir)
-
-        # Create fake gh stub
-        self._create_fake_gh()
-
-        # Create initial body with Related Resources table
-        self._create_initial_body()
-
+        self.plan_file = os.path.join(self.tmp_dir, "120-test-plan.md")
+        
     def tearDown(self):
+        import shutil
         shutil.rmtree(self.tmp_dir)
 
-    def _create_fake_gh(self):
-        """Create fake gh stub that simulates issue view/edit"""
-        gh_path = os.path.join(self.bin_dir, 'gh')
+    def _write_plan_file(self, status: str, project: str = "ontology") -> None:
+        """Write a plan file with given metadata."""
+        with open(self.plan_file, "w") as f:
+            f.write("# 120-test-plan\n\n")
+            f.write("## Metadata\n\n")
+            f.write(f"- **Issue**: #120\n")
+            f.write(f"- **Type**: feature\n")
+            f.write(f"- **Target Project**: {project}\n")
+            f.write(f"- **Created**: 2026-01-01\n")
+            f.write(f"- **Status**: {status}\n\n")
+            f.write("## Goal\n\nTest goal\n\n")
+            f.write("## In Scope\n\n- Item 1\n\n")
+            f.write("## Acceptance Criteria\n\n- [ ] AC 1\n")
 
-        gh_script = '''#!/usr/bin/env python3
-import os
-import sys
+    @patch("dev_flow.domain.issue.sync.subprocess.run")
+    @patch("dev_flow.domain.plan.body.build_repo_blob_url")
+    def test_approved_plan_updates_related_resources_link(self, mock_blob_url, mock_subprocess):
+        """sync_plan_to_issue_body: approved plan -> Plan link is GitHub URL"""
+        # Setup: approved plan
+        self._write_plan_file("executing", "ontology")
+        mock_blob_url.return_value = "https://github.com/sampx/wopal-space/blob/main/docs/products/ontology/plans/120-test-plan.md"
+        
+        # Mock gh CLI availability check
+        mock_subprocess.return_value = MagicMock(returncode=0)
+        
+        # Execute
+        sync_plan_to_issue_body(120, self.plan_file, "sampx/wopal-space")
+        
+        # Verify: gh issue edit was called with body containing plan link
+        calls = mock_subprocess.call_args_list
+        # Find the gh issue edit call
+        edit_call = None
+        for c in calls:
+            args = c[0][0]
+            if "issue" in args and "edit" in args:
+                edit_call = c
+                break
+        
+        self.assertIsNotNone(edit_call, "gh issue edit should be called")
+        args = edit_call[0][0]
+        
+        # Body should contain the plan link
+        body_idx = args.index("--body") + 1
+        body = args[body_idx]
+        
+        expected_link = "[120-test-plan](https://github.com/sampx/wopal-space/blob/main/docs/products/ontology/plans/120-test-plan.md)"
+        self.assertIn(expected_link, body,
+                      "Body should contain Plan link in Related Resources table")
+        self.assertIn("## Related Resources", body,
+                      "Body should contain Related Resources section")
 
-args = sys.argv[1:]
-state_dir = os.environ.get('GH_STATE_DIR', '/tmp/state')
-
-if args[0] == 'repo' and args[1] == 'view':
-    print('sampx/wopal-space')
-    sys.exit(0)
-
-elif args[0] == 'issue' and args[1] == 'view':
-    body_file = os.path.join(state_dir, 'body.md')
-    print(open(body_file).read() if os.path.exists(body_file) else '')
-    sys.exit(0)
-
-elif args[0] == 'issue' and args[1] == 'edit':
-    # Capture edit args to file
-    edit_file = os.path.join(state_dir, 'edit-args.txt')
-    with open(edit_file, 'w') as f:
-        for arg in args[2:]:
-            f.write(arg + '\\n')
-    sys.exit(0)
-
-else:
-    print(f'unexpected gh call: {args}', file=sys.stderr)
-    sys.exit(1)
-'''
-
-        with open(gh_path, 'w') as f:
-            f.write(gh_script)
-        os.chmod(gh_path, 0o755)
-
-    def _create_initial_body(self):
-        """Create initial body with Related Resources table containing placeholder Plan link"""
-        body = """## Goal
-
-Old goal
-
-## Related Resources
-
-| Resource | Link |
-|----------|------|
-| Plan | _待关联_ |
-"""
-        with open(os.path.join(self.state_dir, 'body.md'), 'w') as f:
-            f.write(body)
-
-    def test_update_issue_link_updates_existing_row(self):
-        """update_issue_link updates existing English Related Resources row"""
-        env = os.environ.copy()
-        env['PATH'] = self.bin_dir + ':' + env.get('PATH', '')
-        env['GH_STATE_DIR'] = self.state_dir
-
-        # Create driver script that calls update_issue_link (matches Bash test)
-        driver_script = f'''
-#!/bin/bash
-set -euo pipefail
-source "{self.skill_dir}/lib/common.sh"
-source "{self.skill_dir}/lib/labels.sh"
-source "{self.skill_dir}/lib/issue.sh"
-update_issue_link 120 sampx/wopal-space plan "[plan](https://github.com/sampx/wopal-space/blob/main/docs/products/ontology/plans/120.md)"
-'''
-
-        driver_path = os.path.join(self.tmp_dir, 'run.sh')
-        with open(driver_path, 'w') as f:
-            f.write(driver_script)
-        os.chmod(driver_path, 0o755)
-
-        result = subprocess.run(
-            ['bash', driver_path],
-            capture_output=True,
-            text=True,
-            env=env,
-            cwd=self.skill_dir
-        )
-
-        self.assertEqual(result.returncode, 0,
-                         f'update_issue_link should succeed: {result.stderr}')
-
-        # Check edit args captured Related Resources section and plan link
-        edit_file = os.path.join(self.state_dir, 'edit-args.txt')
-        self.assertTrue(os.path.exists(edit_file), 'edit-args.txt should exist')
-
-        with open(edit_file) as f:
-            edit_args = f.read()
-
-        self.assertIn('## Related Resources', edit_args,
-                      'edit args should contain Related Resources section')
-        self.assertIn('[plan](https://github.com/sampx/wopal-space/blob/main/docs/products/ontology/plans/120.md)',
-                      edit_args,
-                      'edit args should contain plan link')
+    @patch("dev_flow.domain.issue.sync.subprocess.run")
+    def test_planning_plan_keeps_placeholder_link(self, mock_subprocess):
+        """sync_plan_to_issue_body: planning plan -> Plan link remains '_待关联_'"""
+        # Setup: planning status
+        self._write_plan_file("planning", "ontology")
+        
+        # Mock gh CLI availability check
+        mock_subprocess.return_value = MagicMock(returncode=0)
+        
+        # Execute
+        sync_plan_to_issue_body(120, self.plan_file, "sampx/wopal-space")
+        
+        # Verify: body contains placeholder
+        calls = mock_subprocess.call_args_list
+        edit_call = None
+        for c in calls:
+            args = c[0][0]
+            if "issue" in args and "edit" in args:
+                edit_call = c
+                break
+        
+        self.assertIsNotNone(edit_call, "gh issue edit should be called")
+        args = edit_call[0][0]
+        
+        body_idx = args.index("--body") + 1
+        body = args[body_idx]
+        
+        self.assertIn("_待关联_", body,
+                      "Body should contain placeholder Plan link for planning status")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

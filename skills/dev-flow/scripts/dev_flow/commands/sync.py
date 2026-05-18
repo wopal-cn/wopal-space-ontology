@@ -19,7 +19,14 @@ import re
 from pathlib import Path
 
 from dev_flow.domain.plan.find import find_plan_by_issue
-from dev_flow.domain.issue.link import build_repo_blob_url
+from dev_flow.domain.issue.sync import (
+    sync_status_label_group,
+    sync_type_label_group,
+    sync_project_label_group,
+    ensure_label_exists,
+    plan_status_to_issue_label,
+    plan_project_to_issue_label,
+)
 from dev_flow.domain.labels import (
     normalize_plan_type,
     plan_type_to_issue_label,
@@ -48,25 +55,6 @@ def get_issue_info(issue_number: str, repo: str) -> dict:
         raise RuntimeError("gh issue view failed")
     
     return json.loads(result.stdout)
-
-
-def ensure_label_exists(label: str, repo: str) -> None:
-    """Ensure a label exists in the repo."""
-    # Check if label exists
-    result = subprocess.run(
-        ["gh", "label", "list", "--repo", repo, "--json", "name", "-q", f'.[] | select(.name == "{label}")'],
-        capture_output=True,
-        text=True,
-    )
-    if result.stdout.strip():
-        return  # Label exists
-    
-    # Create label with default color
-    subprocess.run(
-        ["gh", "label", "create", label, "--repo", repo, "--color", "dddddd"],
-        capture_output=True,
-        text=True,
-    )
 
 
 # ============================================
@@ -175,105 +163,6 @@ def sync_plan_to_issue(issue_number: str, plan_file: str, repo: str) -> int:
     
     log_success(f"Issue #{issue_number} updated with plan content")
     return 0
-
-
-def plan_status_to_issue_label(plan_status: str) -> str:
-    """Map plan status to Issue label (4-state model)."""
-    mapping = {
-        'planning': 'status/planning',
-        'executing': 'status/in-progress',
-        'verifying': 'status/verifying',
-        'done': 'status/done',
-    }
-    return mapping.get(plan_status, '')
-
-
-def plan_project_to_issue_label(project: str) -> str:
-    """Map project name to Issue label."""
-    if project:
-        return f"project/{project}"
-    return ''
-
-
-def sync_status_label_group(issue_number: str, desired_label: str, repo: str) -> None:
-    """Sync status label group - remove others, add desired."""
-    status_labels = ["status/planning", "status/in-progress", "status/verifying", "status/done"]
-    
-    # Get current labels
-    issue_info = get_issue_info(issue_number, repo)
-    current_labels = [l['name'] for l in issue_info.get('labels', [])]
-    
-    # Build add/remove args
-    add_labels = [desired_label] if desired_label else []
-    remove_labels = [l for l in status_labels if l in current_labels and l != desired_label]
-    
-    if not add_labels and not remove_labels:
-        return
-    
-    # Single gh call with all label ops
-    args = ["gh", "issue", "edit", issue_number, "--repo", repo]
-    for label in remove_labels:
-        args.extend(["--remove-label", label])
-    for label in add_labels:
-        args.extend(["--add-label", label])
-    
-    subprocess.run(args, capture_output=True, text=True)
-
-
-def sync_type_label_group(issue_number: str, desired_label: str, repo: str) -> None:
-    """Sync type label group - remove others, add desired."""
-    type_labels = ["type/feature", "type/bug", "type/perf", "type/refactor", "type/docs", "type/test", "type/chore"]
-    
-    # Get current labels
-    issue_info = get_issue_info(issue_number, repo)
-    current_labels = [l['name'] for l in issue_info.get('labels', [])]
-    
-    # Build add/remove args
-    add_labels = [desired_label] if desired_label else []
-    remove_labels = [l for l in type_labels if l in current_labels and l != desired_label]
-    
-    if not add_labels and not remove_labels:
-        return
-    
-    # Ensure desired label exists
-    if desired_label:
-        ensure_label_exists(desired_label, repo)
-    
-    # Single gh call with all label ops
-    args = ["gh", "issue", "edit", issue_number, "--repo", repo]
-    for label in remove_labels:
-        args.extend(["--remove-label", label])
-    for label in add_labels:
-        args.extend(["--add-label", label])
-    
-    subprocess.run(args, capture_output=True, text=True)
-
-
-def sync_project_label_group(issue_number: str, desired_label: str, repo: str) -> None:
-    """Sync project label group - remove any project/* labels, add desired."""
-    # Get current labels
-    issue_info = get_issue_info(issue_number, repo)
-    current_labels = [l['name'] for l in issue_info.get('labels', [])]
-    
-    # Dynamically remove any project/* labels except the target
-    add_labels = [desired_label] if desired_label else []
-    remove_labels = [l for l in current_labels if re.match(r'^project/', l) and l != desired_label]
-    
-    if not add_labels and not remove_labels:
-        return
-    
-    # Ensure desired label exists
-    if desired_label:
-        ensure_label_exists(desired_label, repo)
-    
-    # Single gh call with all label ops
-    args = ["gh", "issue", "edit", issue_number, "--repo", repo]
-    for label in remove_labels:
-        args.extend(["--remove-label", label])
-    for label in add_labels:
-        args.extend(["--add-label", label])
-    
-    subprocess.run(args, capture_output=True, text=True)
 
 
 def ensure_issue_labels(issue_number: str, plan_file: str, repo: str) -> int:
