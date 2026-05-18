@@ -243,3 +243,236 @@ function findDumpFiles(dir: string, pattern: string): string[] {
     .filter((f: string) => f.includes(pattern))
     .map((f: string) => join(dir, f));
 }
+
+// --- Compact action tests (Task 2) ---
+
+import { SessionStore } from '../session-store.js';
+
+const compactMockSummarize = vi.fn();
+const compactMockGet = vi.fn();
+const compactMockMessages = vi.fn();
+const compactMockConfigProviders = vi.fn();
+
+const compactClient = {
+  session: {
+    summarize: compactMockSummarize,
+    get: compactMockGet,
+    messages: compactMockMessages,
+  },
+  config: {
+    providers: compactMockConfigProviders,
+  },
+};
+
+const compactCtx = { sessionID: 'ses_compact_test' } as { sessionID: string };
+const compactSessionStore = new SessionStore();
+const compactTestDir = join(tmpdir(), 'wopal-test-compact');
+
+describe('context_manage: handleCompact', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    compactSessionStore.reset();
+    compactMockSummarize.mockResolvedValue({});
+    compactMockGet.mockResolvedValue({ data: { id: 'ses_compact_test' } });
+    compactMockMessages.mockResolvedValue({ data: [] });
+    compactMockConfigProviders.mockResolvedValue({
+      data: {
+        providers: [
+          {
+            id: 'test-provider',
+            models: {
+              'test-model': { limit: { context: 100000 } },
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('C1: calls session.summarize with providerID/modelID from sessionStore', async () => {
+    // Setup: sessionStore has model info from step-finish event
+    compactSessionStore.upsert('ses_compact_test', (state) => {
+      state.providerID = 'test-provider';
+      state.modelID = 'test-model';
+      state.lastTokens = { input: 50000, output: 1000, updatedAt: Date.now() };
+    });
+
+    const tool = createContextManageTool(
+      distillLLM,
+      compactClient,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      compactTestDir,
+    );
+    // Inject sessionStore via tool context (will be added in implementation)
+    const execute = getExecute(tool);
+
+    // Pass sessionStore in context (simulating runtime injection)
+    const contextWithStore = { ...compactCtx, sessionStore: compactSessionStore };
+    const result = await execute({ action: 'compact' }, contextWithStore);
+
+    expect(compactMockSummarize).toHaveBeenCalledOnce();
+    expect(compactMockSummarize).toHaveBeenCalledWith({
+      path: { id: 'ses_compact_test' },
+      body: { providerID: 'test-provider', modelID: 'test-model' },
+    });
+    expect(result).toContain('Context: 50%');
+    expect(result).toContain('Compacting session');
+  });
+
+  it('C2: normalizes wopal-task-xxx session_id to ses_xxx', async () => {
+    compactSessionStore.upsert('ses_task123', (state) => {
+      state.providerID = 'test-provider';
+      state.modelID = 'test-model';
+      state.lastTokens = { input: 30000, output: 500, updatedAt: Date.now() };
+    });
+
+    const tool = createContextManageTool(
+      distillLLM,
+      compactClient,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      compactTestDir,
+    );
+    const execute = getExecute(tool);
+    const contextWithStore = { sessionID: 'ses_main', sessionStore: compactSessionStore };
+
+    const result = await execute({ action: 'compact', session_id: 'wopal-task-task123' }, contextWithStore);
+
+    expect(compactMockSummarize).toHaveBeenCalledWith({
+      path: { id: 'ses_task123' },
+      body: { providerID: 'test-provider', modelID: 'test-model' },
+    });
+    expect(result).toContain('Context: 30%');
+  });
+
+  it('C3: returns error when session does not exist in sessionStore', async () => {
+    const tool = createContextManageTool(
+      distillLLM,
+      compactClient,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      compactTestDir,
+    );
+    const execute = getExecute(tool);
+    const contextWithStore = { ...compactCtx, sessionStore: compactSessionStore };
+
+    const result = await execute({ action: 'compact' }, contextWithStore);
+
+    expect(compactMockSummarize).not.toHaveBeenCalled();
+    expect(result).toContain('Failed: session not found');
+  });
+
+  it('C4: prevents double-compaction when isCompacting=true', async () => {
+    compactSessionStore.markCompacting('ses_compact_test', Date.now());
+
+    const tool = createContextManageTool(
+      distillLLM,
+      compactClient,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      compactTestDir,
+    );
+    const execute = getExecute(tool);
+    const contextWithStore = { ...compactCtx, sessionStore: compactSessionStore };
+
+    const result = await execute({ action: 'compact' }, contextWithStore);
+
+    expect(compactMockSummarize).not.toHaveBeenCalled();
+    expect(result).toContain('Already compacting');
+  });
+
+  it('C5: returns error when summarize API unavailable', async () => {
+    compactSessionStore.upsert('ses_compact_test', (state) => {
+      state.providerID = 'test-provider';
+      state.modelID = 'test-model';
+    });
+
+    const clientWithoutSummarize = {
+      session: {
+        get: compactMockGet,
+        messages: compactMockMessages,
+      },
+    };
+
+    const tool = createContextManageTool(
+      distillLLM,
+      clientWithoutSummarize,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      compactTestDir,
+    );
+    const execute = getExecute(tool);
+    const contextWithStore = { ...compactCtx, sessionStore: compactSessionStore };
+
+    const result = await execute({ action: 'compact' }, contextWithStore);
+
+    expect(result).toContain('Failed: session.summarize API unavailable');
+  });
+
+  it('C6: reports current context usage percentage before compaction', async () => {
+    compactSessionStore.upsert('ses_compact_test', (state) => {
+      state.providerID = 'test-provider';
+      state.modelID = 'test-model';
+      state.lastTokens = { input: 75000, output: 2000, updatedAt: Date.now() };
+    });
+
+    const tool = createContextManageTool(
+      distillLLM,
+      compactClient,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      compactTestDir,
+    );
+    const execute = getExecute(tool);
+    const contextWithStore = { ...compactCtx, sessionStore: compactSessionStore };
+
+    const result = await execute({ action: 'compact' }, contextWithStore);
+
+    expect(result).toContain('Context: 75%');
+    expect(result).toContain('used ⚠️');
+  });
+
+  it('C7: handles missing provider/model info gracefully', async () => {
+    compactSessionStore.upsert('ses_compact_test', (state) => {
+      state.lastTokens = { input: 50000, output: 1000, updatedAt: Date.now() };
+    });
+
+    const tool = createContextManageTool(
+      distillLLM,
+      compactClient,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      compactTestDir,
+    );
+    const execute = getExecute(tool);
+    const contextWithStore = { ...compactCtx, sessionStore: compactSessionStore };
+
+    const result = await execute({ action: 'compact' }, contextWithStore);
+
+    expect(compactMockSummarize).toHaveBeenCalledOnce();
+    // Should still attempt compaction even without model info
+    expect(compactMockSummarize).toHaveBeenCalledWith({
+      path: { id: 'ses_compact_test' },
+      body: { providerID: '', modelID: '' },
+    });
+  });
+});

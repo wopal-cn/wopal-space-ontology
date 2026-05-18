@@ -165,4 +165,190 @@ describe("OpenCodeRulesRuntime event handling", () => {
 
     expect(taskManager.notifyParent).not.toHaveBeenCalled()
   })
+
+  // Task 3: session.compacted event handling tests
+  describe("session.compacted event handling", () => {
+    it("sends auto-continue message for main session when needsAutoContinue is true", async () => {
+      const sessionStore = new SessionStore({ max: 10 })
+      const mockPromptAsync = vi.fn().mockResolvedValue(undefined)
+      
+      const ctx = {
+        client: {
+          session: {
+            messages: vi.fn().mockResolvedValue({ data: [] }),
+            promptAsync: mockPromptAsync,
+          },
+        },
+        sessionStore,
+        contextDebugLog: () => {},
+        taskDebugLog: () => {},
+        taskManager: {
+          findBySession: vi.fn().mockReturnValue(undefined), // No task = main session
+          getClient: vi.fn().mockReturnValue({
+            session: {
+              messages: vi.fn().mockResolvedValue({ data: [] }),
+            },
+          }),
+          markTaskCompletedBySession: vi.fn(),
+          markTaskErrorBySession: vi.fn(),
+          notifyParent: vi.fn(),
+          releaseConcurrencySlot: vi.fn(),
+          recoverFromSession: vi.fn().mockResolvedValue(undefined),
+        } as never,
+      }
+      
+      // Pre-condition: Plugin-initiated compact (via context_manage tool)
+      sessionStore.markCompacting("main-session", Date.now(), "plugin")
+      sessionStore.upsert("main-session", (state) => {
+        state.loadedSkills = new Set(["space-master"])
+      })
+      
+      const hooks = createEventRouter(ctx as never)
+
+      await hooks.event({
+        event: { type: "session.compacted", properties: { sessionID: "main-session" } },
+      })
+
+      // Verify markCompacted was called and then consumed by recovery
+      const state = sessionStore.get("main-session")
+      expect(state?.compactingTrigger).toBeUndefined() // consumed by event handler
+
+      // Verify promptAsync was called with recovery message
+      expect(mockPromptAsync).toHaveBeenCalledWith({
+        path: { id: "main-session" },
+        body: {
+          noReply: false,
+          parts: [{
+            type: "text",
+            text: expect.stringContaining("The session context has been compacted"),
+            synthetic: true,
+          }],
+        },
+      })
+
+      // Verify message contains recovery protocol and skill reload instruction
+      const callArgs = mockPromptAsync.mock.calls[0][0]
+      const messageText = callArgs.body.parts[0].text
+      expect(messageText).toContain("Execute recovery protocol immediately")
+      expect(messageText).toContain("Reload previously loaded skills: space-master")
+      expect(messageText).toContain("<CRITICAL_RULE>")
+      expect(messageText).toContain("Search and load task-relevant memories")
+    })
+
+    it("sends compacted notification for child session when needsAutoContinue is true", async () => {
+      const sessionStore = new SessionStore({ max: 10 })
+      const mockPromptAsync = vi.fn().mockResolvedValue(undefined)
+      
+      const mockTask = {
+        id: "wopal-task-123",
+        sessionID: "child-session",
+        description: "Test task",
+        parentSessionID: "parent-session",
+      }
+      
+      const ctx = {
+        client: {
+          session: {
+            messages: vi.fn().mockResolvedValue({ data: [] }),
+            promptAsync: mockPromptAsync,
+          },
+        },
+        sessionStore,
+        contextDebugLog: () => {},
+        taskDebugLog: () => {},
+        taskManager: {
+          findBySession: vi.fn().mockReturnValue(mockTask), // Has task = child session
+          getClient: vi.fn().mockReturnValue({
+            session: {
+              messages: vi.fn().mockResolvedValue({ data: [] }),
+            },
+          }),
+          markTaskCompletedBySession: vi.fn(),
+          markTaskErrorBySession: vi.fn(),
+          notifyParent: vi.fn(),
+          releaseConcurrencySlot: vi.fn(),
+          recoverFromSession: vi.fn().mockResolvedValue(undefined),
+        } as never,
+      }
+      
+      // Pre-condition: Plugin-initiated compact (via context_manage tool)
+      sessionStore.markCompacting("child-session", Date.now(), "plugin")
+      
+      const hooks = createEventRouter(ctx as never)
+
+      await hooks.event({
+        event: { type: "session.compacted", properties: { sessionID: "child-session" } },
+      })
+
+      // Verify markCompacted was called and then consumed by notification
+      const state = sessionStore.get("child-session")
+      expect(state?.compactingTrigger).toBeUndefined() // consumed by event handler
+
+      // Verify promptAsync was called to parent session with [WOPAL TASK COMPACTED]
+      expect(mockPromptAsync).toHaveBeenCalledWith({
+        path: { id: "parent-session" },
+        body: {
+          noReply: false,
+          parts: [{
+            type: "text",
+            text: expect.stringContaining("[WOPAL TASK COMPACTED]"),
+            synthetic: true,
+          }],
+        },
+      })
+
+      // Verify message contains task info and recovery instruction
+      const callArgs = mockPromptAsync.mock.calls[0][0]
+      const messageText = callArgs.body.parts[0].text
+      expect(messageText).toContain("Task ID: wopal-task-123")
+      expect(messageText).toContain("Description: Test task")
+      expect(messageText).toContain("Use wopal_task_reply to send recovery instructions")
+    })
+
+    it("skips recovery when session was not compacting before event (non-Plugin trigger)", async () => {
+      const sessionStore = new SessionStore({ max: 10 })
+      const mockPromptAsync = vi.fn().mockResolvedValue(undefined)
+      
+      const ctx = {
+        client: {
+          session: {
+            messages: vi.fn().mockResolvedValue({ data: [] }),
+            promptAsync: mockPromptAsync,
+          },
+        },
+        sessionStore,
+        contextDebugLog: () => {},
+        taskDebugLog: () => {},
+        taskManager: {
+          findBySession: vi.fn().mockReturnValue(undefined),
+          getClient: vi.fn().mockReturnValue({
+            session: {
+              messages: vi.fn().mockResolvedValue({ data: [] }),
+            },
+          }),
+          markTaskCompletedBySession: vi.fn(),
+          markTaskErrorBySession: vi.fn(),
+          notifyParent: vi.fn(),
+          releaseConcurrencySlot: vi.fn(),
+          recoverFromSession: vi.fn().mockResolvedValue(undefined),
+        } as never,
+      }
+      
+      const hooks = createEventRouter(ctx as never)
+
+      // Simulate compacted event WITHOUT prior compacting state
+      // (This happens when EllaMaka auto-compacts or other non-Plugin triggers)
+      await hooks.event({
+        event: { type: "session.compacted", properties: { sessionID: "main-session" } },
+      })
+
+      // markCompacted should still be called (sets needsAutoContinue=true)
+      const state = sessionStore.get("main-session")
+      expect(state?.needsAutoContinue).toBe(true)
+      
+      // But there's no compactingSince record, so Plugin should skip recovery
+      expect(state?.compactingSince).toBeUndefined()
+      expect(mockPromptAsync).not.toHaveBeenCalled()
+    })
+  })
 })

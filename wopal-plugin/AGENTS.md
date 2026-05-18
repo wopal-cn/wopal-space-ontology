@@ -40,7 +40,7 @@ Memory 双开关：`WOPAL_MEMORY_ENABLED=false` 时 `WOPAL_MEMORY_INJECTION_ENAB
 | 规则发现/匹配/注入 | Rules | `[rules]` | `rules` |
 | LanceDB/Embedding/LLM 初始化, 记忆检索/注入 | Memory | `[memory]` | `memory` |
 | 任务委派/监控/通信 | Task | `[task]` | `task` |
-| 会话状态/snapshot/compaction/context 管理 | Context | `[context]` | `context` |
+| 会话状态/snapshot/compaction/context 管理/上下文压缩 | Context | `[context]` | `context` |
 
 **日志格式规则**：
 
@@ -63,6 +63,11 @@ Memory 双开关：`WOPAL_MEMORY_ENABLED=false` 时 `WOPAL_MEMORY_INJECTION_ENAB
 - `conversation-context.ts` — `buildEnrichedQuery()` 提供记忆检索的语义 query
 
 新增注入逻辑必须放在对应 injector 中，**禁止直接在 `system-transform.ts` 中拼接**。
+
+**event-router.ts**：`session.compacted` 事件处理，压缩后自动恢复：
+- 主会话：自动发送恢复指令（重载技能、读取关键文件、搜索记忆）
+- 子会话：发送 `[WOPAL TASK COMPACTED]` 通知到主 Agent，主 Agent 通过 `wopal_task_reply` 发送精准恢复指令
+- 通过 `compactingTrigger === "plugin"` 区分 Plugin 触发 vs EllaMaka 自动压缩
 
 ### tasks
 
@@ -92,6 +97,11 @@ Memory 双开关：`WOPAL_MEMORY_ENABLED=false` 时 `WOPAL_MEMORY_INJECTION_ENAB
 ### 新增工具
 
 在 `tools/` 下新建文件，在 `tools/index.ts` 的 `createWopalTools()` 中注册。任务相关工具统一 `wopal_task_*` 前缀。
+
+**context_manage 工具**：`compact` action 触发上下文压缩：
+- `action="compact"`：压缩当前会话或指定子会话（`session_id="wopal-task-xxx"`）
+- 压缩决策权归主 Agent（通过 space-master skill 策略），工具不做阈值判断
+- 压缩后自动恢复机制见 event-router.ts
 
 ### 新增记忆分类
 

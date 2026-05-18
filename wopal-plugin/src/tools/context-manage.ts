@@ -15,8 +15,11 @@ import {
 } from "../memory/session-context.js";
 import type { SessionMessage, SystemPromptMetadata } from "../types.js";
 import type { MessageWithInfo } from "../hooks/message-context.js";
+import type { SessionStore } from "../session-store.js";
+import { SessionStore as SessionStoreClass } from "../session-store.js";
 import { createDebugLog, formatSessionID } from "../debug.js";
 import { writeContextDump, findActualKey } from "./dump-formatter.js";
+import { fetchContextPercent } from "../tasks/task-monitor.js";
 
 const debugLog = createDebugLog("[context]", "context");
 
@@ -44,12 +47,14 @@ export function createContextManageTool(
   systemInjectionsMap?: Map<string, string[]>,
   transformedMessagesMap?: Map<string, MessageWithInfo[]>,
   workspaceDir?: string,
+  sessionStore?: SessionStore,
 ): ToolDefinition {
   const snapshotMap = systemSnapshots ?? new Map<string, string[]>();
   const metadataMap = systemMetadataMap ?? new Map<string, SystemPromptMetadata>();
   const injectionsMap = systemInjectionsMap ?? new Map<string, string[]>();
   const messagesMap = transformedMessagesMap ?? new Map<string, MessageWithInfo[]>();
   const baseDir = workspaceDir ?? ".";
+  const store = sessionStore ?? new SessionStoreClass();
 
   return tool({
     description:
@@ -59,15 +64,18 @@ export function createContextManageTool(
       "- 'dump': Export session context to file.\n" +
       "  Default: dump current session (no session_id needed).\n" +
       "  Optional session_id: dump specific session (accepts 'ses_xxx' or 'wopal-task-xxx').\n" +
-      "  Default is compact mode (truncates long content, recommended). Use detail=true only when user requests full content.",
+      "  Default is compact mode (truncates long content, recommended). Use detail=true only when user requests full content.\n" +
+      "- 'compact': Compact session context (manual compaction).\n" +
+      "  Reports current context usage and triggers compaction. No threshold parameter—agent decides when to compact.\n" +
+      "  Optional session_id: compact specific session (accepts 'ses_xxx' or 'wopal-task-xxx'). Default: current session.",
     args: {
       action: tool.schema
-        .enum(["summary", "dump"] as const)
-        .describe("'summary' to generate summary and update title, 'dump' to export session context"),
+        .enum(["summary", "dump", "compact"] as const)
+        .describe("'summary' to generate summary and update title, 'dump' to export session context, 'compact' to compact session"),
       session_id: tool.schema
         .string()
         .optional()
-        .describe("Optional session ID for cross-session dump. Default: dump current session. Accepts ses_xxx or wopal-task-xxx format."),
+        .describe("Optional session ID for cross-session operations. Accepts ses_xxx or wopal-task-xxx format."),
       detail: tool.schema
         .boolean()
         .optional()
@@ -121,6 +129,24 @@ export function createContextManageTool(
             : "structured metadata"
           : `${result.blockCount} raw blocks`;
         return `Context dumped to ${result.filepath}\n\n- **Session:** ${dumpSessionID}\n- **System prompt:** ${sysPromptLabel} (${metaLabel})\n- **Plugin injections:** ${result.injectionCount}\n- **Messages:** ${result.messageCount}`;
+      }
+
+      if (args.action === "compact") {
+        const rawSessionID = args.session_id ?? sessionID;
+        if (!rawSessionID) {
+          return "Failed: no session ID available for compact.";
+        }
+        const compactSessionID = normalizeSessionID(rawSessionID);
+        const isTask = rawSessionID.startsWith("wopal-task-");
+
+        debugLog(`[context_manage] compact ${formatSessionID(compactSessionID, isTask)}`);
+
+        // Get sessionStore from context (tests inject it directly)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ctxStore = (context as any).sessionStore as SessionStore | undefined;
+        const sessionStore = ctxStore ?? store;
+
+        return await handleCompact(compactSessionID, client, sessionStore, baseDir, isTask);
       }
 
       if (!sessionID) {
@@ -234,4 +260,77 @@ ${truncatedText}
     const message = error instanceof Error ? error.message : String(error);
     return `Failed to generate summary: ${message}`;
   }
+}
+
+async function handleCompact(
+  sessionID: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: any,
+  sessionStore: SessionStore,
+  directory: string,
+  isTask: boolean,
+): Promise<string> {
+  // 1. Check sessionStore.isCompacting (prevent double-compaction)
+  const state = sessionStore.get(sessionID);
+  if (state?.isCompacting) {
+    const since = state.compactingSince;
+    const elapsedSec = since ? Math.floor((Date.now() - since) / 1000) : "?";
+    return `Already compacting ${formatSessionID(sessionID, isTask)} (started ${elapsedSec}s ago). Wait for compaction to complete.`;
+  }
+
+  // 2. Check if session exists in store (has provider/model info)
+  if (!state) {
+    return `Failed: session not found in store. Ensure the session ${formatSessionID(sessionID, isTask)} has been active (received at least one step-finish event).`;
+  }
+
+  // 3. Get current context usage
+  let contextPct: number | null = null;
+  let contextInfo = "";
+  try {
+    const ctxInfo = await fetchContextPercent(client, sessionStore, directory, sessionID, debugLog);
+    if (ctxInfo) {
+      contextPct = ctxInfo.pct;
+      const warning = contextPct >= 75 ? " ⚠️" : contextPct >= 55 ? " ⚡" : "";
+      contextInfo = `Context: ${contextPct}% used${warning} (${ctxInfo.used}/${ctxInfo.contextLimit} tokens)`;
+    } else {
+      contextInfo = "Context: unknown (no token data available)";
+    }
+  } catch {
+    contextInfo = "Context: unknown (failed to fetch)";
+  }
+
+  // 4. Check summarize API availability
+  if (typeof client?.session?.summarize !== "function") {
+    return `Failed: session.summarize API unavailable.\n${contextInfo}`;
+  }
+
+  // 5. Get providerID/modelID from sessionStore
+  const providerID = state.providerID ?? "";
+  const modelID = state.modelID ?? "";
+
+  // 6. Mark as compacting
+  sessionStore.markCompacting(sessionID, Date.now());
+
+  // 7. Call summarize API
+  try {
+    await client.session.summarize({
+      path: { id: sessionID },
+      body: { providerID, modelID },
+    });
+  } catch (error) {
+    // Reset compacting state on failure
+    sessionStore.markCompacted(sessionID);
+    const message = error instanceof Error ? error.message : String(error);
+    return `Failed to compact: ${message}\n${contextInfo}`;
+  }
+
+  return [
+    `Compacting session ${formatSessionID(sessionID, isTask)}...`,
+    contextInfo,
+    `Model: ${providerID || "?"}/${modelID || "?"}`,
+    "Compaction triggered. The session will be summarized and become IDLE.",
+    isTask
+      ? "Parent agent will be notified via [WOPAL TASK COMPACTED]. Use wopal_task_reply to send recovery instructions."
+      : "Recovery message will be sent automatically after compaction completes.",
+  ].join("\n");
 }

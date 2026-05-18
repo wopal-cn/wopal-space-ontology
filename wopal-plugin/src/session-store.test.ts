@@ -71,6 +71,34 @@ describe("SessionStore", () => {
       expect(state?.isCompacting).toBe(false);
       expect(state?.needsSkillReload).toBeUndefined();
     });
+
+    it("sets needsAutoContinue to true", () => {
+      const store = new SessionStore({ max: 100 });
+      store.upsert("ses_c", (s) => {
+        s.isCompacting = true;
+        s.compactingSince = 1000;
+      });
+
+      store.markCompacted("ses_c");
+
+      const state = store.get("ses_c");
+      expect(state?.needsAutoContinue).toBe(true);
+    });
+
+    it("sets needsAutoContinue even when skills are loaded", () => {
+      const store = new SessionStore({ max: 100 });
+      store.upsert("ses_c", (s) => {
+        s.isCompacting = true;
+        s.compactingSince = 1000;
+        s.loadedSkills.add("dev-flow");
+      });
+
+      store.markCompacted("ses_c");
+
+      const state = store.get("ses_c");
+      expect(state?.needsAutoContinue).toBe(true);
+      expect(state?.needsSkillReload).toBe(true);
+    });
   });
 
   describe("recordSkillLoaded", () => {

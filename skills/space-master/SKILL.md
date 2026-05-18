@@ -123,3 +123,90 @@ wopal skills list
 ## Browse Online
 
 https://skills.sh/
+
+---
+
+## 上下文压缩策略
+
+### 监控信号
+
+收到 `[WOPAL TASK PROGRESS]` 通知时，检查上下文占用信息：
+
+```
+[WOPAL TASK PROGRESS]
+Context: 55% used ⚠️
+```
+
+### 决策规则
+
+| 上下文占用 | 建议 |
+|----------|------|
+| < 45% | 无需关注 |
+| 45-55% | 评估任务复杂度和剩余工作量 |
+| ≥ 55% | 建议压缩（子会话质量下降风险） |
+| ≥ 75% | 紧急压缩（立即执行） |
+
+### 安全检查
+
+压缩前检查：
+
+- 无关键未提交变更（或已明确暂存）
+- 无阻塞依赖（其他任务等待当前任务结果）
+- 子会话非 stuck 状态（否则先处理 stuck）
+
+### 执行
+
+**主会话压缩**：
+
+```
+context_manage(action="compact")
+```
+
+- 压缩后 session 进入 IDLE
+- Plugin 自动发送恢复指令（无需手动干预）
+- Agent 自动执行恢复协议：重载技能、读取关键文件、搜索记忆
+
+**子会话压缩**：
+
+```
+context_manage(action="compact", session_id="wopal-task-xxx")
+```
+
+- 压缩后子会话进入 IDLE
+- Plugin 发送 `[WOPAL TASK COMPACTED]` 通知到主 Agent
+- 主 Agent 使用 `wopal_task_reply` 发送精准恢复指令
+
+### 恢复
+
+**主会话自动恢复**：
+
+Plugin 在压缩后自动注入恢复指令：
+
+```
+<system-reminder>
+The session context has been compacted. Execute recovery protocol immediately:
+1. Read key files from compaction summary (max 3)
+2. Search and load task-relevant memories (max 3)
+3. Reload previously loaded skills
+4. Briefly report what was recovered, then continue previous work
+</system-reminder>
+```
+
+**子会话手动恢复**：
+
+收到 `[WOPAL TASK COMPACTED]` 后：
+
+```
+wopal_task_reply(task_id="wopal-task-xxx", message="继续执行 Task 2 的 compact action 实现")
+```
+
+恢复指令应包含：
+- 当前任务目标（简要）
+- 下一步操作（具体）
+- 必需的上下文（Plan 路径、关键决策）
+
+### 最佳实践
+
+1. **预防性压缩**：在 55% 上下文占用时主动压缩，而非等到紧急状态
+2. **压缩时机**：任务阶段性完成节点（如一个 Task 完成、测试通过）比中途压缩更安全
+3. **恢复准备**：压缩前确保关键信息已写入文件（Plan、日记），而非仅存在于对话历史

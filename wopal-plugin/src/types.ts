@@ -148,6 +148,11 @@ export interface OpenCodeSession {
   promptAsync(args: { path: { id: string }; body: { parts: unknown[]; noReply?: boolean } }): Promise<unknown>
   abort(args: { path: { id: string } }): Promise<unknown>
   update(args: { path: { id: string }; body: { title: string } }): Promise<unknown>
+  summarize?(args: {
+    path: { id: string }
+    body: { providerID: string; modelID: string }
+    query?: { directory?: string }
+  }): Promise<unknown>
 }
 
 export interface OpenCodePermission {

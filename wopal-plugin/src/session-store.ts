@@ -16,6 +16,10 @@ export interface SessionState {
   loadedSkills: Set<string>;
   /** Set to true after compact completes when loadedSkills is non-empty */
   needsSkillReload?: boolean;
+  /** Set to true after compact completes, signals event-router to send recovery message */
+  needsAutoContinue?: boolean;
+  /** Set to "plugin" when compact was triggered by context_manage tool; checked by event-router to distinguish Plugin-initiated vs other compacts */
+  compactingTrigger?: "plugin";
   /** Agent name extracted from the most recent messages.transform cycle */
   agent?: string | undefined;
   /** Whether this session is a background task child session */
@@ -102,10 +106,13 @@ export class SessionStore {
     }
   }
 
-  markCompacting(sessionID: string, nowMs: number): void {
+  markCompacting(sessionID: string, nowMs: number, trigger?: "plugin"): void {
     this.upsert(sessionID, (state) => {
       state.isCompacting = true;
       state.compactingSince = nowMs;
+      if (trigger === "plugin") {
+        state.compactingTrigger = "plugin";
+      }
     });
   }
 
@@ -113,6 +120,8 @@ export class SessionStore {
     this.upsert(sessionID, (state) => {
       state.isCompacting = false;
       delete state.compactingSince;
+      // Keep compactingTrigger for event-router to check after event
+      state.needsAutoContinue = true;
       if (state.loadedSkills.size > 0) {
         state.needsSkillReload = true;
       }
