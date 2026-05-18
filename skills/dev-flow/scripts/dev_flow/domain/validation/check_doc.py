@@ -28,6 +28,7 @@ CHANGES_PATTERN = r'\*\*Changes\*\*:\s*\n(.*?)(?:\*\*Verify\*\*:|^###|^##|\Z)'
 # Checkbox patterns
 CHECKBOX_PATTERN = r'-\s+\[\s*\]'
 CHECKBOX_CHECKED_PATTERN = r'-\s+\[x\]'
+ANY_CHECKBOX_PATTERN = r'-\s+\[[ x]\]'  # matches both checked and unchecked
 STEP_CHECKBOX_PATTERN = r'-\s+\[\s*\]\s+Step\s+\d+:'
 
 # Numbered checkbox patterns (Agent Verification AC items)
@@ -774,13 +775,14 @@ def _check_single_task(task_title: str, task_content: str) -> list[str]:
                 f"(Task '{task_title}')"
             )
     
-    # 5. Check Done contains checkbox
+    # 5. Check Done contains checkbox (checked or unchecked)
     done_match = re.search(
         DONE_PATTERN, task_content, re.MULTILINE | re.DOTALL
     )
     if done_match:
         done_content = done_match.group(1)
-        checkbox_match = re.search(CHECKBOX_PATTERN, done_content, re.MULTILINE)
+        # Use ANY_CHECKBOX_PATTERN to match both [ ] and [x]
+        checkbox_match = re.search(ANY_CHECKBOX_PATTERN, done_content, re.MULTILINE)
         if not checkbox_match:
             errors.append(
                 f"MISSING: Done must contain at least one checkbox "
