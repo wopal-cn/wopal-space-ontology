@@ -80,6 +80,14 @@ export interface SessionMessage {
     text?: string
     tool?: string
     callID?: string
+    // Tool state for status detection (EllaMaka data structure)
+    state?: {
+      status?: "pending" | "running" | "completed" | "error"
+      metadata?: { exit?: number }
+      error?: string
+      input?: unknown
+      output?: string
+    }
     content?: string | Array<{ type: string; text?: string }>
     synthetic?: boolean
   }>
@@ -217,4 +225,15 @@ export interface EventProperties {
 
 export function hasEventInfo(props: unknown): props is EventProperties {
   return typeof props === "object" && props !== null
+}
+
+// Type guard for tool state detection (used in extractBySection)
+export interface ToolState {
+  status?: "pending" | "running" | "completed" | "error"
+  metadata?: { exit?: number }
+  error?: string
+}
+
+export function hasToolState(part: unknown): part is { state: ToolState } {
+  return typeof part === "object" && part !== null && "state" in part
 }

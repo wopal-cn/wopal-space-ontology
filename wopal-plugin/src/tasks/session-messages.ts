@@ -1,4 +1,5 @@
 import type { SessionMessage, MessagesResult } from "../types.js"
+import { hasToolState } from "../types.js"
 
 function isSessionMessage(value: unknown): value is SessionMessage {
   return typeof value === "object" && value !== null
@@ -46,67 +47,6 @@ export function extractAssistantContent(messages: SessionMessage[]): string {
   }
 
   return extractedContent.filter((text) => text.length > 0).join("\n\n")
-}
-
-/**
- * 提取完整对话历史，格式化为可读文本
- *
- * @param messages - 会话消息列表
- * @param options - 选项 { lastN?: number, maxLength?: number }
- * @returns 格式化的对话历史文本
- */
-export function extractFullHistory(
-  messages: SessionMessage[],
-  options?: { lastN?: number; maxLength?: number }
-): string {
-  if (!messages || messages.length === 0) return ""
-
-  const maxLength = options?.maxLength ?? 4000
-  const lastN = options?.lastN
-
-  // 过滤并格式化消息
-  const formatted: string[] = []
-  const relevantMessages = lastN ? messages.slice(-lastN) : messages
-
-  let turnCount = 0
-  for (const msg of relevantMessages) {
-    const role = msg.info?.role ?? "unknown"
-
-    // 提取文本内容
-    const texts: string[] = []
-    if (msg.parts) {
-      for (const part of msg.parts) {
-        if (part.type === "text" && part.text) {
-          texts.push(part.text)
-        } else if (part.type === "tool" && part.tool) {
-          texts.push(`[tool: ${part.tool}]`)
-        } else if (part.type === "tool_result") {
-          const content = typeof part.content === "string"
-            ? part.content
-            : part.content?.map(c => c.text).filter(Boolean).join("\n") ?? ""
-          texts.push(`[tool_result]: ${content}`)
-        } else if (part.type === "reasoning" && part.text) {
-          texts.push(`[reasoning]: ${part.text}`)
-        }
-      }
-    }
-
-    if (texts.length > 0) {
-      turnCount++
-      const header = `--- Turn ${turnCount} [${role}] ---`
-      formatted.push(header)
-      formatted.push(...texts)
-    }
-  }
-
-  let result = formatted.join("\n")
-
-  // 截断到 maxLength
-  if (result.length > maxLength) {
-    result = result.slice(0, maxLength) + "\n...(earlier content truncated)"
-  }
-
-  return result
 }
 
 /**
@@ -219,8 +159,33 @@ export function extractAssistantText(message: SessionMessage): string {
 export type OutputSection = "tools" | "reasoning" | "text"
 
 /**
+ * MCP status fallback: detect error from content when state.status is missing or unreliable.
+ * OpenCode Issue #16969: MCP tools with isError=true may have status="completed" incorrectly.
+ */
+const ERROR_KEYWORDS = ["error", "Error", "validation error", "isError", "failed", "exception"]
+
+function detectErrorFromContent(content: string | undefined): boolean {
+  if (!content) return false
+  return ERROR_KEYWORDS.some(keyword => content.includes(keyword))
+}
+
+function formatToolStatus(status: string | undefined, exitCode?: number, hasContentError?: boolean): string {
+  // MCP fallback: if status is missing or "completed" but content contains error keywords
+  if (!status || (status === "completed" && hasContentError)) {
+    return "(error, detected-from-content)"
+  }
+
+  if (status === "error") {
+    return exitCode !== undefined ? `(error, exit:${exitCode})` : "(error)"
+  }
+
+  return `(${status})`
+}
+
+/**
  * Extract messages filtered by section type.
- * Each section has independent maxLength control.
+ * tools section: outputs tool name + status (completed/error), no full content.
+ * text/reasoning section: default last message, multiple messages truncated to maxLength=4000.
  */
 export function extractBySection(
   messages: SessionMessage[],
@@ -229,41 +194,83 @@ export function extractBySection(
 ): string {
   if (!messages || messages.length === 0) return ""
 
-  const maxLength = options?.maxLength ?? 2000
-  const relevantMessages = options?.lastN ? messages.slice(-options.lastN) : messages
-  const extracted: string[] = []
-
-  for (const msg of relevantMessages) {
-    if (msg.info?.role !== "assistant" && msg.info?.role !== "tool") continue
-    if (!msg.parts) continue
-
-    for (const part of msg.parts) {
-      if (section === "tools") {
-        if (part.type === "tool" && part.tool) {
-          extracted.push(`[tool: ${part.tool}]`)
-        } else if (part.type === "tool_result") {
-          const content = typeof part.content === "string"
-            ? part.content
-            : part.content?.map(c => c.text).filter(Boolean).join("\n") ?? ""
-          extracted.push(`[result]: ${content}`)
+  // text/reasoning section: 默认返回最后一条 assistant 消息
+  if (section === "text" || section === "reasoning") {
+    const lastN = options?.lastN ?? 1
+    
+    // 单条消息：直接获取最后一条 assistant 消息内容（无截断）
+    if (lastN === 1) {
+      const lastMsg = getLastAssistantMessage(messages)
+      if (!lastMsg || !lastMsg.parts) return ""
+      
+      const texts: string[] = []
+      for (const part of lastMsg.parts) {
+        if (section === "text" && part.type === "text" && part.text) {
+          texts.push(part.text)
+        } else if (section === "reasoning" && part.type === "reasoning" && part.text) {
+          texts.push(part.text)
         }
-      } else if (section === "reasoning") {
-        if (part.type === "reasoning" && part.text) {
+      }
+      return texts.filter(t => t.length > 0).join("\n\n")
+    }
+    
+    // 多条消息：聚合并截断至 maxLength=4000
+    const maxLength = options?.maxLength ?? 4000
+    const relevantMessages = messages.slice(-lastN)
+    const extracted: string[] = []
+    
+    for (const msg of relevantMessages) {
+      if (msg.info?.role !== "assistant") continue
+      if (!msg.parts) continue
+      
+      for (const part of msg.parts) {
+        if (section === "text" && part.type === "text" && part.text) {
           extracted.push(part.text)
-        }
-      } else if (section === "text") {
-        if (part.type === "text" && part.text) {
+        } else if (section === "reasoning" && part.type === "reasoning" && part.text) {
           extracted.push(part.text)
         }
       }
     }
+    
+    let result = extracted.filter(t => t.length > 0).join("\n\n")
+    if (result.length > maxLength) {
+      result = result.slice(-maxLength) + "\n[...earlier content truncated]"
+    }
+    return result
   }
 
-  let result = extracted.filter(t => t.length > 0).join("\n\n")
+  // tools section: 输出工具名+状态（Task 2 已重构）
+  const extracted: string[] = []
 
-  if (result.length > maxLength) {
-    result = result.slice(-maxLength) + "\n[...earlier content truncated]"
+  for (const msg of messages) {
+    if (msg.info?.role !== "assistant" && msg.info?.role !== "tool") continue
+    if (!msg.parts) continue
+
+    for (const part of msg.parts) {
+      if (part.type === "tool" && part.tool) {
+        // Extract tool state for status detection
+        const state = hasToolState(part) ? part.state : undefined
+        const status = state?.status
+        const exitCode = state?.metadata?.exit
+        const formattedStatus = formatToolStatus(status, exitCode)
+        extracted.push(`[tool: ${part.tool}] ${formattedStatus}`)
+      } else if (part.type === "tool_result") {
+        // Extract tool_result state for status detection
+        const state = hasToolState(part) ? part.state : undefined
+        const status = state?.status
+        const exitCode = state?.metadata?.exit
+        
+        // MCP fallback: check content for error keywords
+        const contentStr = typeof part.content === "string"
+          ? part.content
+          : part.content?.map(c => c.text).filter(Boolean).join("\n") ?? ""
+        const hasContentError = detectErrorFromContent(contentStr)
+        
+        const formattedStatus = formatToolStatus(status, exitCode, hasContentError)
+        extracted.push(`[result]: ${formattedStatus}`)
+      }
+    }
   }
 
-  return result
+  return extracted.filter(t => t.length > 0).join("\n\n")
 }
