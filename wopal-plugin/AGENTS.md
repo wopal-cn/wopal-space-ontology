@@ -30,8 +30,6 @@ Memory 双开关：`WOPAL_MEMORY_ENABLED=false` 时 `WOPAL_MEMORY_INJECTION_ENAB
 
 **HookContext 传递开关**：`rulesInjectionEnabled` 和 `memoryInjectionEnabled` 从 index.ts → createHookContext → 各 hook，hook 不直接读环境变量。
 
-**hooks（即将重构）**：注入方式将从 system prompt 调整到 messages，优化 prompt cache、降低 token 成本。
-
 ### 日志归属规范
 
 | 日志内容 | 归属模块 | Prefix | Module |
