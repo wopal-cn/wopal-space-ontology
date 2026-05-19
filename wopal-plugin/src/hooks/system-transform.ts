@@ -16,12 +16,15 @@ import { writeContextDump } from "../tools/dump-formatter.js";
 import {
   isChildSession,
 } from "./session-utils.js";
-import type { SystemTransformOutput } from "./memory-injector.js";
 
 interface SystemTransformInput {
   sessionID?: string;
   model: Model;
   systemMetadata?: SystemPromptMetadata;
+}
+
+interface SystemTransformOutput {
+  system: string[];
 }
 
 export interface SystemTransformHookContext {

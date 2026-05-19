@@ -14,7 +14,6 @@ import { registerManagerForCleanup, unregisterManagerForCleanup } from "./proces
 import {
   launchTask,
   DEFAULT_CONCURRENCY_LIMIT,
-  sessionIDToTaskID,
 } from "./task-launcher.js"
 import { notifyParent, notifyParentStuck, sendProgressNotification } from "./task-notifier.js"
 import {
@@ -30,6 +29,7 @@ import {
   interruptTask,
   shutdownManager,
 } from "./task-lifecycle.js"
+import { sessionIDToTaskID } from "../session-ref.js"
 
 const defaultManagerLog = createDebugLog("[task]", "task")
 
@@ -49,7 +49,8 @@ export class SimpleTaskManager {
   private isShuttingDown = false
   private tickRunning = false
   private unregistered = false
-  private recoveredSessions = new Set<string>() // Prevent duplicate recovery calls
+  private recoveredSessions = new Set<string>()
+  private recoveringSessions = new Set<string>()
 
   constructor(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -271,14 +272,17 @@ export class SimpleTaskManager {
   }
 
   async recoverFromSession(parentSessionID: string): Promise<void> {
-    // Prevent duplicate recovery calls for the same session
     if (this.recoveredSessions.has(parentSessionID)) {
       return
     }
-    this.recoveredSessions.add(parentSessionID)
+    if (this.recoveringSessions.has(parentSessionID)) {
+      return
+    }
+    this.recoveringSessions.add(parentSessionID)
 
     if (typeof this.client?.session?.children !== "function") {
       this.debugLog(`[recover] skipped: session.children is unavailable`)
+      this.recoveringSessions.delete(parentSessionID)
       return
     }
 
@@ -287,6 +291,7 @@ export class SimpleTaskManager {
       const children = result?.data ?? result ?? []
       if (!Array.isArray(children)) {
         this.debugLog(`[recover] skipped: children is not an array, type=${typeof children}`)
+        this.recoveringSessions.delete(parentSessionID)
         return
       }
 
@@ -324,8 +329,11 @@ export class SimpleTaskManager {
       if (recovered > 0) {
         this.debugLog(`[recover] recovered ${recovered} task(s) from parent=${parentSessionID.slice(0, 16)}`)
       }
+      this.recoveredSessions.add(parentSessionID)
     } catch (err) {
       this.debugLog(`[recover] error: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      this.recoveringSessions.delete(parentSessionID)
     }
   }
 

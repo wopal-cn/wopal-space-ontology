@@ -11,7 +11,7 @@ import { createSystemTransformHooks } from "./system-transform.js";
 import { createEventRouter } from "./event-router.js";
 import { createCompactionHooks } from "./compaction.js";
 import type { RuleInjectorContext } from "./rule-injector.js";
-import type { MemoryInjectorContext } from "./memory-injector.js";
+import type { MemoryInjectorContext } from "./memory-injection-utils.js";
 
 export interface HookContextOptions {
   client: OpenCodeClient;

@@ -21,14 +21,29 @@ import { createDebugLog, formatSessionID } from "../debug.js";
 import { writeContextDump, findActualKey } from "./dump-formatter.js";
 import { fetchContextPercent } from "../tasks/task-monitor.js";
 import type { SimpleTaskManager } from "../tasks/simple-task-manager.js";
+import { isChildSession } from "../hooks/session-utils.js";
+import { normalizeSessionReference } from "../session-ref.js";
+import type { OpenCodeClient } from "../types.js";
 
 const debugLog = createDebugLog("[context]", "context");
 
-function normalizeSessionID(id: string): string {
-  if (id.startsWith("wopal-task-")) {
-    return "ses_" + id.slice("wopal-task-".length);
+async function resolveSessionTarget(
+  rawID: string,
+  client: OpenCodeClient,
+  taskManager?: SimpleTaskManager,
+): Promise<{ sessionID: string; isTask: boolean }> {
+  const normalized = normalizeSessionReference(rawID);
+  if (normalized.isTaskReference) {
+    return { sessionID: normalized.sessionID, isTask: true };
   }
-  return id;
+
+  const isTask = await isChildSession(normalized.sessionID, {
+    client,
+    taskManager,
+    cache: new Map<string, boolean>(),
+  });
+
+  return { sessionID: normalized.sessionID, isTask };
 }
 
 /**
@@ -96,7 +111,8 @@ export function createContextManageTool(
       if (args.action !== "compact") {
         if (args.session_id && args.session_id !== sessionID) {
           const callerLabel = formatSessionID(sessionID ?? "?", false);
-          const targetLabel = formatSessionID(normalizeSessionID(args.session_id), args.session_id.startsWith("wopal-task-"));
+          const target = await resolveSessionTarget(args.session_id, client as OpenCodeClient, taskManager);
+          const targetLabel = formatSessionID(target.sessionID, target.isTask);
           debugLog(`[context_manage] action=${args.action} caller=${callerLabel} target=${targetLabel}`);
         } else {
           debugLog(`[context_manage] action=${args.action} ${formatSessionID(sessionID ?? "?", false)}`);
@@ -113,10 +129,8 @@ export function createContextManageTool(
         if (!rawSessionID) {
           return "Failed: no session ID available for status.";
         }
-        const statusSessionID = normalizeSessionID(rawSessionID);
-        // Determine if this is a child session (wopal-task-xxx prefix)
-        const isChildSession = rawSessionID.startsWith("wopal-task-");
-        return handleStatus(statusSessionID, activeStore, isChildSession, taskManager);
+        const target = await resolveSessionTarget(rawSessionID, client as OpenCodeClient, taskManager);
+        return handleStatus(target.sessionID, activeStore, target.isTask, taskManager);
       }
 
       if (args.action === "dump") {
@@ -124,9 +138,9 @@ export function createContextManageTool(
         if (!rawSessionID) {
           return "Failed: no session ID available for dump.";
         }
-        const dumpSessionID = normalizeSessionID(rawSessionID);
-        const isChild = rawSessionID.startsWith("wopal-task-");
-        const prefix = isChild ? "CTXDUMP-TASK" : "CTXDUMP";
+        const target = await resolveSessionTarget(rawSessionID, client as OpenCodeClient, taskManager);
+        const dumpSessionID = target.sessionID;
+        const prefix = target.isTask ? "CTXDUMP-TASK" : "CTXDUMP";
 
         let title: string | null = null;
         try {
@@ -168,8 +182,9 @@ export function createContextManageTool(
         if (!rawSessionID) {
           return "Failed: no session ID available for compact.";
         }
-        const compactSessionID = normalizeSessionID(rawSessionID);
-        const isTask = rawSessionID.startsWith("wopal-task-");
+        const target = await resolveSessionTarget(rawSessionID, client as OpenCodeClient, taskManager);
+        const compactSessionID = target.sessionID;
+        const isTask = target.isTask;
 
         debugLog(`[context_manage] compact ${formatSessionID(compactSessionID, isTask)}`);
 

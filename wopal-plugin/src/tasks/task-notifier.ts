@@ -119,7 +119,7 @@ export async function notifyParentStuck(
 **Description:** ${task.description}
 **Duration:** No meaningful output for ${durationText}
 
-The background task may be stuck in a reasoning loop. Use \`wopal_task_output(task_id="${task.id}", section="reasoning")\` to check its thinking content. If it's truly stuck, use \`wopal_task_cancel(task_id="${task.id}")\` to terminate it.
+The background task may be stuck in a reasoning loop. Use \`wopal_task_output(task_id="${task.id}", section="reasoning")\` to check its thinking content. If it's truly stuck, use \`wopal_task_reply(task_id="${task.id}", interrupt=true, message="Stop current attempt and report status")\` to interrupt it.
 </system-reminder>`
 
   await sendNotification(deps, task.parentSessionID, notification)

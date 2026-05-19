@@ -97,6 +97,7 @@ describe("task-launcher", () => {
       expect(result.ok).toBe(false)
       expect(result.status).toBe("error")
       expect(result.error).toContain("parent session ID is required")
+      expect(concurrency.getCount("test")).toBe(0)
     })
 
     it("should fail when session.create is unavailable", async () => {
@@ -112,6 +113,7 @@ describe("task-launcher", () => {
 
       expect(result.ok).toBe(false)
       expect(result.error).toContain("session.create is unavailable")
+      expect(concurrency.getCount("test")).toBe(0)
     })
 
     it("should fail when session.create throws", async () => {
@@ -133,6 +135,7 @@ describe("task-launcher", () => {
       expect(result.error).toContain("create failed")
       // No taskId when session.create fails (task not created yet)
       expect(result.taskId).toBeUndefined()
+      expect(concurrency.getCount("test")).toBe(0)
     })
 
     it("should fail when session does not provide ID", async () => {
@@ -152,6 +155,7 @@ describe("task-launcher", () => {
 
       expect(result.ok).toBe(false)
       expect(result.error).toContain("did not provide an ID")
+      expect(concurrency.getCount("test")).toBe(0)
     })
 
     it("should fail when promptAsync is unavailable", async () => {

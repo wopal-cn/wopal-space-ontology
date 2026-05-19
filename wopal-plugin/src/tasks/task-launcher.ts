@@ -7,13 +7,11 @@ import type { DebugLog } from "../debug.js"
 import { formatSessionID } from "../debug.js"
 import type { ConcurrencyManager } from "./concurrency-manager.js"
 import { toErrorMessage, isPromiseLike } from "./utils.js"
+import { sessionIDToTaskID } from "../session-ref.js"
 
 export const DEFAULT_CONCURRENCY_LIMIT = 5
 
-export function sessionIDToTaskID(sessionID: string): string {
-  const suffix = sessionID.replace(/^ses_/, '')
-  return `wopal-task-${suffix}`
-}
+export { sessionIDToTaskID } from "../session-ref.js"
 
 export interface TaskLauncherDeps {
   tasks: Map<string, WopalTask>
@@ -50,6 +48,11 @@ export async function launchTask(
 ): Promise<LaunchOutput> {
   const { tasks, client, debugLog, concurrency, concurrencyKey, failTask, abortSession } = deps
 
+  const releaseAndReturnError = (error: string): LaunchOutput => {
+    concurrency.release(concurrencyKey)
+    return { ok: false, status: 'error', error }
+  }
+
   debugLog(`[launch] starting: description="${input.description}" agent="${input.agent}" parentSessionID=${input.parentSessionID}`)
 
   if (!concurrency.tryAcquire(concurrencyKey, DEFAULT_CONCURRENCY_LIMIT)) {
@@ -59,20 +62,12 @@ export async function launchTask(
 
   if (!input.parentSessionID) {
     debugLog(`[launch] failed: parent session ID is required`)
-    return {
-      ok: false,
-      status: 'error',
-      error: "Background task launch failed: parent session ID is required",
-    }
+    return releaseAndReturnError("Background task launch failed: parent session ID is required")
   }
 
   if (typeof client.session?.create !== "function") {
     debugLog(`[launch] failed: session.create is unavailable`)
-    return {
-      ok: false,
-      status: 'error',
-      error: "Background task launch failed: session.create is unavailable",
-    }
+    return releaseAndReturnError("Background task launch failed: session.create is unavailable")
   }
 
   let sessionID: string | undefined
@@ -92,14 +87,12 @@ export async function launchTask(
     } else {
       const error = "Background task launch failed: child session did not provide an ID"
       debugLog(`[launch] failed: child session did not provide an ID`)
-      concurrency.release(concurrencyKey)
-      return { ok: false, status: 'error', error }
+      return releaseAndReturnError(error)
     }
   } catch (err) {
     debugLog(`[launch] session.create error: ${err}`)
     const error = `Background task launch failed: ${toErrorMessage(err)}`
-    concurrency.release(concurrencyKey)
-    return { ok: false, status: 'error', error }
+    return releaseAndReturnError(error)
   }
 
   const taskId = sessionIDToTaskID(sessionID)

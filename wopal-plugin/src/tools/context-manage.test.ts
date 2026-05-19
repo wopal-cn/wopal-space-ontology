@@ -251,6 +251,7 @@ describe('context_manage: handleStatus', () => {
 
     // Mock taskManager
     const mockTaskManager = {
+      findBySession: vi.fn().mockReturnValue(undefined),
       listTasksForParent: vi.fn().mockReturnValue([
         { taskID: 'task-abc123', sessionID: 'ses_abc123', status: 'idle', description: 'Test task', agent: 'fae' },
         { taskID: 'task-def456', sessionID: 'ses_def456', status: 'running', description: 'Another task', agent: 'fae' },
@@ -287,6 +288,7 @@ describe('context_manage: handleStatus', () => {
     });
 
     const mockTaskManager = {
+      findBySession: vi.fn().mockReturnValue(undefined),
       listTasksForParent: vi.fn(),
     };
 
@@ -299,6 +301,37 @@ describe('context_manage: handleStatus', () => {
 
     const parsed = JSON.parse(result);
     expect(parsed.sessionID).toBe('ses_child123');
+    expect(parsed.tasks).toBeUndefined();
+    expect(mockTaskManager.listTasksForParent).not.toHaveBeenCalled();
+  });
+
+  it('S5b: raw child session ID is detected via session parentID', async () => {
+    const statusSessionStore = new SessionStore();
+    statusSessionStore.upsert('ses_child_raw', (state) => {
+      state.agent = 'fae';
+    });
+
+    const mockTaskManager = {
+      listTasksForParent: vi.fn(),
+      findBySession: vi.fn().mockReturnValue(undefined),
+    };
+
+    const clientWithGet = {
+      session: {
+        ...summaryClient.session,
+        get: vi.fn().mockResolvedValue({ data: { parentID: 'ses_parent' } }),
+      },
+    };
+
+    const tool = createContextManageTool(distillLLM, clientWithGet, undefined, undefined, undefined, undefined, undefined, statusSessionStore, mockTaskManager as unknown as import('../tasks/simple-task-manager.js').SimpleTaskManager);
+    const execute = getExecute(tool);
+    const result = await execute(
+      { action: 'status', session_id: 'ses_child_raw' },
+      { sessionID: 'ses_main', sessionStore: statusSessionStore },
+    );
+
+    const parsed = JSON.parse(result);
+    expect(parsed.sessionID).toBe('ses_child_raw');
     expect(parsed.tasks).toBeUndefined();
     expect(mockTaskManager.listTasksForParent).not.toHaveBeenCalled();
   });
@@ -671,6 +704,40 @@ describe('context_manage: handleCompact', () => {
     expect(compactMockSummarize).toHaveBeenCalledWith({
       path: { id: 'ses_task123' },
       body: { providerID: '', modelID: '' },
+    });
+  });
+
+  it('C9: raw child session ID is detected via session parentID and compacts immediately', async () => {
+    compactSessionStore.upsert('ses_child_raw', (state) => {
+      state.providerID = 'test-provider';
+      state.modelID = 'test-model';
+    });
+
+    const clientWithGet = {
+      ...compactClient,
+      session: {
+        ...compactClient.session,
+        get: vi.fn().mockResolvedValue({ data: { parentID: 'ses_parent' } }),
+      },
+    };
+
+    const tool = createContextManageTool(
+      distillLLM,
+      clientWithGet,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      compactTestDir,
+    );
+    const execute = getExecute(tool);
+    const contextWithStore = { sessionID: 'ses_main', sessionStore: compactSessionStore };
+
+    await execute({ action: 'compact', session_id: 'ses_child_raw' }, contextWithStore);
+
+    expect(clientWithGet.session.summarize).toHaveBeenCalledWith({
+      path: { id: 'ses_child_raw' },
+      body: { providerID: 'test-provider', modelID: 'test-model' },
     });
   });
 });

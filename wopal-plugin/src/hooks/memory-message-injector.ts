@@ -9,8 +9,8 @@ import type { SessionStore } from "../session-store.js";
 import type { MemoryInjector } from "../memory/index.js";
 import type { DebugLog } from "../debug.js";
 import type { MessageWithInfo } from "./message-context.js";
-import type { MemoryInjectorContext } from "./memory-injector.js";
-import { clearInjectedMemory } from "./memory-injector.js";
+import type { MemoryInjectorContext } from "./memory-injection-utils.js";
+import { clearInjectedMemory } from "./memory-injection-utils.js";
 import { isChildSession } from "./session-utils.js";
 import { buildEnrichedQuery } from "./conversation-context.js";
 

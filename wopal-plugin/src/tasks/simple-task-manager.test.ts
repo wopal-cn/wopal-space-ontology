@@ -329,6 +329,25 @@ describe("SimpleTaskManager", () => {
       })
       expect(manager.getTask(taskId)).toBeUndefined()
     })
+
+    it("retries recovery after a temporary children API failure", async () => {
+      mockClient.session.children
+        .mockRejectedValueOnce(new Error("temporary failure"))
+        .mockResolvedValueOnce({
+          data: [{
+            id: "ses_recovered-retry",
+            title: "Recovered after retry",
+            agent: "fae",
+            time: { created: Date.now() - 4_000_000 },
+          }],
+        })
+
+      await manager.recoverFromSession("parent-1")
+      expect(manager.getTask(sessionIDToTaskID("ses_recovered-retry"))).toBeUndefined()
+
+      await manager.recoverFromSession("parent-1")
+      expect(manager.getTask(sessionIDToTaskID("ses_recovered-retry"))?.idleNotified).toBe(true)
+    })
   })
 
   describe("interrupt", () => {
