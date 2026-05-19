@@ -1,35 +1,33 @@
-import type { SessionStore } from "../session-store.js";
-import type { SimpleTaskManager } from "../tasks/simple-task-manager.js";
-import type { DebugLog } from "../debug.js";
-import type { WopalTask } from "../types.js";
-import { trackActivity } from "../tasks/progress.js";
-import { createDebugLog, formatSessionID } from "../debug.js";
-import { getSessionModelInfo } from "../tools/output-helpers.js";
+/**
+ * Event Router - Assembly Layer
+ *
+ * Routes OpenCode events to appropriate handlers.
+ * Delegates to specialized handler modules for each event type.
+ */
 
-import type { OpenCodeClient } from "../types.js";
+import type { SessionStore } from "../session-store.js"
+import type { SimpleTaskManager } from "../tasks/simple-task-manager.js"
+import type { DebugLog } from "../debug.js"
+import type { OpenCodeClient } from "../types.js"
+import { createDebugLog, formatSessionID } from "../debug.js"
 
-interface EventPart {
-  type?: string;
-  tokens?: {
-    input?: number;
-    output?: number;
-    reasoning?: number;
-    cache?: { read?: number; write?: number };
-  };
-}
+// Import specialized handlers
+import { handleMessageUpdated, handleMessagePartDelta, handleMessagePartUpdated } from "./events/message-token-handler.js"
+import { handleSessionIdle, handleSessionCompacted } from "./events/idle-compact-handler.js"
+import { handleSessionError, stringifyEventError } from "./events/error-handler.js"
 
 export interface EventRouterHookContext {
-  client: OpenCodeClient;
-  sessionStore: SessionStore;
-  contextDebugLog: DebugLog;
-  taskDebugLog: DebugLog;
-  taskManager: SimpleTaskManager | undefined;
+  client: OpenCodeClient
+  sessionStore: SessionStore
+  contextDebugLog: DebugLog
+  taskDebugLog: DebugLog
+  taskManager: SimpleTaskManager | undefined
 }
 
 export function createEventRouter(ctx: EventRouterHookContext) {
   let recovered = false
 
-  const contextLog = createDebugLog("[context] [tokens]", "context");
+  const contextLog = createDebugLog("[context] [tokens]", "context")
 
   async function onEvent(
     input: { event: { type: string; properties?: Record<string, unknown> } },
@@ -41,227 +39,86 @@ export function createEventRouter(ctx: EventRouterHookContext) {
     const sessionID = props?.sessionID as string | undefined
 
     // Lazy recovery: on first event from main session, restore child tasks
-    // Early flag setting prevents concurrent events from triggering duplicate recovery
     if (!recovered && sessionID) {
-      recovered = true // Set flag immediately to block concurrent events
-      const client = ctx.client;
+      recovered = true
+      const client = ctx.client
       if (typeof client?.session?.get === "function") {
         try {
-const result = await client.session.get({ path: { id: sessionID } })
-      const session = (result as { data?: { parentID?: string } } | undefined)?.data
+          const result = await client.session.get({ path: { id: sessionID } })
+          const session = (result as { data?: { parentID?: string } } | undefined)?.data
           if (session && !session.parentID) {
             ctx.taskDebugLog(`[recover] main session detected: ${formatSessionID(sessionID, false)}, triggering recovery`)
             void ctx.taskManager.recoverFromSession(sessionID)
           }
         } catch {
-          // Reset flag on failure so next event can retry
           recovered = false
         }
       } else {
-        recovered = false // Reset if client unavailable
+        recovered = false
       }
     }
 
+    // Route to specialized handlers
     if (eventType === "message.updated") {
       if (sessionID) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const info = (props as any)?.info
-        if (info?.agent) {
-          ctx.sessionStore.upsert(sessionID, (s) => {
-            s.agent = info.agent
-          })
-        }
+        const info = props?.info as { agent?: string } | undefined
+        handleMessageUpdated(
+          { client: ctx.client, sessionStore: ctx.sessionStore, taskManager: ctx.taskManager, contextLog },
+          sessionID,
+          info,
+        )
       }
     } else if (eventType === "message.part.delta") {
-      if (sessionID) {
-        const task = ctx.taskManager?.findBySession(sessionID)
-        if (task && task.status === "running") {
-          trackActivity(task, "text")
-        }
-      }
+      handleMessagePartDelta(
+        { client: ctx.client, sessionStore: ctx.sessionStore, taskManager: ctx.taskManager, contextLog },
+        sessionID,
+      )
     } else if (eventType === "message.part.updated") {
-      const part = props?.part as EventPart | undefined
-
-// Token usage logging for step-finish events (context debug module)
-if (sessionID && part?.type === "step-finish" && part?.tokens) {
-  const t = part.tokens
-  const cache = t.cache ?? {}
-  const isTask = !!ctx.taskManager?.findBySession(sessionID)
-  const state = ctx.sessionStore.get(sessionID)
-  const agent = state?.agent ?? "?"
-  const used = (t.input ?? 0) + (cache.read ?? 0)
-
-  // Get model info and context limit for percentage calculation (fetch once, reuse)
-  let model = "?"
-  let pctText = ""
-  let modelInfo: { providerID: string; modelID: string } | null = null
-  let contextLimit: number | undefined = undefined
-  try {
-    modelInfo = await getSessionModelInfo(ctx.client, sessionID)
-    if (modelInfo) {
-      const info = modelInfo
-      model = `${info.providerID}/${info.modelID}`
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const configClient = ctx.client as any
-      if (typeof configClient.config?.providers === "function") {
-        const providersResult = await configClient.config.providers({ query: { directory: "" } })
-        const providers = providersResult?.data?.providers ?? []
-        const provider = providers.find((p: { id: string }) => p.id === info.providerID)
-        contextLimit = provider?.models?.[info.modelID]?.limit?.context
-        if (contextLimit && contextLimit > 0) {
-          pctText = ` pct=${Math.round((used / contextLimit) * 100)}%`
-        }
-      }
-    }
-  } catch {
-    // ignore — percentage is informational only
-  }
-
-  contextLog(`${formatSessionID(sessionID, isTask)} agent=${agent} model=${model} tokens: input=${t.input ?? 0} output=${t.output ?? 0} cache_read=${cache.read ?? 0} cache_write=${cache.write ?? 0}${pctText}`)
-
-  // Store token data + context limit in sessionStore (reuse modelInfo/contextLimit from above)
-  if (t.input || cache.read) {
-    ctx.sessionStore.upsert(sessionID, (state) => {
-      if (modelInfo) {
-        state.providerID = modelInfo.providerID
-        state.modelID = modelInfo.modelID
-      }
-      if (contextLimit) {
-        state.contextLimit = contextLimit
-      }
-      state.isTask = isTask  // Ensure isTask is set for context usage logs
-      const cache = t.cache ? { ...t.cache } : undefined
-      state.lastTokens = {
-        input: t.input ?? 0,
-        output: t.output ?? 0,
-        ...(cache ? { cache } : {}),
-        updatedAt: Date.now(),
-      }
-    })
-  }
-}
-
-      if (sessionID) {
-        const task = ctx.taskManager?.findBySession(sessionID)
-        if (task && task.status === "running") {
-          trackActivity(task, part?.type)
-        }
-      }
+      const part = props?.part as { type?: string; tokens?: { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } } } | undefined
+      await handleMessagePartUpdated(
+        { client: ctx.client, sessionStore: ctx.sessionStore, taskManager: ctx.taskManager, contextLog },
+        sessionID,
+        part,
+      )
     }
 
     if (eventType === "session.idle") {
-      if (!sessionID) return
-
-      const state = ctx.sessionStore.get(sessionID)
-
-      // Main session deferred compact: do NOT call summarize from inside the tool turn.
-      // Wait until the session is idle, then trigger summarize on the now-idle session.
-      if (!ctx.taskManager?.findBySession(sessionID) && state?.pendingCompactTrigger === "plugin") {
-        ctx.sessionStore.upsert(sessionID, (s) => {
-          delete s.pendingCompactTrigger
-        })
-
-        const providerID = state.providerID ?? ""
-        const modelID = state.modelID ?? ""
-        if (typeof ctx.client.session?.summarize !== "function") {
-          ctx.contextDebugLog(`${formatSessionID(sessionID, false)} summarize unavailable for deferred compact`)
-          return
-        }
-
-        ctx.sessionStore.markCompacting(sessionID, Date.now(), "plugin")
-        ctx.contextDebugLog(`${formatSessionID(sessionID, false)} idle -> starting deferred main-session compact`)
-
-        try {
-          await ctx.client.session.summarize({
-            path: { id: sessionID },
-            body: { providerID, modelID },
-          })
-        } catch (err) {
-          ctx.sessionStore.upsert(sessionID, (s) => {
-            s.isCompacting = false
-            delete s.compactingSince
-            delete s.compactingTrigger
-          })
-          ctx.contextDebugLog(`${formatSessionID(sessionID, false)} deferred compact failed: ${err instanceof Error ? err.message : String(err)}`)
-        }
-        return
-      }
-
-      // Only handle wopal_task child sessions, skip main session idle
-      const task = ctx.taskManager?.findBySession(sessionID)
-      if (!task) return
-
-      if (!task.idleNotified && task.status === 'running') {
-        task.idleNotified = true
-        // Release concurrency slot so new tasks can launch
-        if (task.concurrencyKey) {
-          ctx.taskManager.releaseConcurrencySlot(task)
-          task.waitingConcurrencyKey = task.concurrencyKey
-          task.concurrencyKey = undefined
-        }
-        ctx.taskDebugLog(`task ${task.id} idle`)
-        ctx.taskManager.notifyParent(task.id).catch((err) => {
-          ctx.taskDebugLog(`[notifyParent] error for ${task.id}: ${err instanceof Error ? err.message : String(err)}`)
-        })
-      }
+      await handleSessionIdle(
+        {
+          client: ctx.client,
+          sessionStore: ctx.sessionStore,
+          taskManager: ctx.taskManager,
+          contextDebugLog: ctx.contextDebugLog,
+          taskDebugLog: ctx.taskDebugLog,
+        },
+        sessionID ?? "",
+      )
     }
 
     if (eventType === "session.compacted") {
-      if (!sessionID) return
-
-      ctx.sessionStore.markCompacted(sessionID);
-      const compactedState = ctx.sessionStore.get(sessionID)
-      ctx.contextDebugLog(`${formatSessionID(sessionID, compactedState?.isTask ?? false)} compact completed (event-driven)`);
-
-      // Only handle Plugin-initiated compacts (skip EllaMaka auto-compact or manual /compact)
-      const state = compactedState
-      if (!state?.compactingTrigger || !state?.needsAutoContinue) return
-
-      const task = ctx.taskManager?.findBySession(sessionID)
-
-      // Clear compactingTrigger immediately to mark as processed
-      ctx.sessionStore.upsert(sessionID, (s) => {
-        delete s.compactingTrigger
-      })
-
-      if (task) {
-        // Child session: notify parent Agent via promptAsync
-        await sendCompactedNotification(ctx, task, state)
-      } else {
-        // Main session: send auto-continue recovery message
-        await sendAutoContinueForMain(ctx, sessionID, state)
-      }
-
-      // Clear needsAutoContinue after recovery/notification
-      ctx.sessionStore.upsert(sessionID, (s) => {
-        delete s.needsAutoContinue
-      })
+      await handleSessionCompacted(
+        {
+          client: ctx.client,
+          sessionStore: ctx.sessionStore,
+          taskManager: ctx.taskManager,
+          contextDebugLog: ctx.contextDebugLog,
+          taskDebugLog: ctx.taskDebugLog,
+        },
+        sessionID ?? "",
+      )
     }
 
     if (eventType === "session.error") {
-      // Bug 2 fix: filter MessageAbortedError (user-initiated abort, not a real error)
-      const errorName = (props?.error as { name?: string } | undefined)?.name
-      if (errorName === "MessageAbortedError") {
-        ctx.taskDebugLog(`[session.error] filtered MessageAbortedError`)
-        return
-      }
-
-      const error = stringifyEventError(props?.error)
-
-      if (sessionID) {
-        const task = ctx.taskManager.markTaskErrorBySession(sessionID, error)
-        if (task) {
-          ctx.taskDebugLog(`task ${task.id} error: ${error}`)
-          ctx.taskManager.notifyParent(task.id).catch((err) => {
-            ctx.taskDebugLog(`[notifyParent] error for ${task.id}: ${err instanceof Error ? err.message : String(err)}`)
-          })
-        }
-      }
+      handleSessionError(
+        { taskManager: ctx.taskManager, taskDebugLog: ctx.taskDebugLog },
+        sessionID,
+        props?.error,
+      )
     }
 
-    // 权限请求事件
+    // Permission/question relay handlers (keep dynamic imports for code splitting)
     if (eventType === "permission.asked") {
-      const requestID = props?.id as string | undefined // OpenCode uses 'id', not 'requestID'
+      const requestID = props?.id as string | undefined
       const permission = props?.permission as string | undefined
 
       ctx.taskDebugLog(`[permission.asked] ${formatSessionID(sessionID ?? "?", !!ctx.taskManager?.findBySession(sessionID ?? ""))} id=${requestID} permission=${permission}`)
@@ -273,12 +130,11 @@ if (sessionID && part?.type === "step-finish" && part?.tokens) {
           { sessionID, requestID, permission, ...(patterns ? { patterns } : {}) },
           ctx.taskManager!,
           ctx.client,
-          ctx.taskDebugLog
+          ctx.taskDebugLog,
         )
       }
     }
 
-    // 问题请求事件
     if (eventType === "question.asked") {
       const requestID = props?.id as string | undefined
 
@@ -288,113 +144,17 @@ if (sessionID && part?.type === "step-finish" && part?.tokens) {
         const firstQuestion = questions[0]
         if (firstQuestion) {
           await handleQuestionAsked(
-            { sessionID, requestID: requestID!, question: firstQuestion },
+            { sessionID, requestID, question: firstQuestion },
             ctx.taskManager!,
-            ctx.taskDebugLog
+            ctx.taskDebugLog,
           )
         }
       }
     }
   }
 
-  function stringifyEventError(error: unknown): string {
-    if (typeof error === "string" && error.length > 0) {
-      return error
-    }
-
-    if (error instanceof Error && error.message) {
-      return error.message
-    }
-
-    try {
-      const serialized = JSON.stringify(error)
-      if (serialized && serialized !== "{}") {
-        return serialized
-      }
-    } catch {
-      // Ignore JSON serialization failures and fall back to String().
-    }
-
-    return String(error)
-  }
-
   return {
     event: onEvent,
     _stringifyEventError: stringifyEventError,
-  };
-}
-
-/**
- * Send auto-continue recovery message to main session after compact.
- * Main session IDLE after compact, no one can notify it, so Plugin must send recovery instruction.
- */
-async function sendAutoContinueForMain(
-  ctx: EventRouterHookContext,
-  sessionID: string,
-  state: { loadedSkills?: Set<string> }
-): Promise<void> {
-  const skills = state.loadedSkills ? Array.from(state.loadedSkills).join(", ") : "none"
-
-  const recoveryText = `<system-reminder>
-The session context has been compacted. Execute recovery protocol immediately and continue working:
-<CRITICAL_RULE>
-1. Read key files from the compaction summary (plans, specs, etc. — max 3)
-2. Search and load task-relevant memories (max 3)
-3. Reload previously loaded skills: ${skills}
-4. Briefly report what was recovered, then continue the previous work
-</CRITICAL_RULE>
-</system-reminder>`
-
-  if (typeof ctx.client.session?.promptAsync === "function") {
-    try {
-      await ctx.client.session.promptAsync({
-        path: { id: sessionID },
-        body: {
-          noReply: false,
-          parts: [{ type: "text", text: recoveryText, synthetic: true }],
-        },
-      })
-      ctx.taskDebugLog(`[autoContinue] sent recovery to main session: ${formatSessionID(sessionID, false)}`)
-    } catch (err) {
-      ctx.taskDebugLog(`[autoContinue] error: ${err instanceof Error ? err.message : String(err)}`)
-    }
-  }
-}
-
-/**
- * Send compacted notification to parent Agent for child session.
- * Parent Agent decides how to recover child session via wopal_task_reply.
- */
-async function sendCompactedNotification(
-  ctx: EventRouterHookContext,
-  task: WopalTask,
-  state: { loadedSkills?: Set<string> }
-): Promise<void> {
-  if (!task.sessionID || !task.parentSessionID) return
-
-  const skills = state.loadedSkills ? Array.from(state.loadedSkills).join(", ") : "none"
-
-  const notification = `<system-reminder>
-[WOPAL TASK COMPACTED]
-Task ID: ${task.id}
-Description: ${task.description}
-Skills: ${skills}
-The child session has been compacted and is now IDLE.
-Use wopal_task_reply to send recovery instructions if the task should continue.
-</system-reminder>`
-
-  if (typeof ctx.client.session?.promptAsync === "function") {
-    try {
-      await ctx.client.session.promptAsync({
-        path: { id: task.parentSessionID },
-        body: {
-          noReply: false,
-          parts: [{ type: "text", text: notification, synthetic: true }],
-        },
-      })
-      ctx.taskDebugLog(`[compactedNotify] sent to parent: taskId=${task.id}`)
-    } catch (err) {
-      ctx.taskDebugLog(`[compactedNotify] error: ${err instanceof Error ? err.message : String(err)}`)
-    }
   }
 }

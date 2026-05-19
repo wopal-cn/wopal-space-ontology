@@ -351,4 +351,312 @@ describe("OpenCodeRulesRuntime event handling", () => {
       expect(mockPromptAsync).not.toHaveBeenCalled()
     })
   })
+
+  // Task 4: message/token tracking tests
+  describe("message.token tracking", () => {
+    it("stores agent info on message.updated event", async () => {
+      const sessionStore = new SessionStore({ max: 10 })
+      const ctx = {
+        client: { session: { messages: vi.fn().mockResolvedValue({ data: [] }) } },
+        sessionStore,
+        contextDebugLog: () => {},
+        taskDebugLog: () => {},
+        taskManager: {
+          findBySession: vi.fn().mockReturnValue(undefined),
+        } as never,
+      }
+
+      const hooks = createEventRouter(ctx as never)
+
+      await hooks.event({
+        event: {
+          type: "message.updated",
+          properties: {
+            sessionID: "session-1",
+            info: { agent: "fae" },
+          },
+        },
+      })
+
+      const state = sessionStore.get("session-1")
+      expect(state?.agent).toBe("fae")
+    })
+
+    it("stores token usage on step-finish part", async () => {
+      const sessionStore = new SessionStore({ max: 10 })
+      const mockConfig = vi.fn().mockResolvedValue({
+        data: {
+          providers: [{
+            id: "anthropic",
+            models: {
+              "claude-3": { limit: { context: 100000 } }
+            }
+          }]
+        }
+      })
+
+      const ctx = {
+        client: {
+          session: {
+            messages: vi.fn().mockResolvedValue({
+              data: [{
+                info: {
+                  role: "assistant",
+                  providerID: "anthropic",
+                  modelID: "claude-3",
+                }
+              }]
+            }),
+          },
+          config: { providers: mockConfig },
+        },
+        sessionStore,
+        contextDebugLog: () => {},
+        taskDebugLog: () => {},
+        taskManager: {
+          findBySession: vi.fn().mockReturnValue(undefined),
+        } as never,
+      }
+
+      const hooks = createEventRouter(ctx as never)
+
+      await hooks.event({
+        event: {
+          type: "message.part.updated",
+          properties: {
+            sessionID: "session-1",
+            part: {
+              type: "step-finish",
+              tokens: {
+                input: 5000,
+                output: 2000,
+                cache: { read: 1000, write: 500 },
+              },
+            },
+          },
+        },
+      })
+
+      const state = sessionStore.get("session-1")
+      expect(state?.lastTokens).toMatchObject({
+        input: 5000,
+        output: 2000,
+        cache: { read: 1000, write: 500 },
+      })
+      expect(state?.providerID).toBe("anthropic")
+      expect(state?.modelID).toBe("claude-3")
+      expect(state?.contextLimit).toBe(100000)
+    })
+
+    it("skips token storage for non-step-finish parts", async () => {
+      const sessionStore = new SessionStore({ max: 10 })
+      const ctx = {
+        client: { session: { messages: vi.fn() } },
+        sessionStore,
+        contextDebugLog: () => {},
+        taskDebugLog: () => {},
+        taskManager: { findBySession: vi.fn() } as never,
+      }
+
+      const hooks = createEventRouter(ctx as never)
+
+      await hooks.event({
+        event: {
+          type: "message.part.updated",
+          properties: {
+            sessionID: "session-1",
+            part: { type: "text", tokens: { input: 100 } },
+          },
+        },
+      })
+
+      const state = sessionStore.get("session-1")
+      expect(state?.lastTokens).toBeUndefined()
+    })
+  })
+
+  // Task 4: permission/question relay tests
+  describe("permission.asked relay", () => {
+    it("relays permission request for child session", async () => {
+      const mockTask = { id: "task-1", sessionID: "child-1", parentSessionID: "parent-1" }
+      const mockPermissionReply = vi.fn().mockResolvedValue(undefined)
+      const mockPromptAsync = vi.fn().mockResolvedValue(undefined)
+
+      const ctx = {
+        client: {
+          permission: { reply: mockPermissionReply },
+          session: { promptAsync: mockPromptAsync },
+        },
+        sessionStore: new SessionStore({ max: 10 }),
+        contextDebugLog: () => {},
+        taskDebugLog: () => {},
+        taskManager: {
+          findBySession: vi.fn().mockReturnValue(mockTask),
+          getClient: vi.fn().mockReturnValue({
+            permission: { reply: mockPermissionReply },
+            session: { promptAsync: mockPromptAsync },
+          }),
+          getTask: vi.fn().mockReturnValue(mockTask),
+        } as never,
+      }
+
+      const hooks = createEventRouter(ctx as never)
+
+      await hooks.event({
+        event: {
+          type: "permission.asked",
+          properties: {
+            sessionID: "child-1",
+            id: "perm-123",
+            permission: "bash",
+            patterns: ["npm install"],
+          },
+        },
+      })
+
+      // Should auto-reply 'once' for child session
+      expect(mockPermissionReply).toHaveBeenCalledWith({
+        requestID: "perm-123",
+        reply: "once",
+      })
+
+      // Should notify parent session
+      expect(mockPromptAsync).toHaveBeenCalledWith({
+        path: { id: "parent-1" },
+        body: {
+          noReply: true,
+          parts: [{
+            type: "text",
+            text: expect.stringContaining("[WOPAL TASK PERMISSION]"),
+            synthetic: true,
+          }],
+        },
+      })
+    })
+
+    it("skips permission relay for main session", async () => {
+      const mockPermissionReply = vi.fn()
+      const ctx = {
+        client: { permission: { reply: mockPermissionReply } },
+        sessionStore: new SessionStore({ max: 10 }),
+        contextDebugLog: () => {},
+        taskDebugLog: () => {},
+        taskManager: {
+          findBySession: vi.fn().mockReturnValue(undefined), // No task = main session
+        } as never,
+      }
+
+      const hooks = createEventRouter(ctx as never)
+
+      await hooks.event({
+        event: {
+          type: "permission.asked",
+          properties: {
+            sessionID: "main-session",
+            id: "perm-123",
+            permission: "bash",
+          },
+        },
+      })
+
+      expect(mockPermissionReply).not.toHaveBeenCalled()
+    })
+  })
+
+  describe("question.asked relay", () => {
+    it("relays question request for child session and sets waiting status", async () => {
+      const mockTask = {
+        id: "task-1",
+        sessionID: "child-1",
+        status: "running",
+        parentSessionID: "parent-1",
+        description: "Test task",
+      }
+      const mockPromptAsync = vi.fn().mockResolvedValue(undefined)
+
+      const ctx = {
+        client: { session: { promptAsync: mockPromptAsync } },
+        sessionStore: new SessionStore({ max: 10 }),
+        contextDebugLog: () => {},
+        taskDebugLog: () => {},
+        taskManager: {
+          findBySession: vi.fn().mockReturnValue(mockTask),
+          getClient: vi.fn().mockReturnValue({ session: { promptAsync: mockPromptAsync } }),
+          getTask: vi.fn().mockReturnValue(mockTask),
+        } as never,
+      }
+
+      const hooks = createEventRouter(ctx as never)
+
+      await hooks.event({
+        event: {
+          type: "question.asked",
+          properties: {
+            sessionID: "child-1",
+            id: "q-123",
+            questions: [{
+              header: "Choice",
+              question: "Which option?",
+              options: [
+                { label: "Option A", description: "First choice" },
+                { label: "Option B", description: "Second choice" },
+              ],
+            }],
+          },
+        },
+      })
+
+      // Should set task to waiting status
+      expect(mockTask.status).toBe("waiting")
+      expect(mockTask.pendingQuestionID).toBe("q-123")
+      expect(mockTask.waitingReason).toBe("question_tool")
+
+      // Should notify parent session
+      expect(mockPromptAsync).toHaveBeenCalledWith({
+        path: { id: "parent-1" },
+        body: {
+          noReply: true,
+          parts: [{
+            type: "text",
+            text: expect.stringContaining("[WOPAL TASK QUESTION]"),
+            synthetic: true,
+          }],
+        },
+      })
+
+      const callArgs = mockPromptAsync.mock.calls[0][0]
+      const messageText = callArgs.body.parts[0].text
+      expect(messageText).toContain("**Task ID:** `task-1`")
+      expect(messageText).toContain("Which option?")
+      expect(messageText).toContain("Option A — First choice")
+    })
+
+    it("skips question relay for main session", async () => {
+      const mockPromptAsync = vi.fn()
+      const ctx = {
+        client: { session: { promptAsync: mockPromptAsync } },
+        sessionStore: new SessionStore({ max: 10 }),
+        contextDebugLog: () => {},
+        taskDebugLog: () => {},
+        taskManager: {
+          findBySession: vi.fn().mockReturnValue(undefined), // No task = main session
+        } as never,
+      }
+
+      const hooks = createEventRouter(ctx as never)
+
+      await hooks.event({
+        event: {
+          type: "question.asked",
+          properties: {
+            sessionID: "main-session",
+            id: "q-123",
+            questions: [{ question: "Test?" }],
+          },
+        },
+      })
+
+      expect(mockPromptAsync).not.toHaveBeenCalled()
+    })
+  })
 })

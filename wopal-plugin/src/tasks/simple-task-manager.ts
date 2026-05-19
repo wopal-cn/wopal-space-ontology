@@ -3,6 +3,7 @@ import type {
   LaunchInput,
   LaunchOutput,
   WopalTask,
+  OpenCodeClient,
 } from "../types.js"
 import type { DebugLog } from "../debug.js"
 import type { SessionStore } from "../session-store.js"
@@ -30,15 +31,14 @@ import {
   shutdownManager,
 } from "./task-lifecycle.js"
 import { sessionIDToTaskID } from "../session-ref.js"
+import { getDisplayStatus, isResumableTask, canDeleteTask } from "./task-phase.js"
 
 const defaultManagerLog = createDebugLog("[task]", "task")
 
 export class SimpleTaskManager {
   private tasks = new Map<string, WopalTask>()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private client: any
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private v2Client: any
+  private client: OpenCodeClient
+  private v2Client: OpenCodeClient
   private serverUrl?: URL
   private directory: string
   private debugLog: DebugLog
@@ -53,10 +53,8 @@ export class SimpleTaskManager {
   private recoveringSessions = new Set<string>()
 
   constructor(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    client: any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    v2Client: any,
+    client: OpenCodeClient,
+    v2Client: OpenCodeClient,
     directory: string,
     serverUrl?: URL,
     sessionStore?: SessionStore,
@@ -105,13 +103,11 @@ export class SimpleTaskManager {
     return this.sessionStore
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  getClient(): any {
+  getClient(): OpenCodeClient {
     return this.client
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  getV2Client(): any {
+  getV2Client(): OpenCodeClient {
     return this.v2Client
   }
 
@@ -170,7 +166,7 @@ export class SimpleTaskManager {
 
     for (const task of this.tasks.values()) {
       if (task.parentSessionID === parentSessionID) {
-        const effectiveStatus = task.idleNotified ? 'idle' : task.status
+        const effectiveStatus = getDisplayStatus(task)
         result.push({
           taskID: task.id,
           sessionID: task.sessionID ?? '',
@@ -212,7 +208,7 @@ export class SimpleTaskManager {
       return { ok: false, message: "Task not found or not owned by this session" }
     }
 
-    if (task.status === 'running' && !task.idleNotified) {
+    if (!canDeleteTask(task)) {
       return { ok: false, message: "Task is still running. Please verify completion before deleting (use wopal_task_output to check status)." }
     }
 
@@ -251,7 +247,8 @@ export class SimpleTaskManager {
   }
 
   reacquireSlotOnWakeUp(task: WopalTask): void {
-    if (task.status === 'waiting' || task.idleNotified) {
+    // Reacquire slot for resumable tasks (waiting, idle, error)
+    if (isResumableTask(task)) {
       if (this.concurrency.tryAcquire(this.CONCURRENCY_KEY, DEFAULT_CONCURRENCY_LIMIT)) {
         task.concurrencyKey = this.CONCURRENCY_KEY
         this.debugLog(`[reacquireSlot] taskId=${task.id} acquired slot`)

@@ -2,7 +2,8 @@ import { createDebugLog } from "../debug.js"
 import type { SessionStore } from "../session-store.js"
 import type { ProgressInfo } from "../tasks/progress.js"
 import type { LoopWarning } from "../tasks/loop-detector.js"
-import { fetchContextPercent } from "../tasks/task-monitor.js"
+import { fetchContextPercent, fetchSessionModelInfo, formatContextUsage } from "../session-runtime-info.js"
+import type { OpenCodeClient } from "../types.js"
 
 const debugLog = createDebugLog("[task]", "task")
 export const MAX_RECENT_OUTPUT = 800
@@ -15,60 +16,21 @@ export function truncateOutput(text: string): string {
   return text.slice(-MAX_RECENT_OUTPUT) + "\n[...earlier content truncated]"
 }
 
-export function formatTokenCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${Math.round(n / 1_000)}K`
-  return String(n)
-}
-
-export interface SessionModelInfo {
-  providerID: string
-  modelID: string
-}
-
 export async function getSessionModelInfo(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  client: any,
+  client: OpenCodeClient,
   sessionID: string,
-): Promise<SessionModelInfo | null> {
-  try {
-    if (typeof client.session?.messages !== "function") return null
-    const messagesResult = await client.session.messages({
-      path: { id: sessionID },
-      query: { limit: 5 }
-    })
-    const messages = messagesResult?.data ?? []
-
-    // 找最后一条 assistant 消息获取模型信息
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const lastAssistant = [...messages].reverse().find((m: any) =>
-      m?.info?.role === "assistant"
-    )
-    if (!lastAssistant?.info) return null
-
-    const providerID = lastAssistant.info.providerID ?? lastAssistant.info.model?.providerID
-    const modelID = lastAssistant.info.modelID ?? lastAssistant.info.model?.modelID
-    if (!providerID || !modelID) return null
-
-    return { providerID, modelID }
-  } catch (err) {
-    debugLog(`[modelInfo] error: ${err instanceof Error ? err.message : String(err)}`)
-    return null
-  }
+): Promise<{ providerID: string; modelID: string } | null> {
+  return fetchSessionModelInfo(client, sessionID, debugLog)
 }
 
 export async function getContextUsage(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  client: any,
+  client: OpenCodeClient,
   sessionID: string,
   directory: string,
   sessionStore: SessionStore,
 ): Promise<string | null> {
   const info = await fetchContextPercent(client, sessionStore, directory, sessionID, debugLog)
-  if (!info) return null
-
-  const warn = info.pct > 45 ? " ⚠️" : ""
-  return `Context: ${info.pct}% used (${formatTokenCount(info.used)}/${formatTokenCount(info.contextLimit)})${warn}`
+  return formatContextUsage(info)
 }
 
 /**

@@ -3,12 +3,13 @@ import type { DebugLog } from "../debug.js"
 import { formatSessionID } from "../debug.js"
 import { toErrorMessage } from "./utils.js"
 import { sessionIDToTaskID } from "./task-launcher.js"
+import { isIdleTask } from "./task-phase.js"
 
 export interface TaskLifecycleDeps {
   tasks: Map<string, WopalTask>
   client: {
     session?: {
-      abort?: (args: { path: { id: string } }) => Promise<void>
+      abort?: (args: { path: { id: string } }) => Promise<unknown>
       delete?: (args: { path: { id: string } }) => Promise<{ data?: boolean; error?: unknown }>
     }
   }
@@ -67,9 +68,9 @@ export function markTaskErrorBySession(
     return undefined
   }
 
-  // Don't change status if task was already interrupted (idleNotified=true)
-  if (task.idleNotified && task.status === 'running') {
-    debugLog(`[markError] skipped: taskId=${task.id} was interrupted (idleNotified=true), preserving running state`)
+  // Don't change status if task was already interrupted (idle phase)
+  if (isIdleTask(task) && task.status === 'running') {
+    debugLog(`[markError] skipped: taskId=${task.id} was interrupted (idle phase), preserving running state`)
     return undefined
   }
 
