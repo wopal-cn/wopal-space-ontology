@@ -1,548 +1,447 @@
 # Implementation Review Rubric
 
-Detailed verification patterns, classification criteria, and test quality audit procedures for rook's implementation review.
+审查方法论与问题模式参考。rook 只使用 `read` / `glob` / `grep` / `lsp` 等只读工具。
+
+> 本源文件提炼自 WSF `verification-patterns.md` 的四层验证模型、存根模式与连接检测方法论。
 
 ---
 
-## 四层验证模型 (Four-Level Verification)
+## 核心原则
 
-The core methodology for verifying whether code achieves the goal.
+**存在 ≠ 实现**。文件存在不意味着功能有效。rook 必须逐层验证：
 
-### Level 1: 存在 (Exists)
+1. **存在** — 预期路径下有文件
+2. **实质性** — 内容是真实实现，不是占位符
+3. **已连接** — 已接入系统其他部分（import → use → render）
+4. **功能性** — 调用时实际工作（通常需人工验证）
 
-**Question**: Does the artifact exist at the expected path?
-
-**Check**:
-```bash
-[ -f "$artifact_path" ] && echo "EXISTS" || echo "MISSING"
-```
-
-**Status**:
-- ✓ EXISTS: File found at expected location
-- ✗ MISSING: File not found
-
-**Blocker if**: Artifact required by goal is MISSING.
+1-3 层 rook 可独立完成。第 4 层标注为 `NEEDS_HUMAN`。
 
 ---
 
-### Level 2: 实质性 (Substantive)
+## 通用存根模式
 
-**Question**: Is the artifact real implementation, not stub/placeholder?
+以下模式无论语言和文件类型，均表明占位符代码。
 
-**Check**:
-- Line count > minimum threshold (usually 10-15 lines)
-- Contains expected patterns (not just empty return)
-- No placeholder text
-
-**Stub patterns** (these fail substantive):
-- `return null`, `return {}`, `return []`
-- `console.log(...)` as only implementation
-- `// TODO`, `// FIXME`, `PLACEHOLDER`
-- Placeholder text: "Coming soon", "Not implemented"
-- Functions with only `pass` or `{}` body
-
-**Status**:
-- ✓ SUBSTANTIVE: Real implementation found
-- ✗ STUB: Placeholder or minimal implementation
-
-**Blocker if**: Artifact required by goal is STUB.
-
----
-
-### Level 3: 已连接 (Connected/Wired)
-
-**Question**: Is the artifact connected to the system?
-
-**Check**:
-- Component → API: grep for fetch/axios calls
-- API → Database: grep for prisma/db queries
-- State → Render: grep for state variable in JSX
-
-**Wiring patterns**:
-```bash
-# Component → API
-grep -E "fetch\(|axios\.|useSWR|useQuery" "$component"
-
-# API → Database
-grep -E "prisma\.|db\.|query\(|findMany" "$route"
-
-# State → Render
-grep -E "\{$state_var\}|\{$state_var\." "$component"
-```
-
-**Status**:
-- ✓ WIRED: Imported and used
-- ⚠️ ORPHANED: Exists but not imported/used
-- ⚠️ PARTIAL: Imported but not used (or vice versa)
-
-**Warning if**: Artifact is ORPHANED or PARTIAL.
-
----
-
-### Level 4: 功能性 (Functional)
-
-**Question**: Does it actually work when invoked?
-
-**Check**: Usually requires human verification for:
-- Visual rendering
-- User flow completion
-- Real-time behavior
-- External service integration
-
-**Status**:
-- ✓ FUNCTIONAL: Works correctly (usually human-verified)
-- ? NEEDS_HUMAN: Cannot verify programmatically
-- ✗ BROKEN: Observable malfunction
-
-**Blocker if**: Automation detects BROKEN (e.g., API returns error, test fails).
-
----
-
-## Stub Detection Patterns
-
-Detailed patterns for detecting placeholder implementations.
-
-### Comment-Based Stubs
-
-```bash
-# TODO/FIXME markers
-grep -E "(TODO|FIXME|XXX|HACK|PLACEHOLDER)" "$file"
-
-# Placeholder phrases
-grep -E "implement|add later|coming soon|will be|not yet" "$file" -i
-
-# Ellipsis markers
-grep -E "// \.\.\.|/\* \.\.\. \*/|# \.\.\." "$file"
-```
-
-### Output Placeholder Patterns
-
-```bash
-# UI placeholder text
-grep -E "placeholder|lorem ipsum|coming soon|under construction" "$file" -i
-grep -E "sample|example|test data|dummy" "$file" -i
-```
-
-### Empty Implementation Patterns
-
-```bash
-# Empty returns
-grep -E "return null|return undefined|return \{\}|return \[\]" "$file"
-
-# Pass-only functions
-grep -E "pass$|\.\.\.|\bnothing\b" "$file"
-
-# Console.log only
-grep -E "console\.(log|warn|error).*only" "$file"
-```
-
-### Fake Dynamic (Hardcoded)
-
-```bash
-# Hardcoded IDs
-grep -E "id.*=.*['\"].*['\"]" "$file"
-
-# Hardcoded counts
-grep -E "count.*=.*\d+|length.*=.*\d+" "$file"
-
-# Hardcoded display values
-grep -E "\$\d+\.\d{2}|\d+ items" "$file"
-```
-
-### React Component Stubs
+### 基于注释的存根
 
 ```javascript
-// RED FLAGS:
+// TODO: implement later
+// FIXME: this is broken
+// XXX: hack
+// HACK: temporary
+// PLACEHOLDER
+
+// ...
+/* ... */
+
+# ... (Python/Shell)
+```
+
+rook 用 `grep` 工具检查，pattern: `(TODO|FIXME|XXX|HACK|PLACEHOLDER|\.\.\.)`
+
+### 占位符文本
+
+```
+"placeholder"
+"lorem ipsum"
+"coming soon"
+"under construction"
+"TBD"
+"Not implemented"
+```
+
+rook 用 `grep` 工具检查，pattern: `(placeholder|lorem ipsum|coming soon|under construction|TBD|not implemented)`
+
+### 空实现
+
+```javascript
+return null
+return undefined
+return {}
+return []
+```
+
+```python
+pass
+return None
+return {}
+return []
+```
+
+rook 用 `grep` 工具检查，pattern: `(return null|return undefined|return \{\}|return \[\])`
+
+### 仅日志函数
+
+```javascript
+function handler(data) {
+  console.log(data)   // ← 仅日志，无实际逻辑
+}
+```
+
+### 假动态真硬编码
+
+```jsx
+// 应来自 state/props，实为硬编码
+<div>Message 1</div>
+<div>Message 2</div>
+
+// ID 应为动态生成
+const id = "fixed-id"
+
+// 计数应为计算结果
+const count = 3
+
+// 显示值应为格式化结果
+const price = "$9.99"
+```
+
+---
+
+## 前端组件模式
+
+### 实质性检查
+
+以下均为存根，应被标记为 Blocker（若目标要求该组件有实际功能）：
+
+```jsx
+// 空壳
 return <div>Component</div>
 return <div>Placeholder</div>
-return <div>{/* TODO */}</div>
 return <p>Coming soon</p>
+return <div>{/* TODO */}</div>
+
+// 空返回
 return null
 return <></>
 
-// Empty handlers:
+// 空事件处理器
 onClick={() => {}}
 onChange={() => console.log('clicked')}
-onSubmit={(e) => e.preventDefault()}  // Only prevents default
+onSubmit={(e) => e.preventDefault()}     // 仅阻止默认行为
 ```
 
-### API Route Stubs
+**rook 检查方法**：
+1. `read` 组件文件，扫描 return 语句
+2. 检查 JSX 是否包含实质性元素（`className`, `onClick`, 动态表达式 `{...}`）
+3. 检查是否使用 props 或 state（`props.X`, `useState`, `{variable}`）
+
+### 连接检查：组件 → API
+
+组件渲染了，但数据从哪来？
+
+```jsx
+// ✅ 正确：组件调用 API 获取数据
+useEffect(() => {
+  fetch('/api/messages').then(r => r.json()).then(setMessages)
+}, [])
+
+// ❌ 问题：fetch 存在但响应未消费
+fetch('/api/messages')  // 无 await，无 .then，无赋值
+
+// ❌ 问题：fetch 被注释掉
+// fetch('/api/messages').then(r => r.json()).then(setMessages)
+```
+
+**rook 检查方法**：
+- 用 `grep` 工具在组件文件中搜索 `fetch\(|axios\.|useSWR|useQuery`
+- 用 `read` 确认调用是否被 await/消费/未被注释
+- 若组件需要数据但无 API 调用 → Warning
+
+### 连接检查：状态 → 渲染
+
+状态变量存在，但 JSX 里用了吗？
+
+```jsx
+// ❌ 状态存在但未渲染
+const [messages, setMessages] = useState([])
+return <div>No messages</div>    // 永远显示"无消息"
+
+// ❌ 渲染了错误的状态
+const [messages, setMessages] = useState([])
+return <div>{otherData.map(...)}</div>   // 用的是别的变量
+```
+
+**rook 检查方法**：用 `read` 比对 useState 变量名与 JSX `{...}` 中的引用。
+
+---
+
+## API 路由模式
+
+### 实质性检查
+
+以下均为存根：
 
 ```typescript
-// RED FLAGS:
+// 空响应
+export async function GET() {
+  return Response.json([])           // 空数组，无 DB 查询
+}
+
 export async function POST() {
+  return new Response()              // 空响应体
+}
+
+// 占位符消息
+export async function PUT() {
   return Response.json({ message: "Not implemented" })
 }
 
+// 仅日志
+export async function POST(req) {
+  console.log(await req.json())
+  return Response.json({ ok: true }) // 无实际处理
+}
+```
+
+### 连接检查：API → 数据库
+
+API 路由返回数据，但数据从哪来？
+
+```typescript
+// ✅ 正确：查询数据库并返回结果
 export async function GET() {
-  return Response.json([])  // Empty array, no DB query
+  const messages = await prisma.message.findMany()
+  return Response.json(messages)
 }
 
-export async function PUT() {
-  return new Response()  // Empty response
+// ❌ 查询了但未返回结果
+await prisma.message.findMany()
+return Response.json({ ok: true })   // 返回静态值，不是查询结果
+
+// ❌ 查询未 await（返回 Promise 不是数据）
+const messages = prisma.message.findMany()
+return Response.json(messages)       // 返回的是 Promise 对象
+```
+
+**rook 检查方法**：
+- 用 `grep` 工具在路由文件中搜索 `prisma\.|db\.|query\(|findMany|create|update|delete`
+- 用 `read` 确认查询结果是否被 await 且被 return
+
+### 输入验证
+
+API 是否校验了输入？若 POST/PUT 路由直接使用 `req.json()` 不作任何校验 → Warning。
+
+```typescript
+// ✅ 有校验
+const body = schema.parse(await req.json())
+
+// ❌ 无校验
+const body = await req.json()
+// 直接使用 body.field...  未验证字段存在性/类型
+```
+
+**rook 检查方法**：用 `grep` 工具搜索 `schema\.parse|validate|zod|yup|joi`。
+
+---
+
+## 数据库模式存根
+
+若变更包含数据库 schema 文件（`schema.prisma` / `schema.ts` / `*.sql`）：
+
+```prisma
+// ❌ 空壳模型
+model User {
+  id String @id
+  // TODO: add fields
+}
+
+// ❌ 仅 id + 一个字段
+model Message {
+  id      String @id
+  content String
+  // 缺少: createdAt, userId, chatId
+}
+
+// ❌ 缺少关键关系
+model Order {
+  id     String @id
+  // 缺少: userId, items (relation), total, status, createdAt
 }
 ```
 
----
-
-## Bug / Security / Debt Classification
-
-### Bug (Logic/Correctness Issues)
-
-**Severity**: Blocker or Warning
-
-**Examples**:
-- Null/undefined dereference
-- Off-by-one errors in loops
-- Type mismatches (string where number expected)
-- Unhandled edge cases (empty array, missing key)
-- Incorrect conditionals (wrong operator)
-- Variable shadowing
-- Dead code paths
-- Unreachable code
-- Missing `await` in async functions
-- Incorrect error handling (catch block empty)
-
-**Detection**:
-```bash
-# Unchecked array access
-grep -E "\.length\]\s*==|\.length\]\s*!=" "$file"  # Off-by-one
-
-# Missing await
-grep -E "const.*=\s*[a-zA-Z]+\(" "$file"  # Potential async without await
-
-# Empty catch
-grep -E "catch\s*\([^)]*\)\s*\{\s*\}" "$file"
-```
+**rook 检查方法**：`read` schema 文件，检查每个模型是否有 ≥ 3 个业务字段、相应关系是否定义。
 
 ---
 
-### Security (Vulnerabilities)
+## 自定义 Hooks/工具存根
 
-**Severity**: Blocker (always)
-
-**Examples**:
-- SQL injection
-- Command injection
-- Path traversal
-- XSS (innerHTML, dangerouslySetInnerHTML)
-- Hardcoded secrets/credentials
-- Insecure crypto (weak hashing, no encryption)
-- Unsafe deserialization
-- Missing input validation
-- Directory traversal
-- `eval()` usage
-- Insecure random generation
-- Authentication bypasses
-- Authorization gaps
-
-**Detection**:
-```bash
-# Hardcoded secrets
-grep -E "(password|secret|api_key|token|apikey|api-key)\s*[=:]\s*['\"]\w+['\"]" "$file"
-
-# Dangerous functions
-grep -E "eval\(|innerHTML|dangerouslySetInnerHTML|exec\(|system\(|shell_exec" "$file"
-
-# Command injection patterns
-grep -E "exec.*\$\{|system.*\$\{" "$file"
-```
-
----
-
-### Debt (Technical Debt)
-
-**Severity**: Warning or Info
-
-**Examples**:
-- TODO/FIXME comments
-- Placeholder text in output
-- Empty return statements
-- Empty handler functions
-- Fake dynamic (hardcoded values)
-- Unused imports/variables
-- Poor naming (single-letter variables)
-- Commented-out code
-- Magic numbers (should be constants)
-- Code duplication
-- Weak test assertions
-
-**Detection**:
-```bash
-# Debug artifacts
-grep -E "console\.log|debugger;" "$file"
-
-# Commented-out code
-grep -E "^\s*//.*[{};]|^\s*#.*:" "$file"
-
-# Magic numbers
-grep -E "[^a-zA-Z_]\d{3,}[^a-zA-Z_0-9]" "$file"  # Numbers > 999 not in variable names
-```
-
----
-
-## 测试质量审计 (Test Quality Audit)
-
-Tests are critical evidence for goal verification. Audit them for debt patterns.
-
-### Skipped/Disabled Tests
-
-**Severity**: Blocker (if for critical requirement)
-
-**Detection**:
-```bash
-# JavaScript/TypeScript
-grep -E "skip\(|\.skip|xit|test\.skip|it\.skip|describe\.skip" "$test_file"
-
-# Python
-grep -E "@pytest\.mark\.skip|skip_test|unittest\.skip" "$test_file"
-
-# Go
-grep -E "t\.Skip|SkipNow" "$test_file"
-```
-
-**Blocker if**: Test file exists for requirement but all tests are skipped/disabled.
-
----
-
-### Circular Proofs (Self-Validating)
-
-**Severity**: Blocker
-
-**Pattern**: System generates expected values, then validates against itself.
-
-**Detection**:
-```bash
-# Expected = actual
-grep -E "expected.*=.*actual|actual.*=.*expected" "$test_file"
-
-# Expected generated from system
-grep -E "const expected = .*generate|expected.*from.*system" "$test_file"
-```
-
-**Example**:
 ```typescript
-const expected = generateOutput(input)  // Same function being tested
-const actual = generateOutput(input)
-expect(actual).toEqual(expected)  // Circular proof
+// ❌ 空壳 hook
+export function useAuth() {
+  return { user: null, login: () => {}, logout: () => {} }
+}
+
+// ❌ 仅日志 hook
+export function useCart() {
+  const [items, setItems] = useState([])
+  return { items, addItem: () => console.log('add'), removeItem: () => {} }
+}
+
+// ❌ 硬编码返回
+export function useUser() {
+  return { name: "Test User", email: "test@example.com" }
+}
 ```
+
+**rook 检查方法**：`read` hooks 文件，检查返回值和函数体是否有实质逻辑（调用 API、操作 state、副作用）。
 
 ---
 
-### Placeholder Assertions
+## 测试质量审计
 
-**Severity**: Blocker
+测试是目标达成的重要证据。不能只看测试是否存在，要审测试是否真的证明了什么。
 
-**Pattern**: Assertion that always passes regardless of implementation.
+### 跳过/禁用的测试
 
-**Detection**:
-```bash
-# Always true
-grep -E "expect\(true\)\.toBe\(true\)|expect\(false\)\.toBe\(false\)" "$test_file"
-
-# Empty assertion body
-grep -E "expect\(.*\)\s*;" "$test_file"  # Expect without matcher
-```
-
-**Example**:
 ```typescript
-expect(true).toBe(true)  // Always passes
-expect(component).toBeDefined()  // Only checks existence, not behavior
+it.skip('sends message', () => { ... })
+it.skip('renders correctly')
+describe.skip('Chat', () => { ... })
+xit('loads data')
+xdescribe('Messages')
 ```
 
----
-
-### Weak Assertions (Existence Only)
-
-**Severity**: Warning or Info
-
-**Pattern**: Assertion checks existence but not behavior/value.
-
-**Detection**:
-```bash
-# Only existence checks
-grep -E "expect.*toBeDefined|expect.*toBeTruthy|expect.*toBeFalsy|expect.*not\.toBeNull" "$test_file"
+```python
+@pytest.mark.skip
+def test_send():
+    ...
 ```
 
-**Example**:
+```go
+t.Skip("not implemented")
+t.SkipNow()
+```
+
+**判定**：若某需求对应的测试全部被跳过/禁用 → Blocker。
+
+### 循环证明
+
+系统生成期望值，再用同一个系统验证——什么都没证明。
+
 ```typescript
-expect(result).toBeDefined()  // Weak: only checks exists
-expect(result).toEqual({ id: 1, name: 'test' })  // Strong: checks values
+// ❌ 循环证明
+const expected = generateOutput(input)   // 被测函数
+const actual = generateOutput(input)     // 同一函数
+expect(actual).toEqual(expected)          // 自己证明自己
+
+// ❌ 系统自己生成期望数据
+const expected = await system.createTestData()
+const actual = await system.getData()
+expect(actual).toEqual(expected)
 ```
 
-**Upgrade from weak to strong**: Check actual values, not just existence.
+**判定**：循环证明 → Blocker。
 
----
+### 占位断言
 
-### Missing Assertions
+永远通过的断言，无论实现如何变化都不会失败。
 
-**Severity**: Warning
-
-**Pattern**: Test file exists but no `expect` statements.
-
-**Detection**:
-```bash
-grep -c "expect" "$test_file"  # Count expect statements
-# If count == 0 → Missing assertions
+```typescript
+expect(true).toBe(true)
+expect(false).toBe(false)
+expect(1).toBe(1)
+expect("test").toBe("test")
 ```
 
----
+**rook 检查方法**：用 `grep` 工具搜索 `expect\(true\)|expect\(false\)|expect\(1\)|expect\("test"\)`。
 
-## 审查维度完整清单
+**判定**：占位断言 → Blocker。
 
-### Goal Verification Checklist
+### 弱断言（仅检查存在性）
 
-- [ ] Extract goal from Plan or prompt
-- [ ] Identify must_haves.truths (or derive)
-- [ ] Level 1: Verify each artifact exists
-- [ ] Level 2: Verify each artifact is substantive (not stub)
-- [ ] Level 3: Verify each artifact is wired (connected to system)
-- [ ] Level 4: Flag items needing human functional verification
-- [ ] Determine overall goal achievement status
-
-### Bug Scan Checklist
-
-- [ ] Check for null/undefined dereference patterns
-- [ ] Check for off-by-one errors in loops/indexing
-- [ ] Check for missing await in async functions
-- [ ] Check for empty catch blocks
-- [ ] Check for unreachable/dead code
-- [ ] Check for type mismatches
-
-### Security Scan Checklist
-
-- [ ] Check for hardcoded secrets/credentials
-- [ ] Check for dangerous functions (eval, innerHTML, exec)
-- [ ] Check for injection patterns (SQL, command, path traversal)
-- [ ] Check for missing input validation
-- [ ] Check for unsafe deserialization
-
-### Debt Scan Checklist
-
-- [ ] Check for TODO/FIXME/PLACEHOLDER markers
-- [ ] Check for placeholder text in output
-- [ ] Check for empty returns/handlers
-- [ ] Check for hardcoded values (fake dynamic)
-- [ ] Check for unused imports/variables
-- [ ] Check for commented-out code
-
-### Test Quality Audit Checklist
-
-- [ ] Check for skipped/disabled tests
-- [ ] Check for circular proofs (expected = actual)
-- [ ] Check for placeholder assertions (expect(true).toBe(true))
-- [ ] Check for weak assertions (existence only)
-- [ ] Check for missing assertions (no expect in test file)
-
----
-
-## Severity Decision Matrix
-
-| Finding Type | Has file:line + code? | Severity |
-|--------------|----------------------|----------|
-| Goal not achieved | Yes | Blocker |
-| Goal not achieved | No | Flag as "needs investigation" |
-| Security vulnerability | Yes | Blocker |
-| Security vulnerability | No | Flag as "needs investigation" |
-| Bug (correctness) | Yes | Blocker or Warning |
-| Bug (correctness) | No | Info |
-| Debt (stub/deprecated) | Yes | Warning or Info |
-| Debt (stub/deprecated) | No | Info |
-| Test quality issue | Yes | Blocker (skipped/disabled) or Warning |
-| Test quality issue | No | Info |
-
----
-
-## Output Template
-
-Use this template for structured findings:
-
-```markdown
-### {ID}: {Title}
-
-**位置**: `path/to/file:line`
-**代码**: `{snippet}`
-**问题**: {Why it's a problem - goal perspective}
-**修复建议**: {Concrete action}
-
-**分类**: bug | security | debt | test_quality
-**严重等级**: Blocker | Warning | Info
+```typescript
+expect(result).toBeDefined()
+expect(component).toBeTruthy()
+expect(data).not.toBeNull()
+expect(response).toBeTruthy()
 ```
 
----
+只检查"东西存在"，不检查"值对不对"。以下为强断言对比：
 
-## Common Patterns Reference
+```typescript
+// ❌ 弱断言
+expect(result).toBeDefined()
 
-### Pattern: Component Not Wired to API
-
-**Symptom**: Component renders but doesn't fetch data.
-
-**Check**:
-```bash
-grep -E "fetch\(|axios\.|useSWR|useQuery" "$component"
+// ✅ 强断言
+expect(result).toEqual({ id: 1, name: 'test', email: 'test@example.com' })
+expect(result.id).toBe(1)
+expect(result.items).toHaveLength(3)
 ```
 
-**Finding**: Warning if no API call found.
+**判定**：单个弱断言 → Info。若某测试文件中所有断言均为弱断言 → Warning。
 
-**Fix**: Add fetch/axios call to data source.
+### 缺少断言
 
----
+测试文件存在，但内部没有任何 `expect` / `assert` 语句。
 
-### Pattern: API Not Wired to Database
+**rook 检查方法**：用 `grep` 工具对测试文件搜索 `expect|assert`，命中数为 0 → 测试为空壳。
 
-**Symptom**: API returns static/hardcoded data.
-
-**Check**:
-```bash
-grep -E "prisma\.|db\.|query\(|findMany" "$route"
-```
-
-**Finding**: Blocker if goal requires database fetch.
-
-**Fix**: Add database query and return result.
+**判定**：缺少断言 → Warning。
 
 ---
 
-### Pattern: State Not Rendered
+## 审查清单
 
-**Symptom**: State variable exists but not used in JSX.
+rook 完成文件读取后，逐项回答以下问题：
 
-**Check**:
-```bash
-grep -E "\{$state_var\}" "$component"
-```
+### 目标验证
 
-**Finding**: Warning if state exists but not rendered.
+- [ ] 从 Plan 提取了目标（goal / must_haves.truths）
+- [ ] 每个目标对应的文件是否存在（Level 1）
+- [ ] 每个文件是否有实质实现，不是存根（Level 2）
+- [ ] 每个文件是否接入系统（import → use → render，Level 3）
+- [ ] 标注需要人工功能验证的项（Level 4）
 
-**Fix**: Render state in JSX: `<div>{state_var}</div>`
+### 存根扫描
+
+- [ ] 检查 TODO/FIXME/PLACEHOLDER 注释
+- [ ] 检查 "coming soon" / "not implemented" 占位文本
+- [ ] 检查 `return null` / `return {}` / `return []` 空实现
+- [ ] 检查硬编码 ID/计数/显示值（假动态）
+- [ ] 检查空事件处理器（`onClick={() => {}}`）
+- [ ] 检查 API 返回占位符数据（空数组、静态消息）
+- [ ] 若涉及 schema，检查模型是否有空壳
+
+### 测试质量
+
+- [ ] 检查跳过的测试（`skip` / `xit` / `xdescribe`）
+- [ ] 检查循环证明（`expected = same_system(...)`）
+- [ ] 检查占位断言（`expect(true).toBe(true)`）
+- [ ] 检查弱断言（仅 `toBeDefined` / `toBeTruthy`）
+- [ ] 检查测试文件是否缺少断言
 
 ---
 
-## Quick Severity Reference
+## 判定参考
 
-| Pattern | Severity | Blocker condition |
-|---------|----------|-------------------|
-| Missing file | Blocker | Always |
-| Stub implementation | Blocker | Required by goal |
-| Orphaned artifact | Warning | Always |
-| Hardcoded secret | Blocker | Always |
-| SQL injection | Blocker | Always |
-| Skipped test | Blocker | For critical requirement |
-| Circular proof | Blocker | Always |
-| Placeholder assertion | Blocker | Always |
-| Weak assertion | Info | Unless multiple |
-| TODO comment | Info | Unless in critical path |
-| Unused import | Info | Always |
+| 情形 | 判定 |
+|------|------|
+| 目标对应的文件缺失 | Blocker |
+| 目标对应的文件是存根 | Blocker |
+| 安全漏洞（硬编码密钥、eval、XSS） | Blocker |
+| 测试全部跳过 / 循环证明 / 占位断言 | Blocker |
+| 文件未接入系统（存在但孤立） | Warning |
+| API 无输入校验 | Warning |
+| 测试全是弱断言 | Warning |
+| TODO/FIXME 标记（非关键路径） | Info |
+| 单个弱断言 | Info |
+| 硬编码 ID/文本（非目标要求动态的场景） | Info |
 
 ---
 
-## Integration Notes
+## 人工验证指引
 
-This rubric is referenced by SKILL.md and should be loaded when detailed verification patterns are needed.
+以下情况 rook 应标注 `NEEDS_HUMAN`，而非自行判断：
 
-Rook agent loads this file via:
-```markdown
-**@references/review-rubric.md**
-```
+- 视觉外观是否正确
+- 用户流程是否完整可用
+- WebSocket / SSE 实时行为
+- 外部服务集成（Stripe、邮件）
+- 错误消息是否清晰有帮助
+- 移动端响应式
+- 无障碍性
 
-The SKILL.md contains the workflow and output structure; this file contains the detailed verification procedures and classification criteria.
+---
+
+*本文件为 `df-implement-review` SKILL.md 的参考附件。rook 通过 `@references/review-rubric.md` 加载。*

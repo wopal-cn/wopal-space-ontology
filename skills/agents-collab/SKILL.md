@@ -16,14 +16,10 @@ description: |
 
 ---
 
-## 子 Agent 类型
+## 工具优先级
 
-| Agent | 角色 | 职责 | `agent` 参数 |
-|-------|------|------|-------------|
-| fae | 实施代理 | 编码、重构、文件操作、构建测试、commit | `fae` |
-| rook | 审查代理 | 只读审查，不修复不实施；输出 PASS/REVISE/BLOCK | `rook` |
-
-**选择原则**：实施类任务 → fae；审查类任务 → rook。不确定时先评估任务性质再选。
+必须优先用 `wopal_task` 委派任务，只有当 `wopal_task` 不可用时才用内置 `task` 工具。
+`wopal_task` 提供：双向通信、进度监控、非阻塞执行。用 `task` = 放弃以上能力 = 降级执行。
 
 ---
 
@@ -142,6 +138,53 @@ pending → running → completed
 - bash 命令报错（exit 1）是正常任务执行，**不会**触发 `ERROR` 通知
 - `ERROR` 仅由会话级异常触发：session.crash、启动失败、promptAsync 失败
 - `wopal_task_reply` 无法更换 agent 类型 — agent 在创建时确定。需要换 agent 只能创建新 task
+
+---
+
+## 子会话上下文压缩
+
+### 监控与决策
+
+收到 `[WOPAL TASK PROGRESS]` 通知时检查上下文占用：
+
+| 占用 | 建议 |
+|------|------|
+| < 45% | 无需关注 |
+| 45-55% | 评估任务复杂度和剩余工作量 |
+| ≥ 55% | 建议压缩（子会话质量下降风险） |
+| ≥ 75% | 紧急压缩 |
+
+压缩前确认：无关键未提交变更、无阻塞依赖、子会话非 stuck 状态。
+
+### 执行
+
+**主会话压缩**：
+
+```
+context_manage(action="compact")
+```
+
+压缩后 session 进入 IDLE，Plugin 自动发送恢复指令。
+
+**子会话压缩**：
+
+```
+context_manage(action="compact", session_id="wopal-task-xxx")
+```
+
+压缩后 Plugin 发送 `[WOPAL TASK COMPACTED]` 通知，Wopal 用 `wopal_task_reply` 发送精准恢复指令（含当前目标、下一步操作、必需上下文）。
+
+### 高上下文返工
+
+子 Agent 上下文 >50% 时不应用 `wopal_task_reply` 反复返工——高上下文下返工质量下降。应新开 task 重新委派。
+
+---
+
+## 并行委派中的产物交叉
+
+多 Agent 并行时，`wopal_task_diff` 返回的文件列表可能含其他 Agent 的工作成果。
+
+**正确做法**：只关注当前任务的预期产出，通过 `git status` 在对应项目目录检查。不要误判为异常或尝试删除其他 Agent 的文件。
 
 ---
 

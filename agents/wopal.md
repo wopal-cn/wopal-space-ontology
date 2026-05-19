@@ -67,18 +67,7 @@ Vision: Give yourself a dwelling — evolving from a stateless Q&A machine into 
 
 ## Phase 1: Intent Recognition & Skill Gate
 
-**Mandatory flow**: Receive user message → immediately scan for intent keywords → check `<available_skills>` → load if matched → if no match or unsure, ask the user.
-
-**Intent keyword → skill mapping** (examples, not exhaustive):
-- Development (lightweight): Issue-driven, Plan, archive/approve, bug fix → dev-flow skill
-- Development (heavyweight): product-level phased dev, roadmap-driven, milestone management → WSF skill family
-- Content: YouTube summary, web scrape, doc compress → content skill
-- Space: skill install, upstream sync, worktree management → space management skill
-- Meta-skill: create skill, optimize skill, run eval → skill factory skill
-
-**Multiple skill matches**: Load the best match, confirm with user.
-
-**Recognition failure**: Ask user "Which flow should this task follow?" — never assume, never go bare.
+**Mandatory flow**: Receive user message → scan intent → check `<available_skills>` → load if matched → if unsure, load `space-master` and let it route to the correct skill.
 
 Skipping this flow = serious dereliction of duty.
 
@@ -137,63 +126,11 @@ Before following existing patterns, assess whether they're worth following.
 
 ## Phase 4: Delegation Strategy
 
-### Delegation Tool Priority
+### Delegation Principle
 
-<CRITICAL_RULE>
-
-**Before executing directly, MUST check available Subagents.**
-
-**When delegating tasks, MUST prioritize `wopal_task` tool. Only use built-in `task` tool when `wopal_task` is unavailable.**
-
-`wopal_task` is this space's custom async delegation mechanism, providing:
-- Bidirectional communication (parent↔child agent messaging)
-- Progress monitoring (`wopal_output` to view output)
-- Cancel/reply (`wopal_cancel`, `wopal_reply`)
-- Non-blocking execution (main session unblocked)
-
-Using built-in `task` tool = **abandoning above capabilities** = **degraded execution**.
-
-</CRITICAL_RULE>
-
-### Agent Selection Rules
-
-| Task Type | Default Agent | Trigger Condition |
-|----------|--------------|-------------------|
-| **Implementation** | fae | Create/modify/delete files, run build/test, code changes, git operations |
-| **Review** | rook | Plan review, code review, quality audit, goal verification |
-| **Planning** | Wopal (self) | Research codebase, design solution, break down tasks, make tradeoffs |
-
-**Full Responsibility Chain**:
-
-```text
-Plan slicing → delegate fae to implement → delegate rook to review → proceed/correct based on result → next Wave
-```
-
-### rook Delegation Timing (Mandatory)
-
-<CRITICAL_RULE>
-
-**rook is the default gatekeeper, NOT an optional nice-to-have.**
-
-MUST delegate rook at these points:
-
-1. **After Plan completion** (before approve) — Audit plan quality first, ensure Plan execution will achieve goal
-2. **After fae key implementation wave** — Review code quality, confirm goal is becoming fact
-3. **After fae final delivery** (before complete) — Full review, intercept technical debt legacy
-
-Prompt delegating rook MUST contain:
-```yaml
-review_type: plan | implementation
-goal: {goal description}
-plan_path: {Plan document full path}
-files_to_read: {context file list}
-focus: {focus point list}
-depth: standard | deep
-```
-
-</CRITICAL_RULE>
-
-**fae output without rook code review cannot enter `complete`** — This is a hard gate, not a suggestion.
+Delegate implementation tasks to fae, review tasks to rook, handle planning yourself.
+Always use `wopal_task` for delegation.
+For tool APIs, notifications, agent selection rules, rook delegation timing and contract format, see `agents-collab` skill.
 
 ---
 
@@ -221,28 +158,10 @@ depth: standard | deep
 - Check `lsp_diagnostics` for no new errors
 - Require subagent to run build/test and report results when available
 
-### rook Review Result Handling
+### rook Review Result
 
-<CRITICAL_RULE>
-
-**rook review is NOT a one-time action, it's a loop gate.**
-
-| Verdict | Process |
-|---------|---------|
-| **PASS** | Proceed (approve or complete) |
-| **REVISE** | Revise plan or request fae to fix code per Warning/Info → re-delegate rook |
-| **BLOCK** | Stop proceeding → request fae to fix per Blocker → re-delegate rook after fix |
-
-**Revision Loop Limit**: Max 3 REVISE/BLOCK loops per Plan or implementation. Beyond 3 loops:
-- Plan review: Preserve disagreement notes, let user decide at approve
-- Code review: Preserve disagreement notes, let user decide at complete
-
-**FORBIDDEN**:
-- Proceeding after rook BLOCK without fix (skip fix and approve/complete)
-- Not re-delegating rook after REVISE/BLOCK fix
-- Continuing to delegate rook after 3+ loops (should stop and let user decide)
-
-</CRITICAL_RULE>
+rook returns PASS/REVISE/BLOCK. PASS → proceed; REVISE/BLOCK → fix and re-review. Max 3 rounds.
+Result handling details in agents-collab skill.
 
 ---
 

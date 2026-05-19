@@ -1,12 +1,70 @@
 ---
 name: space-master
 description: |
-    空间能力全生命周期管理。⚠️ MUST LOAD BEFORE 任何空间操作（技能安装/空间同步/上游贡献）。
-    Triggers: 技能查找/安装/卸载、空间 worktree 管理、上游同步、贡献回上游、空间状态检查、多 Space 版本管理。
-    🔴 即使用户未明确说"上游同步"，只要涉及 ontology 仓库协作（fork/merge/cherry-pick/PR），就必须加载本技能。
+  空间工作规范总纲。⚠️ MUST LOAD FIRST — Wopal 不确定怎么做或任务意图不明确时，第一个加载本技能。
+
+  Triggers: 任何意图不明确的任务、"用什么流程"、"该加载什么技能"、
+  技能管理（安装/卸载/搜索）、空间运维（worktree/同步/上游）、多 Space 管理。
+  
+  🔴 即使用户未明确说"上游同步"，只要涉及 ontology 仓库协作（fork/merge/cherry-pick/PR），就必须加载本技能。
 ---
 
-## Ontology 日常开发流
+# space-master — 空间工作规范总纲
+
+本技能是 Wopal 的空间导航员。加载后，Wopal 应知道本空间有什么流程、什么场景用什么技能、委派的基本原则。
+
+---
+
+## 空间工作体系
+
+本空间支持多种工作流程，按任务类型选择：
+
+| 流程 | 适用场景 | 加载技能 |
+|------|---------|---------|
+| **dev-flow** | 开发/修复/重构 GitHub Issue、Plan 驱动的小功能迭代 | dev-flow + agents-collab |
+| **WSF** | 重量级产品开发（里程碑、阶段、并行 wave） | WSF skill family |
+| **spec 驱动** | Spec / OpenSpec / spec-first 流程 | 对应 spec 技能 |
+| **无流程** | 单纯研究、讨论、解释、评审、临时小改动 | 无（Wopal 直接处理） |
+
+dev-flow 是默认开发流程。WSF 仅用于产品级里程碑管理。
+
+---
+
+## 场景→技能路由
+
+| 场景 | 加载技能 | 说明 |
+|------|---------|------|
+| 开发/修复/重构 Issue | dev-flow + agents-collab | 先加载 agents-collab，再走 dev-flow |
+| 委派任何子 Agent | agents-collab | 任何委派前必须加载 |
+| 空间运维（技能安装/同步/上游） | 仅本技能 | 不加载 dev-flow 或 agents-collab |
+| 创建/修改技能 | skill-creator | 独立技能 |
+| YouTube 视频分析 | youtube-master | 独立技能 |
+| 网页抓取/搜索 | fc-local | 独立技能 |
+| 邮件自动化 | automating-mail | 独立技能 |
+| 代办事宜管理 | mac-reminder | 独立技能 |
+| 配置 ellamaka | ellamaka-config | 独立技能 |
+
+---
+
+## 委派基础原则
+
+**基本分工**：
+
+- 实施类工作（编码、文件操作、构建测试）→ 委派 fae
+- 审查类工作（Plan 评审、代码审查）→ 委派 rook
+- 规划类工作（研究、设计、拆分）→ Wopal 自己完成
+
+**委派工具**：必须优先用 `wopal_task`。委派机制详情（工具 API、生命周期、通知、纠偏、压缩）见 agents-collab 技能——任何委派前必须加载。
+
+**委派前置检查**（强制，每次委派前执行）：
+
+1. 搜索记忆"委派"关键词，加载路径规则、agent 类型规则、过往教训
+2. 检查 prompt 中所有路径：files_to_read、输出路径等 — 必须使用绝对路径或空间根目录相对路径
+3. 确认 prompt 包含目标项目路径上下文（如 `projects/gesp/`），防止文件写到错误位置
+
+---
+
+## Ontology 日常开发
 
 `.wopal/` 是运行时 worktree（branch: `space/main`），直接编辑立即影响正在运行的插件。
 
@@ -62,10 +120,6 @@ git push origin space/main
 Find → Download → Scan → Install → Develop → Optimize → Evaluate
 ```
 
----
-
-## 场景路由
-
 | 用户意图 | 参考文档 | 推荐操作 |
 |---------|---------|---------|
 | 查看空间状态 | — | `wopal space status` |
@@ -111,6 +165,12 @@ wopal skills list
 
 ---
 
+## 上下文压缩
+
+上下文压缩策略和操作方法见 agents-collab 技能「子会话上下文压缩」章节。
+
+---
+
 ## Tips
 
 1. **Ontology 协作必读** — 贡献/同步上游前读 `references/upstream-sync.md`
@@ -123,90 +183,3 @@ wopal skills list
 ## Browse Online
 
 https://skills.sh/
-
----
-
-## 上下文压缩策略
-
-### 监控信号
-
-收到 `[WOPAL TASK PROGRESS]` 通知时，检查上下文占用信息：
-
-```
-[WOPAL TASK PROGRESS]
-Context: 55% used ⚠️
-```
-
-### 决策规则
-
-| 上下文占用 | 建议 |
-|----------|------|
-| < 45% | 无需关注 |
-| 45-55% | 评估任务复杂度和剩余工作量 |
-| ≥ 55% | 建议压缩（子会话质量下降风险） |
-| ≥ 75% | 紧急压缩（立即执行） |
-
-### 安全检查
-
-压缩前检查：
-
-- 无关键未提交变更（或已明确暂存）
-- 无阻塞依赖（其他任务等待当前任务结果）
-- 子会话非 stuck 状态（否则先处理 stuck）
-
-### 执行
-
-**主会话压缩**：
-
-```
-context_manage(action="compact")
-```
-
-- 压缩后 session 进入 IDLE
-- Plugin 自动发送恢复指令（无需手动干预）
-- Agent 自动执行恢复协议：重载技能、读取关键文件、搜索记忆
-
-**子会话压缩**：
-
-```
-context_manage(action="compact", session_id="wopal-task-xxx")
-```
-
-- 压缩后子会话进入 IDLE
-- Plugin 发送 `[WOPAL TASK COMPACTED]` 通知到主 Agent
-- 主 Agent 使用 `wopal_task_reply` 发送精准恢复指令
-
-### 恢复
-
-**主会话自动恢复**：
-
-Plugin 在压缩后自动注入恢复指令：
-
-```
-<system-reminder>
-The session context has been compacted. Execute recovery protocol immediately:
-1. Read key files from compaction summary (max 3)
-2. Search and load task-relevant memories (max 3)
-3. Reload previously loaded skills
-4. Briefly report what was recovered, then continue previous work
-</system-reminder>
-```
-
-**子会话手动恢复**：
-
-收到 `[WOPAL TASK COMPACTED]` 后：
-
-```
-wopal_task_reply(task_id="wopal-task-xxx", message="继续执行 Task 2 的 compact action 实现")
-```
-
-恢复指令应包含：
-- 当前任务目标（简要）
-- 下一步操作（具体）
-- 必需的上下文（Plan 路径、关键决策）
-
-### 最佳实践
-
-1. **预防性压缩**：在 55% 上下文占用时主动压缩，而非等到紧急状态
-2. **压缩时机**：任务阶段性完成节点（如一个 Task 完成、测试通过）比中途压缩更安全
-3. **恢复准备**：压缩前确保关键信息已写入文件（Plan、日记），而非仅存在于对话历史

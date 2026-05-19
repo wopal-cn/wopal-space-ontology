@@ -145,16 +145,10 @@ flow.sh plan --title "<type>(<scope>): <description>" --project <name> --type <t
 
 **委派原则**：
 
-**实施类 Task → fae**：
-- Wopal 是主控 Agent，所有实施类 Task 默认委派 fae 执行
-- Wopal 的职责：Plan 切片 → 委派 fae → 验证产出 → 推进下一 Wave
-- 例外（可由 Wopal 直接执行）：极小收尾工作（勾选 checkbox、同步 Issue body）、非代码操作（更新记忆、纯审查）
-- "代码复杂"或"需谨慎"不是跳过委派的理由 — 越复杂的任务越应该委派
+Agent 分配规则与委派工具机制见 agents-collab 技能。dev-flow 特定规则：
 
-**审查类 Task → rook**：
-- Plan 评审、代码审查、质量复核、目标验证等审查类 Task 默认委派 rook
-- rook 是只读审查代理，不修复、不实施、只报告
-- rook 返回 PASS/REVISE/BLOCK 结构化结果，Wopal 根据判定推进或修正
+- 实施类 Task → 委派 fae。Wopal 的职责：Plan 切片 → 委派 fae → 验证产出 → 推进下一 Wave
+- 审查类 Task → 委派 rook。rook 返回 PASS/REVISE/BLOCK，Wopal 根据判定推进或修正
 
 **完整职责链**：
 
@@ -164,7 +158,13 @@ Plan 切片 → 委派 fae 实施 → 委派 rook 审查 → 根据结果推进/
 
 **硬门控**：fae 产出未经 rook 代码审查不得进入 `complete`。
 
-**委派工具与交互机制**：见 agents-collab 技能（wopal_task 启动、wopal_task_output 检查、wopal_task_reply 交互与恢复、wopal_task_delete 清理、通知处理、异常恢复）。
+**rook 委派时机（强制）**：
+
+1. **Plan 写完后**（approve 前）— 先审方案质量，确保 Plan 执行后能达成目标
+2. **fae 关键实施波次后** — 复核代码质量，确认目标正在成为事实
+3. **fae 最终交付后**（complete 前）— 完整审查，拦截技术债遗留
+
+rook 契约格式见 agents-collab。连续 3 轮 BLOCK/REVISE 由用户裁决。
 
 ### 任务消息格式
 

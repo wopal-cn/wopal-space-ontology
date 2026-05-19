@@ -22,7 +22,7 @@ from dev_flow.domain.validation.check_doc import (
 
 
 # Fixture directory: scripts/dev_flow/domain/validation/tests/ → 6 levels up = skills/dev-flow/
-FIXTURE_DIR = Path(__file__).parent.parent.parent.parent.parent.parent / ".tmp" / "test-check-doc"
+FIXTURE_DIR = Path(__file__).parent.parent.parent.parent.parent.parent / "tests" / "fixtures" / "check-doc"
 
 
 def read_fixture(filename: str) -> str:

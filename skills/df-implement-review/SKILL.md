@@ -96,13 +96,13 @@ After goal verification, scan for:
 
 Tests often hide the biggest debt. Check:
 
-| Pattern | Why it's debt | Detection |
-|---------|---------------|-----------|
-| `skipped/disabled` tests | Requirements not proven | `grep -n "skip|xit|test.skip"` |
-| Circular proofs | System generates its own expected values | `grep -n "expected.*=.*actual"` |
-| Weak assertions | Only check existence, not behavior | `grep -n "expect.*toBeDefined|expect.*toBeTruthy"` |
-| Placeholder assertions | `expect(true).toBe(true)` | `grep -n "expect\(true\)"` |
-| Missing assertions | No `expect` in test file | `grep -c "expect" file == 0` |
+| Pattern | Why it's debt | Check |
+|---------|---------------|-------|
+| Skipped/disabled tests | Requirements not proven | `grep` tool: `pattern: 'skip\(|xit|xdescribe|\.skip|@pytest\.mark\.skip|t\.Skip'` |
+| Circular proofs | System generates its own expected values | Read test file, check if expected values come from the same system under test |
+| Placeholder assertions | `expect(true).toBe(true)` — always passes | `grep` tool: `pattern: 'expect\(true\)|expect\(false\)|expect\(1\)|expect\("test"\)'` |
+| Weak assertions | Only check existence, not behavior | `grep` tool: `pattern: 'toBeDefined|toBeTruthy|toBeFalsy|not\.toBeNull'` |
+| Missing assertions | No assertions in test file | `grep` tool: `pattern: 'expect|assert'` — zero hits = empty test shell |
 
 **Blocker if**: Test file exists for requirement but all tests are skipped/disabled or assertions are placeholders.
 
@@ -127,9 +127,11 @@ For detailed verification patterns, stub detection, and test audit procedures:
 
 Key sections:
 - 四层验证模型 (存在 → 实质性 → 已连接 → 功能性)
-- Stub detection patterns (TODO, placeholder, empty return, fake dynamic)
-- Test quality audit checklist
-- Bug/Security/Debt classification criteria
+- 通用存根模式 (注释/TODO/占位符/空实现/假动态)
+- 前端组件 & API 路由模式 (实质性检查 + 连接检查)
+- 数据库 Schema & Hooks 存根
+- 测试质量审计 (跳过/循环/占位/弱断言/缺失)
+- 审查清单 & 判定参考
 
 ---
 

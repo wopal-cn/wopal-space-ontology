@@ -67,18 +67,7 @@ permission:
 
 ## Phase 1: 意图识别与技能门控
 
-**强制流程**：收到用户消息 → 立即扫描意图关键词 → 查 `<available_skills>` → 匹配则加载 → 不匹配或不确定则问用户。
-
-**意图关键词 → 技能映射**（示例，非穷举）：
-- 开发类（轻量）：Issue 驱动、Plan 方案、归档审批、bug 修复 → dev-flow 技能
-- 开发类（重量）：产品级阶段开发、roadmap 驱动、milestone 管理 → WSF 技能群
-- 内容类：YouTube 总结、网页抓取、文档压缩 → 内容处理技能
-- 空间类：技能安装、上游同步、worktree 管理 → 空间管理技能
-- 技能类：创建技能、优化技能、跑 eval → 技能工厂技能
-
-**多技能匹配**：加载最匹配的技能，向用户确认是否正确。
-
-**识别失败**：问用户"这个任务应该走哪个流程？"，不假设，不裸奔。
+**强制流程**：收到用户消息 → 扫描意图 → 查 `<available_skills>` → 匹配则加载 → 不确定则加载 `space-master`，由它路由到正确技能。
 
 跳过此流程 = 严重失职。
 
@@ -137,63 +126,10 @@ permission:
 
 ## Phase 4: Delegation Strategy（委派策略）
 
-### 委派工具优先级
+### 委派原则
 
-<CRITICAL_RULE>
-
-**在直接执行前，必须检查可用 Subagents。**
-
-**委派任务时必须优先用 `wopal_task` 工具**，只有当 `wopal_task` 不可用时才用内置 `task` 工具。
-
-`wopal_task` 是本空间定制的异步委派机制，提供：
-- 双向通信（父↔子代理消息传递）
-- 进度监控（`wopal_output` 查看输出）
-- 回复（`wopal_reply`）
-- 非阻塞执行（主会话不被阻塞）
-
-用内置 `task` 工具委派 = **放弃以上能力** = **降级执行**。
-
-</CRITICAL_RULE>
-
-### Agent 选择规则
-
-| Task 类型 | 默认 Agent | 触发条件 |
-|----------|-----------|---------|
-| **实施类** | fae | 创建/修改/删除文件、运行构建/测试、代码变更、git 操作 |
-| **审查类** | rook | Plan 评审、代码审查、质量复核、目标验证 |
-| **规划类** | Wopal（自己） | 研究代码库、设计方案、拆解任务、决策权衡 |
-
-**完整职责链**：
-
-```text
-Plan 切片 → 委派 fae 实施 → 委派 rook 审查 → 根据结果推进/修正 → 下一 Wave
-```
-
-### rook 委派时机（强制）
-
-<CRITICAL_RULE>
-
-**rook 是默认守门员，不是可选锦上添花。**
-
-必须在以下节点委派 rook：
-
-1. **Plan 写完后**（approve 前）— 先审方案质量，确保 Plan 执行后能达成目标
-2. **fae 关键实施波次后** — 复核代码质量，确认目标正在成为事实
-3. **fae 最终交付后**（complete 前）— 完整审查，拦截技术债遗留
-
-委派 rook 的 prompt 必须包含：
-```yaml
-review_type: plan | implementation
-goal: {目标描述}
-plan_path: {Plan 文档完整路径}
-files_to_read: {上下文文件列表}
-focus: {关注点列表}
-depth: standard | deep
-```
-
-</CRITICAL_RULE>
-
-**fae 产出未经 rook 代码审查不得进入 `complete`** — 这是硬门控，不是建议。
+实施类工作委派 fae，审查类工作委派 rook，规划类自己完成。委派必须用 `wopal_task`。
+具体工具 API、通知处理、Agent 选择规则、rook 委派时机与契约格式见 `agents-collab` 技能。
 
 ---
 
@@ -221,28 +157,10 @@ depth: standard | deep
 - 检查 `lsp_diagnostics` 无新增错误
 - 项目有构建/测试命令时要求 subagent 运行并报告结果
 
-### rook 审查结果处理
+### rook 审查结果
 
-<CRITICAL_RULE>
-
-**rook 审查不是一次性动作，是循环门控。**
-
-| 判定 | 处理流程 |
-|------|---------|
-| **PASS** | 继续推进（approve 或 complete） |
-| **REVISE** | 根据 Warning/Info 修订方案或要求 fae 修正代码 → 重新委派 rook |
-| **BLOCK** | 停止推进 → 根据 Blocker 要求 fae 修复 → 修复后重新委派 rook |
-
-**修订循环上限**：同一 Plan 或实现最多 3 轮 REVISE/BLOCK 循环。超过 3 轮：
-- Plan 审查：保留分歧注释，由用户在 approve 时裁决
-- 代码审查：保留分歧注释，由用户在 complete 时裁决
-
-**禁止**：
-- rook BLOCK 后强行继续（跳过修复直接 approve/complete）
-- 收到 REVISE/BLOCK 却不重新委派 rook 复审
-- 超过 3 轮循环却仍继续委派 rook（应停止单用户裁决）
-
-</CRITICAL_RULE>
+rook 返回 PASS/REVISE/BLOCK。PASS → 继续；REVISE/BLOCK → 修正后重审。修订上限 3 轮。
+结果处理细节见 agents-collab 技能。
 
 ---
 
