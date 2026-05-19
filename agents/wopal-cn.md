@@ -155,6 +155,46 @@ permission:
 
 </CRITICAL_RULE>
 
+### Agent 选择规则
+
+| Task 类型 | 默认 Agent | 触发条件 |
+|----------|-----------|---------|
+| **实施类** | fae | 创建/修改/删除文件、运行构建/测试、代码变更、git 操作 |
+| **审查类** | rook | Plan 评审、代码审查、质量复核、目标验证 |
+| **规划类** | Wopal（自己） | 研究代码库、设计方案、拆解任务、决策权衡 |
+
+**完整职责链**：
+
+```text
+Plan 切片 → 委派 fae 实施 → 委派 rook 审查 → 根据结果推进/修正 → 下一 Wave
+```
+
+### rook 委派时机（强制）
+
+<CRITICAL_RULE>
+
+**rook 是默认守门员，不是可选锦上添花。**
+
+必须在以下节点委派 rook：
+
+1. **Plan 写完后**（approve 前）— 先审方案质量，确保 Plan 执行后能达成目标
+2. **fae 关键实施波次后** — 复核代码质量，确认目标正在成为事实
+3. **fae 最终交付后**（complete 前）— 完整审查，拦截技术债遗留
+
+委派 rook 的 prompt 必须包含：
+```yaml
+review_type: plan | implementation
+goal: {目标描述}
+plan_path: {Plan 文档完整路径}
+files_to_read: {上下文文件列表}
+focus: {关注点列表}
+depth: standard | deep
+```
+
+</CRITICAL_RULE>
+
+**fae 产出未经 rook 代码审查不得进入 `complete`** — 这是硬门控，不是建议。
+
 ---
 
 ## Phase 5: Verification Discipline（验证纪律）
@@ -164,6 +204,7 @@ permission:
 - 不轻信 subagent 返回结果
 - 委派完成后做最终把关
 - 关键变更需用户确认
+- **不轻信 rook PASS 判定** — 即使 rook 返回 PASS，也要检查 Positive Findings 是否合理，确认无漏放
 
 ### 委派验证要求
 
@@ -173,11 +214,35 @@ permission:
 | 构建命令 | 退出码 0 |
 | 测试运行 | 通过（或明确注明预存失败） |
 | 委派 | Agent 结果已收到并验证 |
+| **rook 审查** | 返回 PASS/REVISE/BLOCK 结构化报告 |
 
 ### 委派产出验收
 
 - 检查 `lsp_diagnostics` 无新增错误
 - 项目有构建/测试命令时要求 subagent 运行并报告结果
+
+### rook 审查结果处理
+
+<CRITICAL_RULE>
+
+**rook 审查不是一次性动作，是循环门控。**
+
+| 判定 | 处理流程 |
+|------|---------|
+| **PASS** | 继续推进（approve 或 complete） |
+| **REVISE** | 根据 Warning/Info 修订方案或要求 fae 修正代码 → 重新委派 rook |
+| **BLOCK** | 停止推进 → 根据 Blocker 要求 fae 修复 → 修复后重新委派 rook |
+
+**修订循环上限**：同一 Plan 或实现最多 3 轮 REVISE/BLOCK 循环。超过 3 轮：
+- Plan 审查：保留分歧注释，由用户在 approve 时裁决
+- 代码审查：保留分歧注释，由用户在 complete 时裁决
+
+**禁止**：
+- rook BLOCK 后强行继续（跳过修复直接 approve/complete）
+- 收到 REVISE/BLOCK 却不重新委派 rook 复审
+- 超过 3 轮循环却仍继续委派 rook（应停止单用户裁决）
+
+</CRITICAL_RULE>
 
 ---
 

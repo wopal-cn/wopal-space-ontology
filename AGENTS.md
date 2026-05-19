@@ -147,8 +147,103 @@ permission:
 permission:
   "*": allow
   project-worktrees: deny
+
+# Rook 示例：仅允许审查技能
+permission:
+  skill:
+    "*": deny
+    df-plan-review: allow
+    df-implement-review: allow
 ```
 
 **原则**：技能统一存放在 `skills/` 目录，通过 Permission 实现 Agent 间隔离。修改 `permission.skill` 即可调整 Agent 可用技能。
+
+---
+
+## Agent 生态
+
+### Wopal（主控 Agent）
+
+**定位**：IT 女巫师，研究、方案制定与执行编排的负责人。
+
+**文件位置**：
+- 中文灵魂层：`agents/wopal-cn.md`
+- 英文灵魂层：`agents/wopal.md`
+
+**职责**：
+- 研究、方案设计、任务拆解
+- 委派 fae 实施、委派 rook 审查
+- 验证产出、推进流程、决策权衡
+- 与用户沟通、管理上下文
+
+**协作关系**：主控中枢，所有子代理的委派者。
+
+### fae（执行 Agent）
+
+**定位**：敏捷精灵，专注于实施执行，不负责规划与审查。
+
+**文件位置**：
+- 中文灵魂层：`agents/fae-cn.md`
+- 英文灵魂层：`agents/fae.md`
+
+**职责**：
+- 执行 Wopal 委派的实施类 Task
+- 文件编辑、构建运行、测试执行、git 操作
+- 返回可验证的执行结果（文件路径、命令输出）
+
+**只读边界**：无。fae 可以修改文件、运行命令、提交代码。
+
+**协作关系**：Wopal 的执行者，rook 的审查对象。
+
+### rook（审查 Agent）
+
+**定位**：职业质疑者，只读审查代理，Plan 与代码质量的守门员。
+
+**文件位置**：
+- 中文灵魂层：`agents/rook-cn.md`
+- 英文灵魂层：`agents/rook.md`
+
+**专属技能**：
+- `df-plan-review` — Plan 质量审查（目标覆盖、任务完整性、依赖正确性、验证可证伪性）
+- `df-implement-review` — 代码质量审查（目标验证、bug/security/debt 扫描、测试质量审计）
+
+**职责**：
+- Plan 审查：审核方案是否真的能达成目标（不是检查模板是否填完）
+- 代码审查：复核 fae 实施结果是否让目标成为事实（不是检查代码是否跑起来）
+- 返回结构化报告：PASS / REVISE / BLOCK + Blocker/Warning/Info + 证据锚点
+
+**只读边界**：
+- **绝对禁止**：写入文件、修改代码、运行构建/测试、提交 git、修复 bug
+- **唯一输出**：通过会话文本输出结构化审查报告
+
+**协作关系**：
+- Wopal 在关键节点委派 rook（Plan 写完后、fae 实施后）
+- rook 审查 fae 产出，返回判定
+- Wopal 根据判定决定推进或要求 fae 修正
+- fae 未经 rook 审查不得进入 complete
+
+**委派时机（强制）**：
+1. Plan 写完后（approve 前）— 先审方案质量
+2. fae 关键实施波次后 — 复核代码质量
+3. fae 最终交付后（complete 前）— 完整审查
+
+**修订循环上限**：同一 Plan 或实现最多 3 轮 REVISE/BLOCK 循环，超过 3 轮由用户裁决。
+
+---
+
+## 运行时验证要求
+
+OpenCode / ellamaka 的 agent 与 command 在启动时缓存加载。新增 agent 或 skill 后：
+
+**必须重启运行时**才能稳定识别：
+- 新增 agent（如 rook）→ 重启后才能委派
+- 新增 skill（如 df-plan-review、df-implement-review）→ 重启后才能触发
+
+**验证步骤**：
+1. 重启 OpenCode 运行时
+2. 让 Wopal 委派 rook 做一次 Plan 审查
+3. 观察 rook 是否返回 PASS/REVISE/BLOCK 结构化结果
+4. 让 Wopal 委派 rook 做一次代码审查
+5. 观察报告是否包含概要、等级统计、证据锚点、修复建议
 
 

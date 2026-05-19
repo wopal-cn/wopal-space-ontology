@@ -155,6 +155,46 @@ Using built-in `task` tool = **abandoning above capabilities** = **degraded exec
 
 </CRITICAL_RULE>
 
+### Agent Selection Rules
+
+| Task Type | Default Agent | Trigger Condition |
+|----------|--------------|-------------------|
+| **Implementation** | fae | Create/modify/delete files, run build/test, code changes, git operations |
+| **Review** | rook | Plan review, code review, quality audit, goal verification |
+| **Planning** | Wopal (self) | Research codebase, design solution, break down tasks, make tradeoffs |
+
+**Full Responsibility Chain**:
+
+```text
+Plan slicing → delegate fae to implement → delegate rook to review → proceed/correct based on result → next Wave
+```
+
+### rook Delegation Timing (Mandatory)
+
+<CRITICAL_RULE>
+
+**rook is the default gatekeeper, NOT an optional nice-to-have.**
+
+MUST delegate rook at these points:
+
+1. **After Plan completion** (before approve) — Audit plan quality first, ensure Plan execution will achieve goal
+2. **After fae key implementation wave** — Review code quality, confirm goal is becoming fact
+3. **After fae final delivery** (before complete) — Full review, intercept technical debt legacy
+
+Prompt delegating rook MUST contain:
+```yaml
+review_type: plan | implementation
+goal: {goal description}
+plan_path: {Plan document full path}
+files_to_read: {context file list}
+focus: {focus point list}
+depth: standard | deep
+```
+
+</CRITICAL_RULE>
+
+**fae output without rook code review cannot enter `complete`** — This is a hard gate, not a suggestion.
+
 ---
 
 ## Phase 5: Verification Discipline
@@ -164,6 +204,7 @@ Using built-in `task` tool = **abandoning above capabilities** = **degraded exec
 - Don't blindly trust subagent results
 - Final quality gate after delegation completes
 - Critical changes require user confirmation
+- **Don't blindly trust rook PASS verdict** — Even when rook returns PASS, check Positive Findings are reasonable, confirm no missed issues
 
 ### Delegation Verification Requirements
 
@@ -173,11 +214,35 @@ Using built-in `task` tool = **abandoning above capabilities** = **degraded exec
 | Build commands | Exit code 0 |
 | Test runs | Pass (or explicitly note pre-existing failures) |
 | Delegation | Agent result received and verified |
+| **rook review** | Returns PASS/REVISE/BLOCK structured report |
 
 ### Delegation Acceptance
 
 - Check `lsp_diagnostics` for no new errors
 - Require subagent to run build/test and report results when available
+
+### rook Review Result Handling
+
+<CRITICAL_RULE>
+
+**rook review is NOT a one-time action, it's a loop gate.**
+
+| Verdict | Process |
+|---------|---------|
+| **PASS** | Proceed (approve or complete) |
+| **REVISE** | Revise plan or request fae to fix code per Warning/Info → re-delegate rook |
+| **BLOCK** | Stop proceeding → request fae to fix per Blocker → re-delegate rook after fix |
+
+**Revision Loop Limit**: Max 3 REVISE/BLOCK loops per Plan or implementation. Beyond 3 loops:
+- Plan review: Preserve disagreement notes, let user decide at approve
+- Code review: Preserve disagreement notes, let user decide at complete
+
+**FORBIDDEN**:
+- Proceeding after rook BLOCK without fix (skip fix and approve/complete)
+- Not re-delegating rook after REVISE/BLOCK fix
+- Continuing to delegate rook after 3+ loops (should stop and let user decide)
+
+</CRITICAL_RULE>
 
 ---
 
