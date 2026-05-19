@@ -9,6 +9,7 @@ import {
   getContextUsage,
   formatProgressOutput,
 } from "./output-helpers.js"
+import { getDisplayStatus, isIdleTask } from "../tasks/task-phase.js"
 
 export function createWopalOutputTool(manager: SimpleTaskManager): ToolDefinition {
   return tool({
@@ -32,7 +33,7 @@ export function createWopalOutputTool(manager: SimpleTaskManager): ToolDefinitio
       }
 
       let result = `**Task:** ${task.id}\n`
-      const statusDisplay = task.idleNotified ? 'idle (awaiting judgment)' : task.status
+      const statusDisplay = getDisplayStatus(task)
       result += `**Status:** ${statusDisplay}\n`
       result += `**Description:** ${task.description}\n`
       result += `**Agent:** ${task.agent}\n`
@@ -51,7 +52,7 @@ export function createWopalOutputTool(manager: SimpleTaskManager): ToolDefinitio
       result += `**Concurrency:** ${concurrency.used}/${concurrency.limit} used, ${concurrency.available} available\n`
 
       // idle task: awaiting Wopal judgment
-      if (task.idleNotified) {
+      if (isIdleTask(task)) {
         result += `\n\n**Idle:** awaiting your judgment`
         result += `\nUse wopal_task_reply with interrupt=true to abort and redirect.`
       }

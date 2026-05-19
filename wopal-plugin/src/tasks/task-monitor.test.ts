@@ -1,10 +1,16 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import {
   checkStuckTasks,
   clearStuckState,
   DEFAULT_STUCK_TIMEOUT_MS,
+  checkProgressNotifications,
+  logTickStatus,
+  PROGRESS_NOTIFY_TIME_THRESHOLD_MS,
+  PROGRESS_NOTIFY_MESSAGE_MODULO,
+  CONTEXT_WARN_THRESHOLD,
 } from "./task-monitor.js"
 import type { WopalTask } from "./types.js"
+import { SessionStore } from "../session-store.js"
 
 function createTask(overrides: Partial<WopalTask> = {}): WopalTask {
   return {
@@ -204,5 +210,235 @@ describe("clearStuckState", () => {
 
   it("should handle empty list", () => {
     expect(() => clearStuckState([])).not.toThrow()
+  })
+})
+
+// Task 4: progress notification tests
+describe("checkProgressNotifications", () => {
+  it("should notify based on time quota", async () => {
+    const task = createTask({
+      id: "task-time",
+      startedAt: new Date(Date.now() - PROGRESS_NOTIFY_TIME_THRESHOLD_MS - 1000),
+      sessionID: "session-time",
+    })
+    const tasks = new Map([["task-time", task]])
+    const sessionStore = new SessionStore({ max: 10 })
+    const mockMessages = vi.fn().mockResolvedValue({ data: [] })
+    const sendNotification = vi.fn().mockResolvedValue(undefined)
+
+    const deps = {
+      tasks,
+      sessionStore,
+      client: { session: { messages: mockMessages } },
+      debugLog: () => {},
+      directory: "/test",
+      notifyParentStuckFn: vi.fn(),
+      sendProgressNotificationFn: sendNotification,
+    }
+
+    const results = await checkProgressNotifications(deps as never)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].taskId).toBe("task-time")
+    expect(results[0].triggerReason).toBe("time_quota")
+    expect(sendNotification).toHaveBeenCalled()
+  })
+
+  it("should notify based on message count modulo", async () => {
+    const task = createTask({
+      id: "task-msg",
+      startedAt: new Date(),
+      sessionID: "session-msg",
+    })
+    const tasks = new Map([["task-msg", task]])
+    const sessionStore = new SessionStore({ max: 10 })
+    const mockMessages = vi.fn().mockResolvedValue({
+      data: Array(PROGRESS_NOTIFY_MESSAGE_MODULO).fill({ id: "msg" }),
+    })
+    const sendNotification = vi.fn().mockResolvedValue(undefined)
+
+    const deps = {
+      tasks,
+      sessionStore,
+      client: { session: { messages: mockMessages } },
+      debugLog: () => {},
+      directory: "/test",
+      notifyParentStuckFn: vi.fn(),
+      sendProgressNotificationFn: sendNotification,
+    }
+
+    const results = await checkProgressNotifications(deps as never)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].triggerReason).toBe("message_count")
+    expect(results[0].messageCount).toBe(PROGRESS_NOTIFY_MESSAGE_MODULO)
+  })
+
+  it("should notify based on context threshold", async () => {
+    const task = createTask({
+      id: "task-ctx",
+      startedAt: new Date(),
+      sessionID: "session-ctx",
+    })
+    const tasks = new Map([["task-ctx", task]])
+    const sessionStore = new SessionStore({ max: 10 })
+
+    // Setup cached tokens in sessionStore
+    sessionStore.upsert("session-ctx", (state) => {
+      state.providerID = "anthropic"
+      state.modelID = "claude-3"
+      state.isTask = true
+      state.lastTokens = {
+        input: 50000,
+        output: 1000,
+        updatedAt: Date.now(),
+      }
+    })
+
+    const mockConfig = vi.fn().mockResolvedValue({
+      data: {
+        providers: [{
+          id: "anthropic",
+          models: { "claude-3": { limit: { context: 100000 } } }
+        }]
+      }
+    })
+
+    const mockMessages = vi.fn().mockResolvedValue({ data: [] })
+    const sendNotification = vi.fn().mockResolvedValue(undefined)
+
+    const deps = {
+      tasks,
+      sessionStore,
+      client: {
+        session: { messages: mockMessages },
+        config: { providers: mockConfig },
+      },
+      debugLog: () => {},
+      directory: "/test",
+      notifyParentStuckFn: vi.fn(),
+      sendProgressNotificationFn: sendNotification,
+    }
+
+    const results = await checkProgressNotifications(deps as never)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].triggerReason).toBe("context_threshold")
+    expect(results[0].contextUsage).toBe(50) // 50000/100000 = 50%
+  })
+
+  it("should not notify for idle tasks", async () => {
+    const task = createTask({
+      id: "task-idle",
+      status: "running",
+      idleNotified: true,
+      sessionID: "session-idle",
+    })
+    const tasks = new Map([["task-idle", task]])
+    const sessionStore = new SessionStore({ max: 10 })
+    const mockMessages = vi.fn().mockResolvedValue({ data: Array(20).fill({}) })
+    const sendNotification = vi.fn()
+
+    const deps = {
+      tasks,
+      sessionStore,
+      client: { session: { messages: mockMessages } },
+      debugLog: () => {},
+      directory: "/test",
+      notifyParentStuckFn: vi.fn(),
+      sendProgressNotificationFn: sendNotification,
+    }
+
+    const results = await checkProgressNotifications(deps as never)
+
+    expect(results).toHaveLength(0) // idle tasks filtered out
+    expect(sendNotification).not.toHaveBeenCalled()
+  })
+
+  it("should deduplicate notifications by lastNotifyMessageCount", async () => {
+    const task = createTask({
+      id: "task-dedup",
+      sessionID: "session-dedup",
+      startedAt: new Date(Date.now() - 1000), // Started 1s ago (below time threshold)
+      lastNotifyMessageCount: 20,
+      lastNotifyTimeQuota: 0, // Already at quota 0
+    })
+    const tasks = new Map([["task-dedup", task]])
+    const sessionStore = new SessionStore({ max: 10 })
+    const mockMessages = vi.fn().mockResolvedValue({
+      data: Array(20).fill({ id: "msg" }),
+    })
+    const sendNotification = vi.fn()
+
+    const deps = {
+      tasks,
+      sessionStore,
+      client: { session: { messages: mockMessages } },
+      debugLog: () => {},
+      directory: "/test",
+      notifyParentStuckFn: vi.fn(),
+      sendProgressNotificationFn: sendNotification,
+    }
+
+    const results = await checkProgressNotifications(deps as never)
+
+    // Should not notify again for same message count
+    expect(results[0].wasNotified).toBe(false)
+    expect(sendNotification).not.toHaveBeenCalled()
+  })
+})
+
+describe("logTickStatus", () => {
+  it("should log running tasks with progress info", () => {
+    const task = createTask({
+      id: "wopal-task-abc123",
+      description: "Test logging",
+      startedAt: new Date(Date.now() - 65_000),
+      progress: { toolCalls: 5, lastUpdate: new Date() },
+    })
+    const tasks = new Map([["wopal-task-abc123", task]])
+    const progressInfos = [{
+      taskId: "wopal-task-abc123",
+      messageCount: 15,
+      wasNotified: true,
+      contextUsage: 30,
+    }]
+    const debugLog = vi.fn()
+
+    logTickStatus(tasks, progressInfos, debugLog)
+
+    expect(debugLog).toHaveBeenCalled()
+    const logOutput = debugLog.mock.calls[0][0]
+    expect(logOutput).toContain("wopal-task-abc123")
+    expect(logOutput).toContain("15 msgs")
+    expect(logOutput).toContain("Test logging")
+    expect(logOutput).toContain("✓notified")
+  })
+
+  it("should skip logging when no running tasks", () => {
+    const task = createTask({ status: "completed" })
+    const tasks = new Map([["task-1", task]])
+    const debugLog = vi.fn()
+
+    logTickStatus(tasks, [], debugLog)
+
+    expect(debugLog).not.toHaveBeenCalled()
+  })
+
+  it("should show warning emoji for high context usage", () => {
+    const task = createTask({ startedAt: new Date(Date.now() - 65_000) })
+    const tasks = new Map([["task-1", task]])
+    const progressInfos = [{
+      taskId: "task-1",
+      messageCount: 10,
+      wasNotified: false,
+      contextUsage: 60, // Above CONTEXT_WARN_THRESHOLD
+    }]
+    const debugLog = vi.fn()
+
+    logTickStatus(tasks, progressInfos, debugLog)
+
+    const logOutput = debugLog.mock.calls[0][0]
+    expect(logOutput).toContain("⚠️")
   })
 })

@@ -156,6 +156,9 @@ export interface OpenCodeSession {
   }): Promise<unknown>
   abort(args: { path: { id: string } }): Promise<unknown>
   update(args: { path: { id: string }; body: { title: string } }): Promise<unknown>
+  delete(args: { path: { id: string } }): Promise<unknown>
+  children(args: { path: { id: string } }): Promise<unknown>
+  status(): Promise<unknown>
   summarize?(args: {
     path: { id: string }
     body: { providerID: string; modelID: string }
@@ -171,10 +174,47 @@ export interface OpenCodeQuestion {
   reply(args: { requestID: string; answers: string[][] }): Promise<unknown>
 }
 
+export interface OpenCodeConfig {
+  providers(args: { query?: { directory?: string } }): Promise<{ data?: { providers?: Array<{
+    id: string
+    models?: Record<string, { limit?: { context?: number } }>
+  }> } }>
+}
+
 export interface OpenCodeClient {
   session?: OpenCodeSession
   permission?: OpenCodePermission
   question?: OpenCodeQuestion
+  config?: OpenCodeConfig
   // v1 SDK compatibility (deprecated)
   postSessionIdPermissionsPermissionId?(args: { path: { id: string; permissionID: string }; body: { response: string } }): Promise<unknown>
+}
+
+// Narrowing helpers for event properties
+
+export interface EventInfo {
+  agent?: string
+}
+
+export interface EventProperties {
+  sessionID?: string
+  info?: EventInfo
+  part?: {
+    type?: string
+    tokens?: {
+      input?: number
+      output?: number
+      reasoning?: number
+      cache?: { read?: number; write?: number }
+    }
+  }
+  error?: { name?: string }
+  id?: string  // requestID for permission/question events
+  permission?: string
+  patterns?: string[]
+  questions?: Array<{ header?: string; question?: string; options?: Array<{ label: string; description: string }> }>
+}
+
+export function hasEventInfo(props: unknown): props is EventProperties {
+  return typeof props === "object" && props !== null
 }

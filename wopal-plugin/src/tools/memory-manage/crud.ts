@@ -2,6 +2,14 @@ import type { MemoryStore, MemoryCategory } from "../../memory/store.js";
 import type { EmbeddingClient } from "../../memory/embedder.js";
 import type { SessionStore } from "../../session-store.js";
 import { getCategoryLabel, formatTime, ECHO_REMINDER } from "./formatters.js";
+import {
+  loadAllMemories,
+  resolveMemoryByShortId,
+  mergeSearchResults,
+  sortByCreatedAt,
+  filterByCategory,
+  sliceWithPagination,
+} from "./query-helpers.js";
 
 const VALID_CATEGORIES: MemoryCategory[] = [
   "profile", "preference", "knowledge", "fact", "gotcha", "experience", "requirement",
@@ -27,17 +35,13 @@ export async function formatList(
   category?: string,
   limit?: number
 ): Promise<string> {
-  const all = await store.searchByQuery("", 1000, "like", ["text"]);
-  const sorted = all.sort((a, b) => b.created_at - a.created_at);
-
-  const filtered = category
-    ? sorted.filter((r) => r.category === category)
-    : sorted;
-
-  const displayed = filtered.slice(0, limit ?? 100);
+  const all = await loadAllMemories(store);
+  const sorted = sortByCreatedAt(all);
+  const filtered = filterByCategory(sorted, category);
+  const { displayed, total, remaining } = sliceWithPagination(filtered, limit);
 
   const lines: string[] = [
-    `共 ${filtered.length} 条记忆${category ? ` (${getCategoryLabel(category)})` : ""}\n`,
+    `共 ${total} 条记忆${category ? ` (${getCategoryLabel(category)})` : ""}\n`,
   ];
 
   for (let i = 0; i < displayed.length; i++) {
@@ -48,15 +52,15 @@ export async function formatList(
     lines.push("");
   }
 
-  if (displayed.length < filtered.length) {
-    lines.push(`... 还有 ${filtered.length - displayed.length} 条未显示`);
+  if (remaining > 0) {
+    lines.push(`... 还有 ${remaining} 条未显示`);
   }
 
   return lines.join("\n");
 }
 
 export async function formatStats(store: MemoryStore): Promise<string> {
-  const all = await store.searchByQuery("", 1000, "like", ["text"]);
+  const all = await loadAllMemories(store);
   const categories: Record<string, number> = {};
   let totalImportance = 0;
   let oldest = Infinity;
@@ -100,15 +104,7 @@ export async function formatSearch(
 
   const results = await store.searchByQuery(fullQuery, 20, "fts");
   const likeResults = await store.searchByQuery(query || "", 20, "like");
-
-  const seen = new Set<string>();
-  const merged: typeof results = [];
-  for (const r of [...results, ...likeResults]) {
-    if (!seen.has(r.id)) {
-      seen.add(r.id);
-      merged.push(r);
-    }
-  }
+  const merged = mergeSearchResults(results, likeResults);
 
   if (merged.length === 0) {
     return `搜索 "${fullQuery}" — 无结果`;
@@ -140,19 +136,16 @@ export async function deleteMemories(
     return "用法: delete 需要 id 参数（记忆 ID，逗号分隔多个）。ID 从 list/search 结果方括号中获取";
   }
 
+  // Load all memories once for short ID resolution
+  const allMemories = await loadAllMemories(store);
+
   const toDelete: { fullId: string; shortId: string; text: string }[] = [];
   const notFound: string[] = [];
 
   for (const rawId of rawIds) {
-    let memory = await store.get(rawId);
+    const memory = await resolveMemoryByShortId(store, rawId, allMemories);
     if (memory) {
       toDelete.push({ fullId: memory.id, shortId: memory.id.slice(0, 8), text: memory.text.slice(0, 80) });
-      continue;
-    }
-    const all = await store.searchByQuery("", 1000, "like", ["text"]);
-    const match = all.find((r) => r.id.startsWith(rawId));
-    if (match) {
-      toDelete.push({ fullId: match.id, shortId: match.id.slice(0, 8), text: match.text.slice(0, 80) });
     } else {
       notFound.push(rawId);
     }
@@ -243,11 +236,9 @@ export async function updateMemory(
     return "更新失败：必须指定 id 参数（记忆 ID，从 list/search 结果方括号中获取）";
   }
 
-  let memory = await store.get(rawId);
-  if (!memory) {
-    const all = await store.searchByQuery("", 1000, "like", ["text"]);
-    memory = all.find((r) => r.id.startsWith(rawId)) ?? null;
-  }
+  // Load all memories once for short ID resolution
+  const allMemories = await loadAllMemories(store);
+  const memory = await resolveMemoryByShortId(store, rawId, allMemories);
 
   if (!memory) {
     return `更新失败：未找到 ID 为 ${rawId} 的记忆`;

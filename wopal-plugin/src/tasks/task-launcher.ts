@@ -30,7 +30,7 @@ export interface TaskLauncherDeps {
           tools?: Record<string, boolean>
         }
       }) => PromiseLike<unknown> | unknown
-      abort?: (args: { path: { id: string } }) => Promise<void>
+      abort?: (args: { path: { id: string } }) => Promise<unknown>
     }
   }
   debugLog: DebugLog

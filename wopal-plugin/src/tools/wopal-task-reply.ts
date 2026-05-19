@@ -3,6 +3,7 @@ import type { SimpleTaskManager } from "../tasks/simple-task-manager.js"
 import type { WopalTask, OpenCodeClient } from "../types.js"
 import { createDebugLog } from "../debug.js"
 import { trackActivity } from "../tasks/progress.js"
+import { isResumableTask } from "../tasks/task-phase.js"
 
 const debugLog = createDebugLog("[task]", "task")
 
@@ -87,15 +88,14 @@ export function createWopalReplyTool(manager: SimpleTaskManager): ToolDefinition
         return "Error: Task not found or not owned by this session"
       }
 
-      // interrupt only works on running tasks
+      // interrupt only works on running status tasks (any running, including idle)
       if (interrupt && task.status !== "running") {
         return `Error: interrupt only works on running tasks. Task is ${task.status}. Use reply without interrupt to resume.`
       }
 
-      // reply works on any non-running task (waiting, idle, or error)
-      // but not on running tasks (unless using interrupt mode)
-      // idleNotified tasks (running + idleNotified=true) can use reply without interrupt
-      if (!interrupt && task.status === "running" && !task.idleNotified) {
+      // reply without interrupt only works on resumable tasks (waiting, idle, error)
+      // running + idleNotified is resumable, but running without idleNotified needs interrupt
+      if (!interrupt && !isResumableTask(task)) {
         return `Error: Task is running. Use interrupt=true to abort and redirect, or wait for idle.`
       }
 
