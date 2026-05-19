@@ -31,14 +31,10 @@ from dev_flow.domain.plan.metadata import (
     get_plan_issue,
     get_plan_project,
     get_plan_status,
-    get_plan_type,
-    get_plan_worktree,
     set_plan_worktree,
     set_plan_field,
     get_plan_field,
 )
-from dev_flow.domain.plan.commit import commit_project_changes, commit_ontology_worktree
-from dev_flow.infra.git import has_uncommitted_changes
 from dev_flow.domain.plan.project import resolve_project_path
 from dev_flow.domain.validation.check_doc import (
     ValidationError,
@@ -194,33 +190,6 @@ def cmd_complete(args: argparse.Namespace) -> int:
 
     # Extract Target Project from Plan
     project = get_plan_project(plan_path)
-
-    # 5.5. Commit project changes — implementation is complete and verified,
-    #      commit now so code is safely versioned before user validation.
-    project_type_str = get_plan_field(plan_path, "Project Type")
-    plan_type = get_plan_type(plan_path) or "chore"
-
-    if project_type_str == "ontology-worktree":
-        if not commit_ontology_worktree(workspace_root, plan_type, plan_issue, plan_name, repo):
-            log_error("Failed to commit ontology changes")
-            return 1
-    elif project:
-        project_path_obj = resolve_project_path(plan_path, project, workspace_root)
-        if project_path_obj:
-            wt = get_plan_worktree(plan_path)
-            if wt and wt.get('path'):
-                # Worktree: commit on worktree branch
-                wt_path = wt['path']
-                if has_uncommitted_changes(wt_path):
-                    if not commit_project_changes(wt_path, plan_type, plan_issue, plan_name, repo):
-                        log_error("Failed to commit worktree changes")
-                        return 1
-            else:
-                # No worktree: commit directly in project dir
-                if has_uncommitted_changes(str(project_path_obj)):
-                    if not commit_project_changes(str(project_path_obj), plan_type, plan_issue, plan_name, repo):
-                        log_error("Failed to commit project changes")
-                        return 1
 
     # 6. Validate state transition
     target_status = "verifying"
