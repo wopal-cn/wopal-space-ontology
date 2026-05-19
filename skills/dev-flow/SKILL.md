@@ -41,9 +41,8 @@ plan → approve → approve --confirm → complete → verify --confirm → arc
 
 1. 先进入 Plan 生命周期，再开始实施。
 2. `approve --confirm` 和 `verify --confirm` 都是人类授权门。
-3. 3. `complete` 表示"实施完成，代码已提交，进入用户验证阶段"，不代表"用户已验证通过"。
-4. `archive` 只做 push + 归档收尾，不承担验证职责。“实施完成，进入用户验证阶段”，不代表“用户已验证通过”。
-4. `archive` 只做归档收尾，不承担验证职责。
+3. `complete` 表示"实施完成，代码已提交，进入用户验证阶段"，不代表"用户已验证通过"。
+4. `archive` 只做 push + 归档收尾，不承担验证职责。
 
 ## 最容易遗漏的两步
 
