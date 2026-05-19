@@ -8,6 +8,9 @@
         "agent": {
             "plan": { "disable": true },
             "build": { "disable": true },
+            "general": {
+                "model": "wopal-ai/glm-5.1"
+            },
             "compaction": {                
                 "model": "wopal-ai/qwen-3.6-plus"
             },
