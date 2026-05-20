@@ -1,21 +1,20 @@
-import type { WopalTask } from "../types.js"
+import type { WopalTask, OpenCodeClient, SessionMessage } from "../types.js"
 import type { DebugLog } from "../debug.js"
 import type { ProgressNotifyTrigger } from "./task-monitor.js"
 import { toErrorMessage } from "./utils.js"
 import { CONTEXT_WARN_THRESHOLD } from "./task-monitor.js"
+import { extractMessages } from "./session-messages.js"
+import {
+  formatElapsedRuntime,
+  extractToolCallSummary,
+  formatToolCallSummary,
+  extractLastOutput,
+  extractTodoSummary,
+  formatTodoSummary,
+} from "./notification-summary.js"
 
 export interface TaskNotifierDeps {
-  client: {
-    session?: {
-      promptAsync?: (args: {
-        path: { id: string }
-        body: {
-          noReply?: boolean
-          parts: Array<{ type: string; text: string; synthetic?: boolean }>
-        }
-      }) => Promise<unknown>
-    }
-  }
+  client: OpenCodeClient
   debugLog: DebugLog
 }
 
@@ -33,29 +32,68 @@ export async function sendProgressNotification(
   contextUsage: number | null,
   triggerReason?: ProgressNotifyTrigger,
 ): Promise<void> {
-  const { debugLog } = deps
+  const { client, debugLog } = deps
 
+  // Fetch session messages for enrichment
+  let messages: SessionMessage[] = []
+  try {
+    if (task.sessionID && client.session?.messages) {
+      const messagesResult = await client.session.messages({ path: { id: task.sessionID } })
+      messages = extractMessages(messagesResult)
+    }
+  } catch (err) {
+    debugLog(`[progressNotify] failed to fetch messages: ${toErrorMessage(err)}`)
+  }
+
+  // Elapsed runtime
+  const elapsedLine = formatElapsedRuntime(task.startedAt)
+  const elapsedStr = elapsedLine ? `\n**Runtime:** ${elapsedLine}` : ''
+
+  // Context usage
   let contextLine = ''
   if (contextUsage !== null) {
     const warn = contextUsage >= CONTEXT_WARN_THRESHOLD ? ' ⚠️' : ''
     contextLine = `\n**Context:** ${contextUsage}% used${warn}`
   }
 
+  // Trigger reason
   const triggerLine = triggerReason
     ? `\n**Trigger:** ${TRIGGER_LABELS[triggerReason]}`
+    : ''
+
+  // Tool-call summary
+  const toolSummary = extractToolCallSummary(messages)
+  const toolLine = toolSummary.total > 0
+    ? `\n**Tools:** ${formatToolCallSummary(toolSummary)}`
+    : ''
+
+  // Last output (non-synthetic)
+  const lastOutput = extractLastOutput(messages, 150)
+  const outputLine = lastOutput
+    ? `\n**Last output:** ${lastOutput}`
+    : ''
+
+  // Todo summary
+  const todoSummary = extractTodoSummary(messages)
+  const todoSummaryStr = formatTodoSummary(todoSummary)
+  const todoLine = todoSummaryStr
+    ? `\n**Todos:** ${todoSummaryStr}`
     : ''
 
   const notification = `<system-reminder>
 [WOPAL TASK PROGRESS]
 **ID:** \`${task.id}\`
-**Description:** ${task.description}
-**Progress:** ${messageCount} messages${contextLine}${triggerLine}
+**Description:** ${task.description}${elapsedStr}
+**Progress:** ${messageCount} messages${contextLine}${toolLine}${triggerLine}${todoLine}${outputLine}
 
 Task is still running. Use \`wopal_task_output(task_id="${task.id}")\` for details.
 </system-reminder>`
 
   await sendNotification(deps, task.parentSessionID, notification)
-  debugLog(`[progressNotify] sent: taskId=${task.id} messages=${messageCount} trigger=${triggerReason ?? 'unknown'}`)
+
+  // Mirror to debug log with concise summary
+  const debugSummary = `taskId=${task.id} msgs=${messageCount} runtime=${elapsedLine ?? 'unknown'} tools=${toolSummary.total} trigger=${triggerReason ?? 'unknown'}`
+  debugLog(`[progressNotify] sent: ${debugSummary}`)
 }
 
 export async function sendNotification(
@@ -75,7 +113,7 @@ export async function sendNotification(
     path: { id: parentSessionID },
     body: {
       noReply: noReply ?? false,
-      parts: [{ type: "text", text, synthetic: true }],
+      parts: [{ type: "text", text }],
     },
   }).catch((err: unknown) => {
     debugLog(`[sendNotification] error: ${toErrorMessage(err)}`)
@@ -88,20 +126,60 @@ export async function notifyParent(
 ): Promise<void> {
   if (!task.sessionID) return
 
-  const { debugLog } = deps
+  const { client, debugLog } = deps
+
+  // Fetch session messages for enrichment
+  let messages: SessionMessage[] = []
+  try {
+    if (client.session?.messages) {
+      const messagesResult = await client.session.messages({ path: { id: task.sessionID } })
+      messages = extractMessages(messagesResult)
+    }
+  } catch (err) {
+    debugLog(`[notifyParent] failed to fetch messages: ${toErrorMessage(err)}`)
+  }
 
   const statusText = task.idleNotified ? 'IDLE' : task.status.toUpperCase()
+
+  // Error notifications remain concise (no enrichment)
+  const errorLine = task.error ? `\n**Error:** ${task.error}` : ''
+
+  // For IDLE notifications, add result summaries
+  let resultLine = ''
+  if (task.idleNotified && !task.error) {
+    const toolSummary = extractToolCallSummary(messages)
+    const toolLine = toolSummary.total > 0
+      ? `\n**Tools:** ${formatToolCallSummary(toolSummary)}`
+      : ''
+
+    const lastOutput = extractLastOutput(messages, 150)
+    const outputLine = lastOutput
+      ? `\n**Last output:** ${lastOutput}`
+      : ''
+
+    const todoSummary = extractTodoSummary(messages)
+    const todoSummaryStr = formatTodoSummary(todoSummary)
+    const todoLine = todoSummaryStr
+      ? `\n**Todos:** ${todoSummaryStr}`
+      : ''
+
+    resultLine = `${toolLine}${todoLine}${outputLine}`
+  }
+
   const notification = `<system-reminder>
 [WOPAL TASK ${statusText}]
 **ID:** \`${task.id}\`
-**Description:** ${task.description}
-${task.error ? `**Error:** ${task.error}` : ''}
+**Description:** ${task.description}${errorLine}${resultLine}
 
 Use \`wopal_task_output(task_id="${task.id}")\` to retrieve the result.
 </system-reminder>`
 
   await sendNotification(deps, task.parentSessionID, notification)
-  debugLog(`[notifyParent] success: taskId=${task.id}`)
+
+  // Mirror to debug log
+  const status = task.idleNotified ? 'IDLE' : task.status
+  const debugSummary = `taskId=${task.id} status=${status}`
+  debugLog(`[notifyParent] sent: ${debugSummary}`)
 }
 
 export async function notifyParentStuck(

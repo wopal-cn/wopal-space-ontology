@@ -129,16 +129,3 @@ flow.sh reset <plan-name>   # Plan 驱动
 仅用户明确要求时使用。
 
 ---
-
-## 边缘场景
-
-| 场景 | 处理 |
-|------|------|
-| 已有 Plan 再次 `plan` | 不重复创建，继续推进 |
-| `complete` 时 Done 未勾选 | 先勾选再 complete |
-| `complete` 时 Agent Verification 未完成 | 先补齐再 complete |
-| rook BLOCK 后 complete | 停止，修复后重新 rook 审查 |
-| rook 连续 3 轮 BLOCK/REVISE | 保留分歧注释，用户裁决 |
-| `verify --confirm` 时 PR 未 merge | 等 merge |
-| 目标项目工作区不干净 | 清理/提交 或 `--worktree` |
-| 参数选择 | Issue 驱动传 issue number；无 Issue 传 plan-name |

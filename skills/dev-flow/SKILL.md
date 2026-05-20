@@ -92,7 +92,7 @@ Plan 切片 → 委派 fae 实施 → 委派 rook 审查 → 根据结果推进/
 
 rook 契约格式见 agents-collab。委派 rook 前不预加载 df-plan-review / df-implement-review —— rook 自行加载。
 
-**委派 prompt 必须**：末尾附加 Done checkbox 更新指令（格式见 `references/delegation-templates.md`）。
+**委派 prompt 必须**：末尾附加 Done checkbox 更新指令（格式见 `references/plan-authoring.md`）。
 
 ### D. 实施完成后，进入用户验证
 
@@ -164,11 +164,9 @@ flow.sh approve <issue> --confirm --worktree
 
 | 文件 | 用途 |
 |------|------|
-| `references/commands.md` | 命令概览、使用模式、边缘场景 |
-| `references/delegation-templates.md` | 委派 prompt 格式、Task 字段顺序、TDD 规则 |
-| `references/plan-quality.md` | Plan 质量门、AC 分类（Agent vs User Validation） |
-| `references/troubleshooting.md` | 错误处理速查 |
-| `references/pr-workflow.md` | PR 工作流（可选） |
+| `references/commands.md` | 命令概览与使用模式 |
+| `references/plan-authoring.md` | Plan 质量门、AC、TDD、委派 prompt 格式 |
+| `references/troubleshooting.md` | 错误处理、边缘场景、PR 工作流 |
 | `templates/plan.md` | Plan 骨架模板 |
 | `templates/issue*.md` | 各类型 Issue 模板 |
 | `references/plan-validation.md` | Plan 校验规则 |

@@ -525,7 +525,7 @@ describe("OpenCodeRulesRuntime event handling", () => {
         reply: "once",
       })
 
-      // Should notify parent session
+      // Should notify parent session (without synthetic flag - visible in TUI)
       expect(mockPromptAsync).toHaveBeenCalledWith({
         path: { id: "parent-1" },
         body: {
@@ -533,7 +533,6 @@ describe("OpenCodeRulesRuntime event handling", () => {
           parts: [{
             type: "text",
             text: expect.stringContaining("[WOPAL TASK PERMISSION]"),
-            synthetic: true,
           }],
         },
       })
