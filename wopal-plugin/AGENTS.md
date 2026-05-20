@@ -179,8 +179,11 @@ Memory 双开关：`WOPAL_MEMORY_ENABLED=false` 时 `WOPAL_MEMORY_INJECTION_ENAB
 - **EllaMaka SDK 类型缺失时** — 在 `types.ts` 补充局部类型声明，不要 `as any` 逃逸
 - **可选链优先** — 访问可能为 `undefined` 的属性时用 `?.`，不要先用 `as any` 再取值
 - **类型断言最小化** — 只在边界层（SDK 交互、外部数据）使用 `as`，内部逻辑用类型守卫
+- **格式化命令语义固定** — `bun run format` / `bun run format:fix` 会直接改写文件；`bun run format:check` 只检查、不写回
 - **每次代码变更后主动运行 `bun run typecheck:fix`** — 先让项目专用助手脚本自动修复可机械处理的类型问题，再运行 `bun run build`
 - **不要神化 `typecheck:fix`** — 它只负责项目内已知、安全、可机械化的修复模式；脚本无法可靠处理的 `unknown` 收窄、业务逻辑判断、复杂结构性错误，必须人工修复
+- **对齐 ellamaka 风格** — 日常类型校验统一走 `bun run typecheck`，不要直接调用 `tsc`；`build` 保留给产物生成/发布验证
+- **当前不把 `format:check` 作为硬门禁** — 仓库仍有历史格式债，未做一次性全量格式化前，`format:check` 只作为人工把关命令，不纳入默认提交前阻塞链路
 
 ---
 
@@ -188,7 +191,11 @@ Memory 双开关：`WOPAL_MEMORY_ENABLED=false` 时 `WOPAL_MEMORY_INJECTION_ENAB
 
 ```bash
 bun install               # 安装依赖
+bun run format            # = bun run format:fix，批量格式化 src/ 和 scripts/
+bun run format:fix        # 显式批量格式化
+bun run format:check      # 只检查格式，不改文件（当前非硬门禁）
 bun run typecheck:fix     # 先自动修复可机械处理的 typecheck 问题
+bun run typecheck         # 日常类型检查（对齐 ellamaka 风格）
 bun run test:run          # 运行所有测试
 bun run test              # watch 模式
 bun run build             # tsc 编译到 dist/
@@ -201,10 +208,14 @@ bun run format:check      # Prettier 检查
 对 `src/`、`scripts/`、`types.ts`、任务工具、Hook、记忆系统等任何代码变更，默认按以下顺序验证：
 
 1. `bun run typecheck:fix`
-2. `bun run build`
+2. `bun run typecheck`
 3. `bun run test:run`
 
 若 `typecheck:fix` 报出仍需人工处理的 diagnostics，先修完再继续后续验证，禁止跳过直接提交。
+
+`bun run format` / `bun run format:fix` 目前属于**显式格式整理动作**，运行前要预期它可能改动较多历史文件。`bun run format:check` 仅用于你主动想看当前格式债时使用，当前不作为提交前默认阻塞项。
+
+`bun run build` 不再作为日常每次改动的默认校验命令；仅在需要验证 dist 产物、发布链路、或显式要求编译输出时运行。
 
 ### 调试开关
 

@@ -43,7 +43,7 @@ function log(color: keyof typeof COLORS, ...args: unknown[]) {
 
 async function runTypeCheck(): Promise<{ success: boolean; output: string }> {
   try {
-    const result = await $`bun run build`.quiet();
+    const result = await $`bun run typecheck`.quiet();
     return { success: result.exitCode === 0, output: result.stderr.toString() };
   } catch (error) {
     // Build failed - capture output
