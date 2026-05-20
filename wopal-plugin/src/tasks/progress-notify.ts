@@ -12,17 +12,12 @@ import type { DebugLog } from "../debug.js"
 import { fetchContextPercent, type TaskSessionInspector } from "../session-runtime-info.js"
 
 // Progress notification thresholds
-export const PROGRESS_NOTIFY_MESSAGE_MODULO = 20
 export const PROGRESS_NOTIFY_TIME_THRESHOLD_MS = 180_000 // 3 minutes
 export const CONTEXT_WARN_THRESHOLD = 45
-export const CONTEXT_NOTIFY_MODULO = 10
-export const CONTEXT_WARN_NOTIFY_MODULO = 5
 
 export type ProgressNotifyTrigger =
   | 'time_quota'
-  | 'message_count'
-  | 'context_threshold'
-  | 'context_normal'
+  | 'context_milestone'
 
 export interface ProgressTaskInfo {
   taskId: string
@@ -40,6 +35,25 @@ export interface ProgressNotifyDeps {
   directory: string
   taskManager?: TaskSessionInspector
   sendProgressNotificationFn: (task: WopalTask, messageCount: number, contextUsage: number | null, triggerReason?: ProgressNotifyTrigger) => Promise<void>
+}
+
+/**
+ * Calculate the context milestone for a given percentage.
+ *
+ * Milestones:
+ * - 40%: first milestone (reached when pct >= 40)
+ * - 50%, 55%, 60%, ...: every 5% from 50% onward
+ *
+ * Returns null if below 40% (no milestone yet).
+ */
+export function getContextMilestone(pct: number): number | null {
+  if (pct >= 50) {
+    return Math.floor(pct / 5) * 5
+  }
+  if (pct >= 40) {
+    return 40
+  }
+  return null
 }
 
 /**
@@ -71,9 +85,11 @@ export async function checkProgressNotifications(
       let shouldNotify = false
       let triggerReason: ProgressNotifyTrigger | undefined = undefined
 
-      // Time-based fallback: notify once per time quota slot (3 min each)
+      // Time-based fallback: notify once per time quota slot (3 min each).
+      // Uses progressNotifyTimeBaseline (reset on reactivation) instead of startedAt (total runtime).
       const now = new Date()
-      const elapsedMs = now.getTime() - (task.startedAt?.getTime() ?? 0)
+      const timeBaseline = task.progressNotifyTimeBaseline ?? task.startedAt ?? now
+      const elapsedMs = now.getTime() - timeBaseline.getTime()
       const timeQuota = Math.floor(elapsedMs / PROGRESS_NOTIFY_TIME_THRESHOLD_MS)
       const lastQuota = task.lastNotifyTimeQuota ?? 0
       if (timeQuota > lastQuota) {
@@ -82,45 +98,26 @@ export async function checkProgressNotifications(
         triggerReason = 'time_quota'
       }
 
-      // Message count threshold: notify once per modulo (dedup by lastNotifyMessageCount)
-      if (messageCount > 0 && messageCount % PROGRESS_NOTIFY_MESSAGE_MODULO === 0) {
-        const lastMsgCount = task.lastNotifyMessageCount ?? 0
-        if (messageCount !== lastMsgCount) {
-          shouldNotify = true
-          triggerReason = 'message_count'
-        }
-      }
-
       // Cache-first: prefer sessionStore.lastTokens to avoid streaming window returning null
       const ctxInfo = await fetchContextPercent(client, sessionStore, directory, task.sessionID, debugLog, taskManager)
       const contextUsage = ctxInfo?.pct ?? null
 
-      // Context threshold: notify once per modulo value (dedup by lastNotifyContextPct)
-      if (contextUsage !== null && contextUsage >= CONTEXT_WARN_THRESHOLD) {
-        const modulo = CONTEXT_WARN_NOTIFY_MODULO
-        if (contextUsage > 0 && contextUsage % modulo === 0) {
-          const lastCtxPct = task.lastNotifyContextPct ?? 0
-          if (contextUsage !== lastCtxPct) {
-            shouldNotify = true
-            triggerReason = 'context_threshold'
-          }
-        }
-      } else if (contextUsage !== null) {
-        const modulo = CONTEXT_NOTIFY_MODULO
-        if (contextUsage > 0 && contextUsage % modulo === 0) {
-          const lastCtxPct = task.lastNotifyContextPct ?? 0
-          if (contextUsage !== lastCtxPct) {
-            shouldNotify = true
-            triggerReason = 'context_normal'
-          }
+      // Context milestone: notify when crossing a milestone threshold.
+      // Milestones: 40% first, then 50/55/60/65/... every 5%.
+      // Dedup by lastNotifyContextPct — only notify if current milestone > last notified milestone.
+      if (contextUsage !== null) {
+        const currentMilestone = getContextMilestone(contextUsage)
+        const lastMilestone = task.lastNotifyContextPct ?? 0
+        if (currentMilestone !== null && currentMilestone > lastMilestone) {
+          shouldNotify = true
+          triggerReason = 'context_milestone'
         }
       }
 
       if (shouldNotify) {
         // Update dedup fields before sending
-        task.lastNotifyMessageCount = messageCount
         if (contextUsage !== null) {
-          task.lastNotifyContextPct = contextUsage
+          task.lastNotifyContextPct = getContextMilestone(contextUsage) ?? contextUsage
         }
         await sendProgressNotificationFn(task, messageCount, contextUsage, triggerReason)
       }

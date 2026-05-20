@@ -6,8 +6,8 @@ import {
   checkProgressNotifications,
   logTickStatus,
   PROGRESS_NOTIFY_TIME_THRESHOLD_MS,
-  PROGRESS_NOTIFY_MESSAGE_MODULO,
   CONTEXT_WARN_THRESHOLD,
+  getContextMilestone,
 } from "./task-monitor.js"
 import type { WopalTask } from "./types.js"
 import { SessionStore } from "../session-store.js"
@@ -213,7 +213,33 @@ describe("clearStuckState", () => {
   })
 })
 
-// Task 4: progress notification tests
+describe("getContextMilestone", () => {
+  it("returns null below 40%", () => {
+    expect(getContextMilestone(0)).toBeNull()
+    expect(getContextMilestone(25)).toBeNull()
+    expect(getContextMilestone(39)).toBeNull()
+  })
+
+  it("returns 40 for 40-49%", () => {
+    expect(getContextMilestone(40)).toBe(40)
+    expect(getContextMilestone(41)).toBe(40)
+    expect(getContextMilestone(44)).toBe(40)
+    expect(getContextMilestone(49)).toBe(40)
+  })
+
+  it("returns multiples of 5 from 50 onward", () => {
+    expect(getContextMilestone(50)).toBe(50)
+    expect(getContextMilestone(51)).toBe(50)
+    expect(getContextMilestone(54)).toBe(50)
+    expect(getContextMilestone(55)).toBe(55)
+    expect(getContextMilestone(56)).toBe(55)
+    expect(getContextMilestone(60)).toBe(60)
+    expect(getContextMilestone(73)).toBe(70)
+    expect(getContextMilestone(100)).toBe(100)
+  })
+})
+
+// Progress notification tests
 describe("checkProgressNotifications", () => {
   it("should notify based on time quota", async () => {
     const task = createTask({
@@ -244,7 +270,7 @@ describe("checkProgressNotifications", () => {
     expect(sendNotification).toHaveBeenCalled()
   })
 
-  it("should notify based on message count modulo", async () => {
+  it("should not trigger on message count (removed trigger type)", async () => {
     const task = createTask({
       id: "task-msg",
       startedAt: new Date(),
@@ -252,8 +278,9 @@ describe("checkProgressNotifications", () => {
     })
     const tasks = new Map([["task-msg", task]])
     const sessionStore = new SessionStore({ max: 10 })
+    // 20 messages — previously would have triggered message_count
     const mockMessages = vi.fn().mockResolvedValue({
-      data: Array(PROGRESS_NOTIFY_MESSAGE_MODULO).fill({ id: "msg" }),
+      data: Array(20).fill({ id: "msg" }),
     })
     const sendNotification = vi.fn().mockResolvedValue(undefined)
 
@@ -269,50 +296,39 @@ describe("checkProgressNotifications", () => {
 
     const results = await checkProgressNotifications(deps as never)
 
+    // message_count trigger no longer exists
     expect(results).toHaveLength(1)
-    expect(results[0].triggerReason).toBe("message_count")
-    expect(results[0].messageCount).toBe(PROGRESS_NOTIFY_MESSAGE_MODULO)
+    expect(results[0].wasNotified).toBe(false)
+    expect(sendNotification).not.toHaveBeenCalled()
   })
 
-  it("should notify based on context threshold", async () => {
+  it("should notify when context crosses 40% (39→41)", async () => {
     const task = createTask({
-      id: "task-ctx",
+      id: "task-ctx-40",
       startedAt: new Date(),
-      sessionID: "session-ctx",
+      sessionID: "session-ctx-40",
+      lastNotifyTimeQuota: 0, // suppress time trigger
     })
-    const tasks = new Map([["task-ctx", task]])
+    const tasks = new Map([["task-ctx-40", task]])
     const sessionStore = new SessionStore({ max: 10 })
 
-    // Setup cached tokens in sessionStore
-    sessionStore.upsert("session-ctx", (state) => {
+    // 41% context = 41000/100000
+    sessionStore.upsert("session-ctx-40", (state) => {
       state.providerID = "anthropic"
       state.modelID = "claude-3"
-      state.lastTokens = {
-        input: 50000,
-        output: 1000,
-        updatedAt: Date.now(),
-      }
+      state.lastTokens = { input: 41000, output: 1000, updatedAt: Date.now() }
     })
 
     const mockConfig = vi.fn().mockResolvedValue({
-      data: {
-        providers: [{
-          id: "anthropic",
-          models: { "claude-3": { limit: { context: 100000 } } }
-        }]
-      }
+      data: { providers: [{ id: "anthropic", models: { "claude-3": { limit: { context: 100000 } } } }] },
     })
-
     const mockMessages = vi.fn().mockResolvedValue({ data: [] })
     const sendNotification = vi.fn().mockResolvedValue(undefined)
 
     const deps = {
       tasks,
       sessionStore,
-      client: {
-        session: { messages: mockMessages },
-        config: { providers: mockConfig },
-      },
+      client: { session: { messages: mockMessages }, config: { providers: mockConfig } },
       debugLog: () => {},
       directory: "/test",
       notifyParentStuckFn: vi.fn(),
@@ -322,8 +338,173 @@ describe("checkProgressNotifications", () => {
     const results = await checkProgressNotifications(deps as never)
 
     expect(results).toHaveLength(1)
-    expect(results[0].triggerReason).toBe("context_threshold")
-    expect(results[0].contextUsage).toBe(50) // 50000/100000 = 50%
+    expect(results[0].triggerReason).toBe("context_milestone")
+    expect(results[0].contextUsage).toBe(41)
+    // Dedup field updated to milestone value (40)
+    expect(task.lastNotifyContextPct).toBe(40)
+  })
+
+  it("should notify when context crosses 50% (49→52)", async () => {
+    const task = createTask({
+      id: "task-ctx-50",
+      startedAt: new Date(),
+      sessionID: "session-ctx-50",
+      lastNotifyTimeQuota: 0,
+      lastNotifyContextPct: 40, // already notified at 40%
+    })
+    const tasks = new Map([["task-ctx-50", task]])
+    const sessionStore = new SessionStore({ max: 10 })
+
+    // 52% context
+    sessionStore.upsert("session-ctx-50", (state) => {
+      state.providerID = "anthropic"
+      state.modelID = "claude-3"
+      state.lastTokens = { input: 52000, output: 1000, updatedAt: Date.now() }
+    })
+
+    const mockConfig = vi.fn().mockResolvedValue({
+      data: { providers: [{ id: "anthropic", models: { "claude-3": { limit: { context: 100000 } } } }] },
+    })
+    const mockMessages = vi.fn().mockResolvedValue({ data: [] })
+    const sendNotification = vi.fn().mockResolvedValue(undefined)
+
+    const deps = {
+      tasks,
+      sessionStore,
+      client: { session: { messages: mockMessages }, config: { providers: mockConfig } },
+      debugLog: () => {},
+      directory: "/test",
+      notifyParentStuckFn: vi.fn(),
+      sendProgressNotificationFn: sendNotification,
+    }
+
+    const results = await checkProgressNotifications(deps as never)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].triggerReason).toBe("context_milestone")
+    expect(results[0].contextUsage).toBe(52)
+    expect(task.lastNotifyContextPct).toBe(50)
+  })
+
+  it("should notify when context crosses 55% (54→56)", async () => {
+    const task = createTask({
+      id: "task-ctx-55",
+      startedAt: new Date(),
+      sessionID: "session-ctx-55",
+      lastNotifyTimeQuota: 0,
+      lastNotifyContextPct: 50, // already notified at 50%
+    })
+    const tasks = new Map([["task-ctx-55", task]])
+    const sessionStore = new SessionStore({ max: 10 })
+
+    // 56% context
+    sessionStore.upsert("session-ctx-55", (state) => {
+      state.providerID = "anthropic"
+      state.modelID = "claude-3"
+      state.lastTokens = { input: 56000, output: 1000, updatedAt: Date.now() }
+    })
+
+    const mockConfig = vi.fn().mockResolvedValue({
+      data: { providers: [{ id: "anthropic", models: { "claude-3": { limit: { context: 100000 } } } }] },
+    })
+    const mockMessages = vi.fn().mockResolvedValue({ data: [] })
+    const sendNotification = vi.fn().mockResolvedValue(undefined)
+
+    const deps = {
+      tasks,
+      sessionStore,
+      client: { session: { messages: mockMessages }, config: { providers: mockConfig } },
+      debugLog: () => {},
+      directory: "/test",
+      notifyParentStuckFn: vi.fn(),
+      sendProgressNotificationFn: sendNotification,
+    }
+
+    const results = await checkProgressNotifications(deps as never)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].triggerReason).toBe("context_milestone")
+    expect(results[0].contextUsage).toBe(56)
+    expect(task.lastNotifyContextPct).toBe(55)
+  })
+
+  it("should not notify when context stays within same milestone", async () => {
+    const task = createTask({
+      id: "task-ctx-same",
+      startedAt: new Date(),
+      sessionID: "session-ctx-same",
+      lastNotifyTimeQuota: 0,
+      lastNotifyContextPct: 50, // already notified at 50%
+    })
+    const tasks = new Map([["task-ctx-same", task]])
+    const sessionStore = new SessionStore({ max: 10 })
+
+    // 54% = still milestone 50, no new milestone crossed
+    sessionStore.upsert("session-ctx-same", (state) => {
+      state.providerID = "anthropic"
+      state.modelID = "claude-3"
+      state.lastTokens = { input: 54000, output: 1000, updatedAt: Date.now() }
+    })
+
+    const mockConfig = vi.fn().mockResolvedValue({
+      data: { providers: [{ id: "anthropic", models: { "claude-3": { limit: { context: 100000 } } } }] },
+    })
+    const mockMessages = vi.fn().mockResolvedValue({ data: [] })
+    const sendNotification = vi.fn()
+
+    const deps = {
+      tasks,
+      sessionStore,
+      client: { session: { messages: mockMessages }, config: { providers: mockConfig } },
+      debugLog: () => {},
+      directory: "/test",
+      notifyParentStuckFn: vi.fn(),
+      sendProgressNotificationFn: sendNotification,
+    }
+
+    const results = await checkProgressNotifications(deps as never)
+
+    expect(results[0].wasNotified).toBe(false)
+    expect(sendNotification).not.toHaveBeenCalled()
+  })
+
+  it("should not notify when context is below 40%", async () => {
+    const task = createTask({
+      id: "task-ctx-low",
+      startedAt: new Date(),
+      sessionID: "session-ctx-low",
+      lastNotifyTimeQuota: 0,
+    })
+    const tasks = new Map([["task-ctx-low", task]])
+    const sessionStore = new SessionStore({ max: 10 })
+
+    // 30% context — below first milestone
+    sessionStore.upsert("session-ctx-low", (state) => {
+      state.providerID = "anthropic"
+      state.modelID = "claude-3"
+      state.lastTokens = { input: 30000, output: 1000, updatedAt: Date.now() }
+    })
+
+    const mockConfig = vi.fn().mockResolvedValue({
+      data: { providers: [{ id: "anthropic", models: { "claude-3": { limit: { context: 100000 } } } }] },
+    })
+    const mockMessages = vi.fn().mockResolvedValue({ data: [] })
+    const sendNotification = vi.fn()
+
+    const deps = {
+      tasks,
+      sessionStore,
+      client: { session: { messages: mockMessages }, config: { providers: mockConfig } },
+      debugLog: () => {},
+      directory: "/test",
+      notifyParentStuckFn: vi.fn(),
+      sendProgressNotificationFn: sendNotification,
+    }
+
+    const results = await checkProgressNotifications(deps as never)
+
+    expect(results[0].wasNotified).toBe(false)
+    expect(sendNotification).not.toHaveBeenCalled()
   })
 
   it("should not notify for idle tasks", async () => {
@@ -354,19 +535,19 @@ describe("checkProgressNotifications", () => {
     expect(sendNotification).not.toHaveBeenCalled()
   })
 
-  it("should deduplicate notifications by lastNotifyMessageCount", async () => {
+  it("should use progressNotifyTimeBaseline for time quota calculation", async () => {
+    // Task started 10 minutes ago but was reactivated 1 minute ago
+    const baseline = new Date(Date.now() - 60_000) // 1 min ago
     const task = createTask({
-      id: "task-dedup",
-      sessionID: "session-dedup",
-      startedAt: new Date(Date.now() - 1000), // Started 1s ago (below time threshold)
-      lastNotifyMessageCount: 20,
-      lastNotifyTimeQuota: 0, // Already at quota 0
+      id: "task-reactivated",
+      startedAt: new Date(Date.now() - 600_000), // 10 min ago (total runtime)
+      progressNotifyTimeBaseline: baseline,
+      lastNotifyTimeQuota: 0,
+      sessionID: "session-reactivated",
     })
-    const tasks = new Map([["task-dedup", task]])
+    const tasks = new Map([["task-reactivated", task]])
     const sessionStore = new SessionStore({ max: 10 })
-    const mockMessages = vi.fn().mockResolvedValue({
-      data: Array(20).fill({ id: "msg" }),
-    })
+    const mockMessages = vi.fn().mockResolvedValue({ data: [] })
     const sendNotification = vi.fn()
 
     const deps = {
@@ -381,9 +562,42 @@ describe("checkProgressNotifications", () => {
 
     const results = await checkProgressNotifications(deps as never)
 
-    // Should not notify again for same message count
+    // Only 1 min since reactivation, so no time quota trigger (needs 3 min)
+    expect(results).toHaveLength(1)
     expect(results[0].wasNotified).toBe(false)
     expect(sendNotification).not.toHaveBeenCalled()
+  })
+
+  it("should trigger time quota based on progressNotifyTimeBaseline after reactivation", async () => {
+    // Task started 10 min ago, reactivated 4 min ago — time trigger should fire
+    const baseline = new Date(Date.now() - PROGRESS_NOTIFY_TIME_THRESHOLD_MS - 60_000)
+    const task = createTask({
+      id: "task-reactivated-time",
+      startedAt: new Date(Date.now() - 600_000),
+      progressNotifyTimeBaseline: baseline,
+      lastNotifyTimeQuota: 0,
+      sessionID: "session-reactivated-time",
+    })
+    const tasks = new Map([["task-reactivated-time", task]])
+    const sessionStore = new SessionStore({ max: 10 })
+    const mockMessages = vi.fn().mockResolvedValue({ data: [] })
+    const sendNotification = vi.fn().mockResolvedValue(undefined)
+
+    const deps = {
+      tasks,
+      sessionStore,
+      client: { session: { messages: mockMessages } },
+      debugLog: () => {},
+      directory: "/test",
+      notifyParentStuckFn: vi.fn(),
+      sendProgressNotificationFn: sendNotification,
+    }
+
+    const results = await checkProgressNotifications(deps as never)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].triggerReason).toBe("time_quota")
+    expect(sendNotification).toHaveBeenCalled()
   })
 })
 

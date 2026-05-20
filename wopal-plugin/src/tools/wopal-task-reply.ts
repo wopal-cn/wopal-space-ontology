@@ -15,6 +15,10 @@ function resetTaskForResume(task: WopalTask): void {
   // It is only cleared by reacquireSlotOnWakeUp when tryAcquire succeeds.
   // If tryAcquire failed (concurrency limit reached), waitingConcurrencyKey remains
   // to preserve retry semantics.
+  // Reset progress time baseline so the 3-minute time quota restarts,
+  // but total runtime (startedAt) is preserved.
+  task.progressNotifyTimeBaseline = new Date()
+  task.lastNotifyTimeQuota = 0
   trackActivity(task, "text")
 }
 

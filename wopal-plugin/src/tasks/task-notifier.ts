@@ -21,9 +21,7 @@ export interface TaskNotifierDeps {
 
 const TRIGGER_LABELS: Record<ProgressNotifyTrigger, string> = {
   time_quota: 'time quota elapsed',
-  message_count: 'message count threshold',
-  context_threshold: `context warning (≥${CONTEXT_WARN_THRESHOLD}%)`,
-  context_normal: 'context usage milestone',
+  context_milestone: 'context usage milestone',
 }
 
 export async function sendProgressNotification(

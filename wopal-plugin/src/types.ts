@@ -42,7 +42,9 @@ export interface WopalTask {
   // Progress notification: dedup fields
   lastNotifyTimeQuota?: number
   lastNotifyContextPct?: number
-  lastNotifyMessageCount?: number
+  // Baseline timestamp for progress time trigger (reset on reactivation via reply).
+  // Separate from startedAt which tracks total task runtime.
+  progressNotifyTimeBaseline?: Date
   // Concurrency slot key for waiting tasks
   waitingConcurrencyKey?: string
   // Idle notification (Phase 3: judgment delegated to Wopal)

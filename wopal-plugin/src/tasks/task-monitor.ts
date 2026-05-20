@@ -11,11 +11,9 @@ import type { DebugLog } from "../debug.js"
 // Re-export from specialized modules for backward compatibility
 export {
   checkProgressNotifications,
-  PROGRESS_NOTIFY_MESSAGE_MODULO,
   PROGRESS_NOTIFY_TIME_THRESHOLD_MS,
   CONTEXT_WARN_THRESHOLD,
-  CONTEXT_NOTIFY_MODULO,
-  CONTEXT_WARN_NOTIFY_MODULO,
+  getContextMilestone,
   type ProgressNotifyTrigger,
   type ProgressTaskInfo,
 } from "./progress-notify.js"

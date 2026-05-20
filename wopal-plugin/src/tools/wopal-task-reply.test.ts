@@ -404,4 +404,63 @@ describe("wopal_task_reply", () => {
     // Task state should NOT be reset (failed before resetTaskForResume)
     expect(waitingTask.status).toBe("waiting")
   })
+
+  it("reply resets progressNotifyTimeBaseline and lastNotifyTimeQuota for time trigger restart", async () => {
+    const mockClient = createMockClient()
+    const waitingTask = createWaitingTask({
+      // Simulate a task that had old progress state before going idle
+      progressNotifyTimeBaseline: new Date(Date.now() - 300_000), // 5 min ago baseline
+      lastNotifyTimeQuota: 5, // multiple notifications already sent
+    } as Partial<WopalTask>)
+    const mockManager = createMockTaskManager(waitingTask, mockClient)
+    const execute = getExecute(createWopalReplyTool(mockManager as never))
+
+    const beforeReply = Date.now()
+    const result = await execute(
+      { task_id: waitingTask.id, message: "continue" },
+      { sessionID: parentSessionID },
+    )
+
+    expect(result).toBe(`Reply sent to task ${waitingTask.id}. The background task will continue execution.`)
+    
+    // Verify progress time baseline reset
+    expect(waitingTask.progressNotifyTimeBaseline).toBeDefined()
+    const newBaseline = waitingTask.progressNotifyTimeBaseline!.getTime()
+    // Baseline should be recent (within 1 second of reply)
+    expect(newBaseline).toBeGreaterThanOrEqual(beforeReply - 1000)
+    expect(newBaseline).toBeLessThanOrEqual(Date.now() + 1000)
+    
+    // Time quota reset to 0 (restart 3-minute counter)
+    expect(waitingTask.lastNotifyTimeQuota).toBe(0)
+    
+    // Total runtime (startedAt) is NOT affected — this test doesn't set startedAt
+    // but in real tasks, startedAt would remain unchanged
+  })
+
+  it("interrupt resets progressNotifyTimeBaseline and lastNotifyTimeQuota", async () => {
+    const mockClient = createMockClient()
+    const runningTask = createWaitingTask({
+      status: "running" as WopalTask["status"],
+      progressNotifyTimeBaseline: new Date(Date.now() - 180_000), // 3 min ago
+      lastNotifyTimeQuota: 1,
+    } as Partial<WopalTask>)
+    const mockManager = createMockTaskManager(runningTask, mockClient)
+    const execute = getExecute(createWopalReplyTool(mockManager as never))
+
+    const beforeInterrupt = Date.now()
+    const result = await execute(
+      { task_id: runningTask.id, message: "new direction", interrupt: true },
+      { sessionID: parentSessionID },
+    )
+
+    expect(result).toBe(`Interrupt sent to task ${runningTask.id}. Previous execution aborted, new message injected. Task will continue with new direction.`)
+    
+    // Verify progress time baseline reset
+    expect(runningTask.progressNotifyTimeBaseline).toBeDefined()
+    const newBaseline = runningTask.progressNotifyTimeBaseline!.getTime()
+    expect(newBaseline).toBeGreaterThanOrEqual(beforeInterrupt - 1000)
+    
+    // Time quota reset
+    expect(runningTask.lastNotifyTimeQuota).toBe(0)
+  })
 })

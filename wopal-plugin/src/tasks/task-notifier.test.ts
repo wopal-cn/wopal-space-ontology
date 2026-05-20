@@ -101,7 +101,7 @@ describe("task-notifier", () => {
         task,
         42,
         50,
-        "message_count",
+        "context_milestone",
       )
 
       expect(mockDebugLog).toHaveBeenCalledWith(
