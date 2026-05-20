@@ -663,14 +663,12 @@ describe("Skill Reload Migration", () => {
       const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
       const result = await messagesTransform({}, { messages });
 
-      // Assert - last user message contains synthetic Skill Reload part
+      // Assert - last user message contains Skill Reload reminder
       const lastUserMsg = result.messages[0];
-      const syntheticPart = lastUserMsg.parts.find((p: any) => p.synthetic === true);
-      expect(syntheticPart).toBeDefined();
-      expect(syntheticPart.type).toBe("text");
-      expect(syntheticPart.text).toContain("<system-reminder>");
-      expect(syntheticPart.text).toContain("dev-flow");
-      expect(syntheticPart.text).toContain("fae-collab");
+      const skillReloadPart = lastUserMsg.parts.find((p: any) => p.text?.includes("<system-reminder>") && p.text?.includes("dev-flow"));
+      expect(skillReloadPart).toBeDefined();
+      expect(skillReloadPart.type).toBe("text");
+      expect(skillReloadPart.text).toContain("fae-collab");
     } finally {
       process.env.HOME = originalHome;
     }
@@ -712,15 +710,15 @@ describe("Skill Reload Migration", () => {
       const result1 = await messagesTransform({}, { messages: messages1 });
 
       // Assert - Skill Reload injected
-      const synthetic1 = result1.messages[0].parts.find((p: any) => p.synthetic === true);
-      expect(synthetic1).toBeDefined();
+      const skillReload1 = result1.messages[0].parts.find((p: any) => p.text?.includes("技能") && p.text?.includes("dev-flow"));
+      expect(skillReload1).toBeDefined();
 
       // Act - second call
       const result2 = await messagesTransform({}, { messages: messages2 });
 
       // Assert - no Skill Reload (already consumed)
-      const synthetic2 = result2.messages[0].parts.find((p: any) => p.synthetic === true);
-      expect(synthetic2).toBeUndefined();
+      const skillReload2 = result2.messages[0].parts.find((p: any) => p.text?.includes("技能"));
+      expect(skillReload2).toBeUndefined();
     } finally {
       process.env.HOME = originalHome;
     }
@@ -757,9 +755,9 @@ describe("Skill Reload Migration", () => {
       const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
       const result = await messagesTransform({}, { messages });
 
-      // Assert - no synthetic part
-      const syntheticPart = result.messages[0].parts.find((p: any) => p.synthetic === true);
-      expect(syntheticPart).toBeUndefined();
+      // Assert - no Skill Reload part
+      const skillReloadPart = result.messages[0].parts.find((p: any) => p.text?.includes("技能"));
+      expect(skillReloadPart).toBeUndefined();
     } finally {
       process.env.HOME = originalHome;
     }
@@ -834,9 +832,9 @@ describe("Skill Reload Migration", () => {
       const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
       const result = await messagesTransform({}, { messages });
 
-      // Assert - transformedMessagesMap should contain the messages with synthetic part
-      // The map is internal to hooks, so we verify via result having synthetic part
-      expect(result.messages[0].parts.find((p: any) => p.synthetic === true)).toBeDefined();
+      // Assert - transformedMessagesMap should contain the messages with Skill Reload
+      // The map is internal to hooks, so we verify via result having Skill Reload part
+      expect(result.messages[0].parts.find((p: any) => p.text?.includes("技能"))).toBeDefined();
     } finally {
       process.env.HOME = originalHome;
     }
@@ -875,9 +873,8 @@ describe("Skill Reload Migration", () => {
       const result = await messagesTransform({}, { messages });
 
       // Assert - Skill Reload injected despite seededFromHistory
-      const syntheticPart = result.messages[0].parts.find((p: any) => p.synthetic === true);
-      expect(syntheticPart).toBeDefined();
-      expect(syntheticPart.text).toContain("dev-flow");
+      const skillReloadPart = result.messages[0].parts.find((p: any) => p.text?.includes("技能") && p.text?.includes("dev-flow"));
+      expect(skillReloadPart).toBeDefined();
     } finally {
       process.env.HOME = originalHome;
     }
@@ -926,8 +923,8 @@ describe("Skill Reload Migration", () => {
       const result2 = await messagesTransform({}, { messages: messages2 });
 
       // Assert - Skill Reload now injected (consumed)
-      const synthetic2 = result2.messages[0].parts.find((p: any) => p.synthetic === true);
-      expect(synthetic2).toBeDefined();
+      const skillReload2 = result2.messages[0].parts.find((p: any) => p.text?.includes("技能"));
+      expect(skillReload2).toBeDefined();
     } finally {
       process.env.HOME = originalHome;
     }
@@ -1004,14 +1001,13 @@ describe("Skill Reload Migration", () => {
       const result = await messagesTransform({}, { messages });
 
       // Assert - full recovery protocol injected
-      const syntheticPart = result.messages[0].parts.find((p: any) => p.synthetic === true);
-      expect(syntheticPart).toBeDefined();
-      expect(syntheticPart.text).toContain("The session context has been compacted");
-      expect(syntheticPart.text).toContain("Execute recovery protocol immediately");
-      expect(syntheticPart.text).toContain("<CRITICAL_RULE>");
-      expect(syntheticPart.text).toContain("Read key files from the compaction summary");
-      expect(syntheticPart.text).toContain("Reload previously loaded skills: space-master");
-      expect(syntheticPart.text).toContain("Search and load task-relevant memories");
+      const recoveryPart = result.messages[0].parts.find((p: any) => p.text?.includes("The session context has been compacted"));
+      expect(recoveryPart).toBeDefined();
+      expect(recoveryPart.text).toContain("Execute recovery protocol immediately");
+      expect(recoveryPart.text).toContain("<CRITICAL_RULE>");
+      expect(recoveryPart.text).toContain("Read key files from the compaction summary");
+      expect(recoveryPart.text).toContain("Reload previously loaded skills: space-master");
+      expect(recoveryPart.text).toContain("Search and load task-relevant memories");
     } finally {
       process.env.HOME = originalHome;
     }
@@ -1049,8 +1045,8 @@ describe("Skill Reload Migration", () => {
       const result = await messagesTransform({}, { messages });
 
       // Assert - no recovery injection (recoverySent prevents duplicate)
-      const syntheticPart = result.messages[0].parts.find((p: any) => p.synthetic === true);
-      expect(syntheticPart).toBeUndefined();
+      const recoveryText = result.messages[0].parts.find((p: any) => p.text?.includes("Execute recovery protocol immediately"));
+      expect(recoveryText).toBeUndefined();
     } finally {
       process.env.HOME = originalHome;
     }
@@ -1092,16 +1088,16 @@ describe("Skill Reload Migration", () => {
       const result1 = await messagesTransform({}, { messages: messages1 });
 
       // Assert - recovery protocol injected
-      const synthetic1 = result1.messages[0].parts.find((p: any) => p.synthetic === true);
-      expect(synthetic1).toBeDefined();
-      expect(synthetic1.text).toContain("Execute recovery protocol immediately");
+      const recovery1 = result1.messages[0].parts.find((p: any) => p.text?.includes("Execute recovery protocol immediately"));
+      expect(recovery1).toBeDefined();
+      expect(recovery1.text).toContain("Execute recovery protocol immediately");
 
       // Act - second call
       const result2 = await messagesTransform({}, { messages: messages2 });
 
       // Assert - no recovery (already consumed)
-      const synthetic2 = result2.messages[0].parts.find((p: any) => p.synthetic === true);
-      expect(synthetic2).toBeUndefined();
+      const recovery2 = result2.messages[0].parts.find((p: any) => p.text?.includes("Execute recovery protocol immediately"));
+      expect(recovery2).toBeUndefined();
     } finally {
       process.env.HOME = originalHome;
     }

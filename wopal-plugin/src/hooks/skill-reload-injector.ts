@@ -18,6 +18,9 @@ export async function injectSkillReload(
 
   // Dedup: Plugin-triggered compact already sent recovery via promptAsync
   if (state?.recoverySent === true) {
+    ctx.sessionStore.upsert(sessionID, (s) => {
+      delete s.recoverySent; // Clear sticky flag (one-time dedup)
+    });
     ctx.contextDebugLog(
       `Session ${sessionID} recovery already sent, skip injection`,
     );
@@ -45,7 +48,6 @@ The session context has been compacted. Execute recovery protocol immediately an
     lastUserMsg.parts.push({
       type: "text",
       text: recoveryText,
-      synthetic: true,
     });
 
     ctx.contextDebugLog(
@@ -69,7 +71,6 @@ The session context has been compacted. Execute recovery protocol immediately an
   lastUserMsg.parts.push({
     type: "text",
     text: reminderText,
-    synthetic: true,
   });
 
   ctx.contextDebugLog(

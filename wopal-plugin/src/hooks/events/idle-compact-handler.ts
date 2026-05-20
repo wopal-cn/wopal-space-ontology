@@ -110,12 +110,25 @@ export async function handleSessionCompacted(
     s.recoverySent = true
   })
 
+  let sendSuccess = false
   if (task) {
     // Child session: notify parent Agent via promptAsync
-    await sendCompactedNotification(ctx, task, state)
+    sendSuccess = await sendCompactedNotification(ctx, task, state)
   } else {
     // Main session: send auto-continue recovery message
-    await sendAutoContinueForMain(ctx, sessionID, state)
+    sendSuccess = await sendAutoContinueForMain(ctx, sessionID, state)
+  }
+
+  // If send failed, rollback recoverySent and enable fallback injection
+  if (!sendSuccess) {
+    ctx.sessionStore.upsert(sessionID, (s) => {
+      delete s.recoverySent
+      delete s.compactingTrigger // Clear Plugin trigger state to avoid misclassification
+      delete s.needsAutoContinue
+      s.needsRecoveryInjection = true // Fallback: messages.transform will inject
+    })
+    ctx.contextDebugLog(`${formatSessionID(sessionID, !!task)} promptAsync failed, fallback to messages.transform injection`)
+    return // Do not continue - needsRecoveryInjection will trigger recovery
   }
 
   // Clear compactingTrigger AFTER recovery sent (messages.transform can check recoverySent)
@@ -137,7 +150,7 @@ async function sendAutoContinueForMain(
   ctx: IdleCompactHandlerContext,
   sessionID: string,
   state: { loadedSkills?: Set<string> },
-): Promise<void> {
+): Promise<boolean> {
   const skills = state.loadedSkills ? Array.from(state.loadedSkills).join(", ") : "none"
 
   const recoveryText = `<system-reminder>
@@ -150,19 +163,24 @@ The session context has been compacted. Execute recovery protocol immediately an
 </CRITICAL_RULE>
 </system-reminder>`
 
-  if (typeof ctx.client.session?.promptAsync === "function") {
-    try {
-      await ctx.client.session.promptAsync({
-        path: { id: sessionID },
-        body: {
-          noReply: false,
-          parts: [{ type: "text", text: recoveryText }],
-        },
-      })
-      ctx.taskDebugLog(`[autoContinue] sent recovery to main session: ${formatSessionID(sessionID, false)}`)
-    } catch (err) {
-      ctx.taskDebugLog(`[autoContinue] error: ${err instanceof Error ? err.message : String(err)}`)
-    }
+  if (typeof ctx.client.session?.promptAsync !== "function") {
+    ctx.taskDebugLog(`[autoContinue] promptAsync unavailable for main session: ${formatSessionID(sessionID, false)}`)
+    return false
+  }
+
+  try {
+    await ctx.client.session.promptAsync({
+      path: { id: sessionID },
+      body: {
+        noReply: false,
+        parts: [{ type: "text", text: recoveryText }],
+      },
+    })
+    ctx.taskDebugLog(`[autoContinue] sent recovery to main session: ${formatSessionID(sessionID, false)}`)
+    return true
+  } catch (err) {
+    ctx.taskDebugLog(`[autoContinue] error: ${err instanceof Error ? err.message : String(err)}`)
+    return false
   }
 }
 
@@ -174,8 +192,8 @@ async function sendCompactedNotification(
   ctx: IdleCompactHandlerContext,
   task: WopalTask,
   state: { loadedSkills?: Set<string> },
-): Promise<void> {
-  if (!task.sessionID || !task.parentSessionID) return
+): Promise<boolean> {
+  if (!task.sessionID || !task.parentSessionID) return false
 
   const skills = state.loadedSkills ? Array.from(state.loadedSkills).join(", ") : "none"
 
@@ -188,18 +206,23 @@ The child session has been compacted and is now IDLE.
 Use wopal_task_reply to send recovery instructions if the task should continue.
 </system-reminder>`
 
-  if (typeof ctx.client.session?.promptAsync === "function") {
-    try {
-      await ctx.client.session.promptAsync({
-        path: { id: task.parentSessionID },
-        body: {
-          noReply: false,
-          parts: [{ type: "text", text: notification }],
-        },
-      })
-      ctx.taskDebugLog(`[compactedNotify] sent to parent: taskId=${task.id}`)
-    } catch (err) {
-      ctx.taskDebugLog(`[compactedNotify] error: ${err instanceof Error ? err.message : String(err)}`)
-    }
+  if (typeof ctx.client.session?.promptAsync !== "function") {
+    ctx.taskDebugLog(`[compactedNotify] promptAsync unavailable for task: ${task.id}`)
+    return false
+  }
+
+  try {
+    await ctx.client.session.promptAsync({
+      path: { id: task.parentSessionID },
+      body: {
+        noReply: false,
+        parts: [{ type: "text", text: notification }],
+      },
+    })
+    ctx.taskDebugLog(`[compactedNotify] sent to parent: taskId=${task.id}`)
+    return true
+  } catch (err) {
+    ctx.taskDebugLog(`[compactedNotify] error: ${err instanceof Error ? err.message : String(err)}`)
+    return false
   }
 }
