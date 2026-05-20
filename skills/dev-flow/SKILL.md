@@ -5,8 +5,6 @@ description: |
 
   🔴 Trigger: "#14"、"这个 issue"、"出个计划"、"开始开发"、"执行计划"、Plan 生命周期推进（approve/complete/verify/archive）、从 PRD 拆分 Issue。
   ❌ Skip: spec 驱动流程、单纯研究/讨论/解释、不需 Issue/Plan 的临时小改动。
-
-  依赖：git-worktrees 技能（可选）
 compatibility:
   - bash 3.x+
   - gh CLI
