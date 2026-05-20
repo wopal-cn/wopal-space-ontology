@@ -1,22 +1,12 @@
 ---
 name: dev-flow
 description: |
-  Issue / Plan 驱动的开发工作流。⚠️ 只有当任务以 GitHub Issue 或 Plan 作为执行载体时才使用本技能。
+  Issue/Plan 驱动的开发工作流。⚠️ 任务需以 GitHub Issue 或 Plan 为执行载体。
 
-  必须使用本技能的场景：
-  - 开发、修复、重构某个 GitHub Issue（如 "#14"、"这个 issue"、"处理 issue 120"）
-  - 创建、修改、推进、验证、归档 Plan
-  - 用户要求“写个方案 / 出个计划 / 开始开发 / 继续开发 / 执行计划”，且任务会通过 Plan 落地执行
-  - 从 PRD 拆分 Issue
+  🔴 Trigger: "#14"、"这个 issue"、"出个计划"、"开始开发"、"执行计划"、Plan 生命周期推进（approve/complete/verify/archive）、从 PRD 拆分 Issue。
+  ❌ Skip: spec 驱动流程、单纯研究/讨论/解释、不需 Issue/Plan 的临时小改动。
 
-  不使用本技能的场景：
-  - spec 驱动流程（Spec / OpenSpec / spec-first / spec-kit）
-  - 单纯研究、讨论、解释、评审
-  - 不需要 Issue 或 Plan 承载的临时小改动
-
-  🔴 判断标准：任务是否要进入 “Issue / Plan → 实施 → 验证 → 归档” 这条开发链路。只有是，才使用本技能。
-
-  依赖：git-worktrees 技能（可选，用于隔离开发环境）
+  依赖：git-worktrees 技能（可选）
 compatibility:
   - bash 3.x+
   - gh CLI
@@ -25,17 +15,9 @@ compatibility:
 
 # dev-flow — Issue / Plan 驱动开发流程
 
-统一状态机：
+统一状态机：`planning → executing → verifying → done`
 
-```text
-planning → executing → verifying → done
-```
-
-统一命令链：
-
-```text
-plan → approve → approve --confirm → complete → verify --confirm → archive
-```
+统一命令链：`plan → approve → approve --confirm → complete → verify --confirm → archive`
 
 ## 核心原则
 
@@ -46,24 +28,20 @@ plan → approve → approve --confirm → complete → verify --confirm → arc
 
 ## 最容易遗漏的两步
 
-1. **Plan 写完后：`--check` → 必要时 `sync <issue> --body-only` → `approve` → 等用户审批。**
-2. **实施完成后：每个 Task 运行 Verify 通过后勾选 Done → 完成 Agent Verification → `complete`（自动提交代码）→ 再等用户验证。**
+1. **Plan 写完后**：`--check` → 必要时 `sync <issue> --body-only` → `approve` → 等用户审批。
+2. **实施完成后**：每个 Task 运行 Verify 通过后立即勾选 Done → 完成 Agent Verification → `complete` → 再等用户验证。
 
-   **Done 勾选范围**：
-   - Implementation：每个 Task 的 **Done** 里的 `- [ ]` checkbox
-   - Agent Verification：`### Agent Verification` 中的 `- [ ]` checkbox
-
-   `complete` 会强制校验以上所有 Done checkbox 必须全部勾选，否则阻断并提示。
+**Done 勾选范围**：Implementation 中每个 Task 的 `- [ ]` checkbox，以及 `### Agent Verification` 中的所有 checkbox。`complete` 强制校验全部勾选。
 
 ## 状态机与命令映射
 
 | 命令 | 前置状态 | 后置状态 | 作用 |
 |------|---------|---------|------|
-| `plan` | 无 / 初始 | `planning` | 创建或定位 Plan |
+| `plan` | 无 | `planning` | 创建或定位 Plan |
 | `approve` | `planning` | `planning` | 校验 Plan，提交方案评审 |
-| `approve --confirm` | `planning` | `executing` | 用户审批通过后开始实施 |
-| `complete` | `executing` | `verifying` | 实施完成，提交代码，进入用户验证阶段 |
-| `verify --confirm` | `verifying` | `done` | 用户验证通过后进入 done |
+| `approve --confirm` | `planning` | `executing` | 用户审批通过，开始实施 |
+| `complete` | `executing` | `verifying` | 实施完成，提交代码 |
+| `verify --confirm` | `verifying` | `done` | 用户验证通过 |
 | `archive` | `done` | 归档 | push 代码，归档 Plan，关闭 Issue |
 
 命令顺序不合法时，回到正确状态顺序执行，不要强行推进。
@@ -72,493 +50,120 @@ plan → approve → approve --confirm → complete → verify --confirm → arc
 
 | 命令 | 用户信号 |
 |------|---------|
-| `approve --confirm` | “审批通过”、“approved”、“可以开始” |
-| `verify --confirm` | “验证通过”、“没问题”、“validation passed” |
-| `reset` | “重置”、“reset” |
+| `approve --confirm` | "审批通过"、"approved"、"可以开始" |
+| `verify --confirm` | "验证通过"、"没问题"、"validation passed" |
+| `reset` | "重置"、"reset" |
 
-禁止：
-- 未经授权执行任何 `--confirm`
-- 跳过 `approve` 直接 `approve --confirm`
-- 让用户自己执行这些脚本
+禁止未经授权执行任何 `--confirm`；禁止跳过 `approve` 直接开工。
 
 ## 标准流程
 
 ### A. 进入 planning
 
-**Issue 驱动：**
+Issue 驱动：`flow.sh plan <issue>`。无 Issue：`flow.sh plan --title "..." --project <name> --type <type>`。
 
-```bash
-flow.sh plan <issue>
-```
+### B. Plan 写完后，方案评审
 
-**Plan 驱动（无 Issue）：**
+1. 完成 Plan 编写，运行 `flow.sh plan <issue> --check`
+2. Issue 驱动时若 Plan 影响 Issue body，执行 `flow.sh sync <issue> --body-only`
+3. **委派 rook 审 Plan**（强制）—— prompt 契约格式见 agents-collab
+4. 根据 rook 判定：PASS → 继续；REVISE/BLOCK → 修订后重审（最多 3 轮）
+5. 通过后：`flow.sh approve <issue>`，停止推进，等用户审批
+6. 用户授权后：`flow.sh approve <issue> --confirm [--worktree]`
 
-```bash
-flow.sh plan --title "<type>(<scope>): <description>" --project <name> --type <type> [--scope <scope>]
-```
-
-### B. Plan 写完后，进入方案评审
-
-不要直接开工。按这个顺序推进：
-
-1. 完成 Plan 编写；结构以 `templates/plan.md` 为准。
-2. 显式运行校验：
-   ```bash
-   flow.sh plan <issue> --check
-   ```
-   无 Issue 模式则用原始 plan 参数重新定位并校验。
-3. **仅 Issue 驱动**：如果 Plan 调整会影响 Issue body 展示内容，执行：
-   ```bash
-   flow.sh sync <issue> --body-only
-   ```
-   说明：
-   - 会根据当前 Plan 重新生成 Goal、Scope、AC 等章节并覆盖 Issue body
-   - **Plan 链接仅在审批通过后（executing+）才写入真实 URL，planning 状态显示 `_待关联_`**
-   - 保守策略：只要你认为 Issue body 应更新，就重新同步一次
-4. **委派 rook 审 Plan**（强制）：
-   使用 `wopal_task({ agent: "rook" })` 委派 rook，加载 df-plan-review 技能审查 Plan。
-   Prompt 契约格式（review_type, goal, plan_path, files_to_read, depth）见 agents-collab 技能「Rook 子代理」章节。
-5. 根据 rook 判定处理：
-   - **PASS**：继续步骤 6
-   - **REVISE**：修订 Plan → 重新执行步骤 2-4
-   - **BLOCK**：修复 Plan → 重新执行步骤 2-4
-   - **连续 3 轮 BLOCK/REVISE**：保留分歧注释，由用户在步骤 6 时裁决
-6. 通过后执行：
-   ```bash
-   flow.sh approve <issue>
-   ```
-7. 停止推进，等待用户审批。收到明确授权后，才能执行：
-   ```bash
-   flow.sh approve <issue> --confirm [--worktree]
-   ```
-
-不要这样做：
-- Plan 刚写完就直接开始实施
-- 忘记执行 `approve`
-- Plan 已调整但 Issue 仍停留在旧内容
-- **跳过 rook Plan 审查直接 approve**
-- **rook BLOCK 后强行 approve**
+禁止：跳过 rook 审查直接 approve、rook BLOCK 后强行 approve。
 
 ### C. 进入 executing 后实施
 
-实施过程中，每完成一个 Task 就运行 Verify 命令通过后立即勾选对应 Done checkbox，不要积压到最后统一补勾。
+每完成一个 Task 立即勾选 Done checkbox，不积压。
 
-**委派原则**：
+**委派体系**：
 
-Agent 分配规则与委派工具机制见 agents-collab 技能。dev-flow 特定规则：
-
-- 实施类 Task → 委派 fae。Wopal 的职责：Plan 切片 → 委派 fae → 验证产出 → 推进下一 Wave
-- 审查类 Task → 委派 rook。rook 返回 PASS/REVISE/BLOCK，Wopal 根据判定推进或修正
-
-**完整职责链**：
+- 实施 Task → 委派 fae。Wopal 职责：切片 → 委派 → 验证 → 推进下一 Wave
+- 审查 Task → 委派 rook。rook 返回 PASS/REVISE/BLOCK
 
 ```text
 Plan 切片 → 委派 fae 实施 → 委派 rook 审查 → 根据结果推进/修正 → 下一 Wave
 ```
 
-**硬门控**：fae 产出未经 rook 代码审查不得进入 `complete`。
+**fae 保留策略**：rook 审查未完成前不 finish fae task（上下文 >50% 例外）。rook REVISE/BLOCK 时 reply 同一 fae 修复，不新开 task。
 
-**fae task 保留策略**：
+**rook 委派时机**：
+1. Plan 写完后（approve 前）— 审方案质量
+2. fae 关键波次后 — 复核代码
+3. fae 最终交付后（complete 前）— 最终审查
 
-fae IDLE 后 Wopal 验证通过但 rook 审查未完成时，**不得 finish fae task**（除非上下文 >50%）。保留 fae 的已有上下文，rook 返回 REVISE/BLOCK 时直接 `wopal_task_reply` 让同一 fae 修复，最大化利用已有上下文。
+rook 契约格式见 agents-collab。委派 rook 前不预加载 df-plan-review / df-implement-review —— rook 自行加载。
 
-```
-❌ fae IDLE → Wopal 验证 → finish fae → rook 审查 → REVISE → 新开 fae（浪费上下文）
-✅ fae IDLE → Wopal 验证 → 保留 fae → rook 审查 → PASS → finish fae
-                                                       → REVISE/BLOCK → reply fae 修复
-```
+**委派 prompt 必须**：末尾附加 Done checkbox 更新指令（格式见 `references/delegation-templates.md`）。
 
-**rook 委派时机（强制）**：
+### D. 实施完成后，进入用户验证
 
-1. **Plan 写完后**（approve 前）— 先审方案质量，确保 Plan 执行后能达成目标
-2. **fae 关键实施波次后** — 复核代码质量，确认目标正在成为事实
-3. **fae 最终交付后**（complete 前）— 完整审查，拦截技术债遗留
+1. 确认所有 Task Done 已勾选
+2. **委派 rook 审 fae 实施结果**（强制，prompt 格式见 agents-collab）
+3. 根据 rook 判定：PASS → 继续；REVISE/BLOCK → fix + re-review（最多 3 轮）
+4. 通过后勾选 `### Agent Verification`
+5. `flow.sh complete <issue>`
 
-rook 契约格式见 agents-collab。连续 3 轮 BLOCK/REVISE 由用户裁决。
+`complete` 硬门控：所有 Task Done ✓ + Agent Verification ✓ + rook PASS ✓。
 
-**委派 rook 前不得预加载其专属技能**：`df-plan-review` 和 `df-implement-review` 是 rook 才能加载的技能，rook 收到委派 prompt 后会自行加载。Wopal 预加载它们只浪费自己上下文，对委派无任何帮助。直接按契约格式写 prompt 委派即可。
+### worktree 隔离下的验证切换
 
-### 任务消息格式
+`complete` 后代码在 feature 分支。用户验证需切换运行时环境：
 
-委派 fae 执行 Plan Task 时，使用以下格式构造 prompt：
-
-**Plan 驱动任务**（推荐）：
-
-    ## Plan
-    读取 Plan 文件，按 Task <N> 执行：
-    <Plan 文档绝对路径>
-
-    ## 特别注意
-    - <仅在 Plan 之外需要额外强调的事项，无则省略此节>
-
-    ## 完成标准
-    - <简要列出关键验证点>
-
-    ## Task Report
-    完成时输出：Goal/Accomplished/Files/Status
-
-**无 Plan 的临时任务**：
-
-    ## 目标
-    <一句话>
-
-    ## 文件
-    - /path/to/file
-
-    ## 步骤
-    1. 读取相关文件
-    2. 修改文件
-    3. 运行验证
-
-    ## 完成标准
-    - 功能验证通过
-
-    ## Task Report
-    完成时输出：Goal/Accomplished/Files/Status
-
-**原则**：有 Plan 时 Plan 是单一信息源，prompt 不重复 Plan 内容。细节让 fae 从 Plan 自行读取（含 Technical Context、Code References 等）。
-
-### 委派 prompt 必含项
-
-每次委派 fae 执行 Plan Task 时，prompt 末尾必须附加：
-
-    完成后在 Plan 文件中编辑对应 Task 的 Done checkbox（- [ ] → - [x]），Plan 文件路径：<绝对路径>
-    禁止修改 Plan Status
-
-缺少此指令 = fae 不会主动更新 Plan，导致 Done 全部遗漏。这是结构性保障，不是可选项。
-
-**Task 字段顺序与约束**：
-- Verification Intent → Behavior → Files → Pre-read → Design → TDD → Changes → Verify → Done
-- **Behavior 必填**：代码 Task（TDD=true）必须在 Behavior 中填写输入/输出映射；非代码 Task 可描述预期状态变化或跳过（TDD=false 时 Behavior 不强制）
-- **Design 在 Behavior 后**：先定义"什么是对的"，再写实现设计
-- **Changes 编号列表**：使用 `1. 2. 3.` 格式，禁止 checkbox
-
-至少及时更新：
-- `Implementation` 里的每个 Task 的 Done checkbox
-- `Agent Verification` 的 checkbox
-
-### D. 实施完成后，进入用户验证阶段
-
-不要直接让用户验证。先完成这几步：
-
-1. 回看 Plan，确认**所有 Task Done 都已勾选**。
-2. **委派 rook 审 fae 实施结果**（强制）：
-   使用 `wopal_task({ agent: "rook" })` 委派 rook，加载 df-implement-review 技能审查代码。
-   Prompt 契约格式见 agents-collab 技能「Rook 子代理」章节。files_to_read 需包含 Plan 文档 + fae 修改的所有文件。
-3. 根据 rook 判定处理：
-   - **PASS**：继续步骤 4
-   - **REVISE**：要求 fae 修正 → 修正后重新委派 rook → 重新执行步骤 1-3
-   - **BLOCK**：要求 fae 修复 → 修复后重新委派 rook → 重新执行步骤 1-3
-   - **连续 3 轮 BLOCK/REVISE**：保留分歧注释，由用户在 complete 时裁决
-4. 通过后完成并勾选 `### Agent Verification`。
-5. **提交代码**：门控全部通过后，自动 commit 项目仓库的所有变更（worktree 场景提交到 feature 分支，非 worktree 场景提交到主分支，ontology-worktree 场景提交到 `.wopal/`）。
-6. 然后必须执行：
-   ```bash
-   flow.sh complete <issue>
-   ```
-
-`complete` 的硬门控：
-- Done completion：Implementation 中所有 Task 的 `- [ ]` Done checkbox 必须勾选
-- Agent Verification：`### Agent Verification` 中所有 checkbox 必须勾选
-- **rook 代码审查通过**：必须先委派 rook 审查并获得 PASS 判定
-
-门控失败时会阻断并提示：
-- 显示未勾选的步骤列表
-- 提示 Agent 检查工作并完成勾选
-- 提示未通过 rook 审查
-- 再次执行 `complete`
-
-`complete` 后，代码已提交，任务正式进入 `verifying`。
-
-只有在仓库策略明确要求 Pull Request 时，才改用：
-
+**ontology-worktree**：
 ```bash
-flow.sh complete <issue> --pr
-```
-
-不要这样做：
-- Task 完成运行 Verify 通过后但不勾选 Done checkbox
-- `Agent Verification` 未完成就推进
-- 忘记执行 `complete`
-- **跳过 rook 代码审查直接 complete**
-- **rook BLOCK 后强行 complete**
-- **用户验证通过前 merge feature 分支到主分支** — merge 必须在 `verify --confirm` 之后。提前 merge 会导致未验证代码污染主分支，revert 后会制造 merge 冲突
-
-### worktree 隔离下的验证切换（仅 --worktree 场景）
-
-`complete` 后代码已提交到 feature 分支，但 `.wopal/`（或项目目录）仍在主分支。用户无法直接验证隔离 worktree 中的改动。需将运行时环境切换到 feature 分支：
-
-**ontology-worktree 项目**：
-
-```bash
-# 1. 移除隔离 worktree（代码已提交，worktree 不再需要）
+# 移除隔离 worktree
 git -C ~/.wopal/ontologies/wopal-space-ontology worktree remove .worktrees/ontology-issue-<N>-<slug> --force
-
-# 2. 将运行时 .wopal/ 切换到 feature 分支
+# 切换运行时
 git -C .wopal checkout <feature-branch>
-
-# 3. 提示用户：重启 ellamaka，验证功能
+# 提示用户重启验证
 ```
 
-验证通过后恢复：
+**Wopal 自动执行**：用户确认验证通过后，必须自动执行三步——用户只需说"验证通过"：
 ```bash
-# 1. 切回主分支
 git -C .wopal checkout space/main
-
-# 2. 合并 feature 分支（验证通过的代码正式进入主分支）
 git -C .wopal merge <feature-branch>
-
-# 3. 执行 flow.sh verify <issue> --confirm
-```
-
-**⚠️ 硬约束**：合并（步骤 2）**必须**在用户明确确认验证通过后执行。严禁在验证完成前执行 merge——提前 merge 后若要回退只能 revert，revert 留下的反向补丁会在后续合并时制造大量冲突。
-
-**standard 项目**：项目目录在 `projects/<name>/`，直接在该目录内 `git checkout <feature-branch>` 切换验证，验证完切回 `main` 并 merge。
-
-**严禁**在验证前将 feature 分支合并到主分支——合并必须在用户验证通过后才执行。
-
-### E. 用户验证通过后进入 done
-
-用户完成验证并明确确认后，执行：
-
-```bash
 flow.sh verify <issue> --confirm
 ```
 
-这一步的硬前提：
-- Plan 当前状态是 `verifying`
-- User Validation 最终 checkbox 已由用户勾选
+**严禁**在验证前 merge feature 分支到主分支——提前 merge 后回退需 revert，revert 会在后续 merge 时产生大量冲突。
+
+### E. 用户验证通过后进入 done
+
+用户确认后：`flow.sh verify <issue> --confirm`。前置：Plan 状态 = `verifying`，User Validation 最终 checkbox 已勾选。
 
 ### F. 最后归档
 
-```bash
-flow.sh archive <issue>
-```
-
-归档前提：Plan 状态已经是 `done`。
-
-**归档时自动处理项目变更**：
-
-归档时检测并处理项目仓库：
-- 无 worktree：自动 push 项目仓库（代码已在 complete 时提交）
-- 有 worktree + PR 路径：仅清理 worktree
-- 有 worktree + 无 PR 路径：合并分支到 main → push → 清理 worktree
-
-冲突时归档会阻断并给出提示，需要手动解决冲突后重新执行。
+`flow.sh archive <issue>`。前置：Plan 状态 = `done`。
 
 ## 主流路径
 
 | 场景 | 命令路径 |
 |------|----------|
-| Issue 驱动 | `plan → --check → sync(issue, 如需) → approve → approve --confirm → complete → verify --confirm → archive` |
+| Issue 驱动 | `plan → --check → sync(如需) → approve → approve --confirm → complete → verify --confirm → archive` |
 | Plan 驱动 | `plan → approve → approve --confirm → complete → verify --confirm → archive` |
-
-补充：
-- 无 Issue 模式下，没有 `sync` 这一步
-- 无 Issue 模式下，后续统一用 `plan-name`
 
 ## worktree 场景
 
-把 `--worktree` 视为隔离执行策略，而不是工作区不干净时的补救按钮。
-
-优先在这些情况下使用 `--worktree`：
-- 用户明确要求使用 worktree
-- 希望把当前任务与其他工作隔离
-- 多任务并行开发，避免上下文与改动互相污染
-- 任务周期较长、改动面较大，或准备委派给 fae 持续执行
-
-用法：
+`--worktree` 是隔离执行策略。优先使用场景：多任务并行、改动面大、或用户明确要求。
 
 ```bash
 flow.sh approve <issue> --confirm --worktree
 ```
 
-要点：
-- 用户已明确说明使用 worktree 时，必须带 `--worktree`
-- `--worktree` 只在真正进入 `executing` 时使用
-- 目标项目工作区不干净，不是选择 worktree 的理由本身，而是禁止继续在当前工作区执行的信号
-- 不带 `--worktree` 且目标项目工作区不干净时，命令会阻断；此时应先清理/提交当前变更，或改用 `--worktree`
-- worktree 创建失败时，状态应保持在 `planning`
+创建后验证目录结构：`ls .worktrees/<project>-issue-<N>-*/`
 
-**创建后必须验证目录结构**，防止在错误路径下编辑：
+禁止在主工作空间编辑——所有变更在 worktree 内进行。
 
-```bash
-ls .worktrees/<project>-issue-<N>-*/
-```
+## 不要这样做
 
-| 项目类型 | worktree 内结构 | 注意事项 |
-|----------|---------------|---------|
-| `ontology-worktree` | 平铺：`skills/`、`wopal-plugin/` 直接在根目录 | 不嵌套 `.wopal/` 子目录；编辑时用 worktree 内的正确相对路径 |
-| `standard` | 保持项目原结构 | 与主工作空间结构一致 |
-
-禁止在主工作空间对应目录编辑——所有变更必须在 worktree 路径下进行，防止污染运行时环境。
-
-## PR（高级可选）
-
-默认主流程不走 PR。
-
-只在这些情况下使用 `--pr`：
-- 目标仓库要求通过 PR 合并代码
-- 你明确需要 GitHub Review / CI / branch protection 这条流程
-
-最小记忆即可：
-
-```text
-complete --pr → PR opened → PR merged → verify --confirm → archive
-```
-
-如果不确定，就不要走 PR 路径。
-
-## Plan 质量门
-
-进入 `approve` 前，Plan 必须达到可执行质量，而不是空提纲。
-
-SKILL.md 不重复模板章节内容，只规定流程要求：
-- Plan 写完后先做质量校验
-- 校验覆盖 Task 新字段（Verification Intent / Behavior / Design / TDD / Verify / Done）
-- 校验通过后再进入 `approve`
-- 实施过程中每完成 Task 运行 Verify 后勾选 Done
-- 实施完成后补齐 `Agent Verification`，再执行 `complete`
-- Delegation Strategy 的详细规则见模板注释（Wave 分配、委派规则、Autonomous 标记等）
-
-**TDD 默认规则**：
-- **代码 Task 默认启用 TDD**：Agent 编写 Plan 时应自动为代码变更 Task 设置 `**TDD**: true`，遵循 RED-GREEN-REFACTOR 流程，并填写 Behavior 字段（输入/输出映射）
-- **非代码 Task 显式声明 false**：UI 布局、配置变更、胶水代码、探索性原型等不适合 TDD 的场景，需显式设置 `**TDD**: false`，并在注释中说明理由（如"TDD 不适用：纯 UI 样式调整，无业务逻辑"）
-- 参考 `references/tdd-guide.md` 的判断启发式
-
-如果 `approve` 被 check-doc 阻断，先修 Plan，再重试。
-
-## Acceptance Criteria 的使用方式
-
-### Agent Verification
-
-由 agent 在 `complete` 前完成并勾选，用于机器可验证项。
-
-**命令化要求**：每条必须写具体命令和预期输出（如 `rg -c 'pattern' file` ≥ 1），禁止纯描述性条目（如"代码构建通过"）。同时承载单 Task 内验证和跨 Task 集成验证。
-
-### User Validation
-
-由用户在真实验证后确认，用于人工感知项，如 UI / UX、业务流程、集成行为。
-
-**排除规则**：禁止放入 Agent 可自动验证的项（构建、测试、lint、CLI 自测）。详细规则见 `references/plan-validation.md`。
-
-关键约束：
-- Agent 不得代勾选 User Validation 最终 checkbox
-- `verify --confirm` 会严格检查这道门
-
-## 命令面速查
-
-### `flow.sh issue create`
-
-创建规范化 Issue。开发任务建 Issue 时只用这个入口。
-
-```bash
-flow.sh issue create --title "<type>(<scope>): <description>" --project <name> [options]
-```
-
-**必填参数**：
-- `--goal "<一句话目标>"` — 必填，不传会产生占位符 `<一句话描述目标>`
-- title 的 `<description>` 必须是英文祈使句（≤50 chars），格式如 `add missing config keys`
-
-**常用参数**：
-- `--background`
-- `--scope`
-- `--out-of-scope`
-- `--reference`
-
-类型专属参数按需使用：
-- perf：`--baseline` / `--target`
-- refactor：`--affected-components` / `--refactor-strategy`
-- docs：`--target-documents` / `--audience`
-- test：`--test-scope` / `--test-strategy`
-- fix：`--confirmed-bugs` / `--cleanup-scope` / `--key-findings`
-
-### `flow.sh issue update`
-
-```bash
-flow.sh issue update <issue> [options]
-```
-
-适合补充 Goal、Background、Scope、Acceptance Criteria 及各类型特定字段。
-
-### `flow.sh sync`
-
-手动把 Plan 同步回 Issue，不推进状态。
-
-```bash
-flow.sh sync <issue>
-flow.sh sync <issue> --body-only
-flow.sh sync <issue> --labels-only
-```
-
-### `flow.sh status`
-
-```bash
-flow.sh status <issue-or-plan-name>
-```
-
-显示：Issue 标题 / 状态 / labels、对应 Plan、Plan 状态、worktree 信息（若存在）。支持传入 Issue number 或 Plan 文件名（无 Issue 的 Plan 也能查到）。
-
-### `flow.sh list`
-
-```bash
-flow.sh list
-```
-
-同时扫描 GitHub Issues（带 status/* label 的 open issue）和本地 Plan 文件（`docs/products/*/plans/*.md`，排除 done/），合并展示。无 Issue 关联的 Plan 显示为 `[status] <plan-name> (no issue)`。
-
-### `flow.sh decompose-prd`
-
-```bash
-flow.sh decompose-prd <prd-path> [--dry-run] [--project <name>]
-```
-
-建议先：
-
-```bash
-flow.sh decompose-prd <prd-path> --dry-run
-```
-
-### `flow.sh reset`
-
-Issue 驱动：
-
-```bash
-flow.sh reset <issue>
-```
-
-Plan 驱动：
-
-```bash
-flow.sh reset <plan-name>
-```
-
-这是破坏性操作，只在用户明确要求时执行。
-
-## 边缘场景
-
-1. **已有 Plan 再次执行 `plan`**：不重复创建，继续基于现有 Plan 推进。
-2. **`complete` 时 Done 未勾选**：先勾选 Implementation 中所有 Task 的 Done checkbox，不要强行进入 `verifying`。
-3. **`complete` 时 Agent Verification 未完成**：先补齐 `Agent Verification`，不要强行进入 `verifying`。
-4. **rook 审查返回 BLOCK**：停止推进，根据 Blocker 要求 fae 修复，修复后重新委派 rook，不要强行 complete/approve。
-5. **rook 审查连续 3 轮 BLOCK/REVISE**：保留分歧注释，停止循环，由用户在 approve/complete 时裁决，不要再委派 rook。
-6. **`verify --confirm` 时 PR 未 merged**：先等 PR merge。
-7. **`verify --confirm` 时用户未勾选最终 checkbox**：先让用户完成 User Validation。
-8. **目标项目工作区不干净**：这表示当前工作区不适合继续执行；先清理/提交当前变更，或改用 `--worktree`。
-9. **参数选择规则**：Issue 驱动一律传 issue number；无 Issue 的 Plan 驱动一律传 plan-name。
-
-## 错误处理
-
-| 错误 | 处理 |
-|------|------|
-| `Invalid transition` | 回到正确状态顺序执行 |
-| `Plan not found` | 先运行 `plan` |
-| `check-doc failed` | 修好 Plan 再 `approve` |
-| `Done completion failed` | 勾选 Implementation 中所有 Task Done checkbox，再 `complete` |
-| `Agent Verification failed` | 补齐 Agent Verification checkbox，再 `complete` |
-| `dirty workspace` | 当前工作区不适合继续执行；先清理/提交，或改用 `--worktree` |
-| `PR not merged yet` | 等 merge 后再 `verify --confirm` |
-| `User Validation gate failed` | 让用户完成验证并勾选最终 checkbox |
+- Task 完成但不勾选 Done checkbox
+- Agent Verification 未完成就推进
+- 忘记执行 `complete`
+- 跳过 rook 审查直接 complete
+- rook BLOCK 后强行 complete
+- 用户验证通过前 merge feature 分支到主分支——提前 merge 留下 revert 补丁，后续 merge 产生大量冲突
 
 ## 参考
 
@@ -566,13 +171,13 @@ flow.sh reset <plan-name>
 
 | 文件 | 用途 |
 |------|------|
+| `references/commands.md` | 7 个 flow.sh 子命令的完整参数和用法 |
+| `references/delegation-templates.md` | 委派 prompt 格式、Task 字段顺序、TDD 规则 |
+| `references/plan-quality.md` | Plan 质量门、AC 分类（Agent vs User Validation） |
+| `references/troubleshooting.md` | 边缘场景与错误处理 |
+| `references/pr-workflow.md` | PR 工作流（可选） |
 | `templates/plan.md` | Plan 骨架模板 |
-| `templates/issue.md` | 通用 / feature / enhance / chore 类型 Issue 模板 |
-| `templates/issue-fix.md` | fix 类型 Issue 模板 |
-| `templates/issue-perf.md` | perf 类型 Issue 模板 |
-| `templates/issue-refactor.md` | refactor 类型 Issue 模板 |
-| `templates/issue-docs.md` | docs 类型 Issue 模板 |
-| `templates/issue-test.md` | test 类型 Issue 模板 |
-| `references/plan-validation.md` | Plan 校验规则（Agent/User 验证边界、新字段校验） |
-| `references/tdd-guide.md` | TDD Task 编写指南（判断启发式、写法、提交建议） |
+| `templates/issue*.md` | 各类型 Issue 模板 |
+| `references/plan-validation.md` | Plan 校验规则 |
+| `references/tdd-guide.md` | TDD Task 编写指南 |
 | `references/issue-format.md` | Issue 标题与 Plan 命名规范 |
