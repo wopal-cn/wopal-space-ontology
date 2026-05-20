@@ -158,6 +158,16 @@ Plan 切片 → 委派 fae 实施 → 委派 rook 审查 → 根据结果推进/
 
 **硬门控**：fae 产出未经 rook 代码审查不得进入 `complete`。
 
+**fae task 保留策略**：
+
+fae IDLE 后 Wopal 验证通过但 rook 审查未完成时，**不得 finish fae task**（除非上下文 >50%）。保留 fae 的已有上下文，rook 返回 REVISE/BLOCK 时直接 `wopal_task_reply` 让同一 fae 修复，最大化利用已有上下文。
+
+```
+❌ fae IDLE → Wopal 验证 → finish fae → rook 审查 → REVISE → 新开 fae（浪费上下文）
+✅ fae IDLE → Wopal 验证 → 保留 fae → rook 审查 → PASS → finish fae
+                                                       → REVISE/BLOCK → reply fae 修复
+```
+
 **rook 委派时机（强制）**：
 
 1. **Plan 写完后**（approve 前）— 先审方案质量，确保 Plan 执行后能达成目标
@@ -165,6 +175,8 @@ Plan 切片 → 委派 fae 实施 → 委派 rook 审查 → 根据结果推进/
 3. **fae 最终交付后**（complete 前）— 完整审查，拦截技术债遗留
 
 rook 契约格式见 agents-collab。连续 3 轮 BLOCK/REVISE 由用户裁决。
+
+**委派 rook 前不得预加载其专属技能**：`df-plan-review` 和 `df-implement-review` 是 rook 才能加载的技能，rook 收到委派 prompt 后会自行加载。Wopal 预加载它们只浪费自己上下文，对委派无任何帮助。直接按契约格式写 prompt 委派即可。
 
 ### 任务消息格式
 
