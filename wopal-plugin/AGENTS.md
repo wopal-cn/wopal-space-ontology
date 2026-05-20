@@ -179,6 +179,8 @@ Memory 双开关：`WOPAL_MEMORY_ENABLED=false` 时 `WOPAL_MEMORY_INJECTION_ENAB
 - **EllaMaka SDK 类型缺失时** — 在 `types.ts` 补充局部类型声明，不要 `as any` 逃逸
 - **可选链优先** — 访问可能为 `undefined` 的属性时用 `?.`，不要先用 `as any` 再取值
 - **类型断言最小化** — 只在边界层（SDK 交互、外部数据）使用 `as`，内部逻辑用类型守卫
+- **每次代码变更后主动运行 `bun run typecheck:fix`** — 先让项目专用助手脚本自动修复可机械处理的类型问题，再运行 `bun run build`
+- **不要神化 `typecheck:fix`** — 它只负责项目内已知、安全、可机械化的修复模式；脚本无法可靠处理的 `unknown` 收窄、业务逻辑判断、复杂结构性错误，必须人工修复
 
 ---
 
@@ -186,12 +188,23 @@ Memory 双开关：`WOPAL_MEMORY_ENABLED=false` 时 `WOPAL_MEMORY_INJECTION_ENAB
 
 ```bash
 bun install               # 安装依赖
+bun run typecheck:fix     # 先自动修复可机械处理的 typecheck 问题
 bun run test:run          # 运行所有测试
 bun run test              # watch 模式
 bun run build             # tsc 编译到 dist/
 bun run lint              # ESLint
 bun run format:check      # Prettier 检查
 ```
+
+### 变更后验证顺序
+
+对 `src/`、`scripts/`、`types.ts`、任务工具、Hook、记忆系统等任何代码变更，默认按以下顺序验证：
+
+1. `bun run typecheck:fix`
+2. `bun run build`
+3. `bun run test:run`
+
+若 `typecheck:fix` 报出仍需人工处理的 diagnostics，先修完再继续后续验证，禁止跳过直接提交。
 
 ### 调试开关
 
