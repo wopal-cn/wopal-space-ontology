@@ -663,11 +663,12 @@ describe("Skill Reload Migration", () => {
       const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
       const result = await messagesTransform({}, { messages });
 
-      // Assert - last user message contains Skill Reload reminder
+      // Assert - last user message contains Skill Reload reminder as synthetic
       const lastUserMsg = result.messages[0];
       const skillReloadPart = lastUserMsg.parts.find((p: any) => p.text?.includes("<system-reminder>") && p.text?.includes("dev-flow"));
       expect(skillReloadPart).toBeDefined();
       expect(skillReloadPart.type).toBe("text");
+      expect(skillReloadPart.synthetic).toBe(true); // Must be synthetic (invisible to TUI)
       expect(skillReloadPart.text).toContain("fae-collab");
     } finally {
       process.env.HOME = originalHome;
@@ -1000,9 +1001,10 @@ describe("Skill Reload Migration", () => {
       const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
       const result = await messagesTransform({}, { messages });
 
-      // Assert - full recovery protocol injected
+      // Assert - full recovery protocol injected as synthetic
       const recoveryPart = result.messages[0].parts.find((p: any) => p.text?.includes("The session context has been compacted"));
       expect(recoveryPart).toBeDefined();
+      expect(recoveryPart.synthetic).toBe(true); // Must be synthetic (invisible to TUI)
       expect(recoveryPart.text).toContain("Execute recovery protocol immediately");
       expect(recoveryPart.text).toContain("<CRITICAL_RULE>");
       expect(recoveryPart.text).toContain("Read key files from the compaction summary");
@@ -1013,7 +1015,7 @@ describe("Skill Reload Migration", () => {
     }
   });
 
-  it("skips recovery injection when recoverySent is true (Plugin-triggered compact)", async () => {
+  it("skips recovery injection when recoverySent is true and clears stale needsSkillReload (Plugin-triggered compact)", async () => {
     // Arrange
     const originalHome = process.env.HOME;
     process.env.HOME = testDir;
@@ -1033,20 +1035,96 @@ describe("Skill Reload Migration", () => {
     upsertSessionState(sessionID, (s) => {
       s.loadedSkills = new Set(["space-master"]);
       s.recoverySent = true; // Plugin already sent recovery via promptAsync
+      s.needsSkillReload = true; // Stale state from markCompacted
     });
 
-    const messages = [
+    const messages1 = [
       { info: { role: "user", sessionID }, parts: [{ type: "text", text: "continue" }] },
     ];
 
+    const messages2 = [
+      { info: { role: "user", sessionID }, parts: [{ type: "text", text: "next turn" }] },
+    ];
+
     try {
-      // Act
       const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
-      const result = await messagesTransform({}, { messages });
+
+      // Act - first call: recoverySent=true skips injection and clears stale state
+      const result1 = await messagesTransform({}, { messages: messages1 });
 
       // Assert - no recovery injection (recoverySent prevents duplicate)
-      const recoveryText = result.messages[0].parts.find((p: any) => p.text?.includes("Execute recovery protocol immediately"));
+      const recoveryText = result1.messages[0].parts.find((p: any) => p.text?.includes("Execute recovery protocol immediately"));
       expect(recoveryText).toBeUndefined();
+
+      // Assert - stale needsSkillReload was cleared
+      const stateAfter = getSessionStateSnapshot(sessionID);
+      expect(stateAfter?.needsSkillReload).toBeUndefined();
+      expect(stateAfter?.recoverySent).toBeUndefined();
+
+      // Act - second turn: no legacy skill-reload duplicate
+      const result2 = await messagesTransform({}, { messages: messages2 });
+      const skillReload2 = result2.messages[0].parts.find((p: any) => p.text?.includes("技能"));
+      expect(skillReload2).toBeUndefined();
+    } finally {
+      process.env.HOME = originalHome;
+    }
+  });
+
+  it("no duplicate legacy skill-reload after full recovery injection (manual compact with skills)", async () => {
+    // Arrange - simulate manual compact: both needsRecoveryInjection and needsSkillReload are set
+    const originalHome = process.env.HOME;
+    process.env.HOME = testDir;
+    
+    const { default: pluginDef } = await import("../index.js");
+    const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
+    const hooks = await plugin({
+      client: {} as any,
+      project: {} as any,
+      directory: testDir,
+      worktree: testDir,
+      $: {} as any,
+      serverUrl: new URL("http://localhost"),
+    });
+
+    const sessionID = "ses_no_duplicate_after_recovery";
+    upsertSessionState(sessionID, (s) => {
+      s.loadedSkills = new Set(["dev-flow"]);
+      s.needsRecoveryInjection = true;
+      s.needsSkillReload = true; // markCompacted sets both
+    });
+
+    const messages1 = [
+      { info: { role: "user", sessionID }, parts: [{ type: "text", text: "first" }] },
+    ];
+
+    const messages2 = [
+      { info: { role: "user", sessionID }, parts: [{ type: "text", text: "second" }] },
+    ];
+
+    try {
+      const messagesTransform = hooks["experimental.chat.messages.transform"] as any;
+
+      // Act - first call: full recovery injected (includes skills inline)
+      const result1 = await messagesTransform({}, { messages: messages1 });
+
+      // Assert - full recovery protocol injected as synthetic
+      const recovery1 = result1.messages[0].parts.find((p: any) => p.text?.includes("Execute recovery protocol immediately"));
+      expect(recovery1).toBeDefined();
+      expect(recovery1.synthetic).toBe(true);
+      expect(recovery1.text).toContain("dev-flow");
+
+      // Assert - needsSkillReload cleared by full recovery injection
+      const stateAfter = getSessionStateSnapshot(sessionID);
+      expect(stateAfter?.needsSkillReload).toBeUndefined();
+
+      // Act - second call: should NOT inject legacy skill-reload
+      const result2 = await messagesTransform({}, { messages: messages2 });
+
+      // Assert - no legacy skill-reload duplicate
+      const skillReload2 = result2.messages[0].parts.find((p: any) => p.text?.includes("技能"));
+      expect(skillReload2).toBeUndefined();
+      const recovery2 = result2.messages[0].parts.find((p: any) => p.text?.includes("Execute recovery protocol immediately"));
+      expect(recovery2).toBeUndefined();
     } finally {
       process.env.HOME = originalHome;
     }

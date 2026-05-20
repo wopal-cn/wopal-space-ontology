@@ -151,16 +151,16 @@ async function sendAutoContinueForMain(
   sessionID: string,
   state: { loadedSkills?: Set<string> },
 ): Promise<boolean> {
-  const skills = state.loadedSkills ? Array.from(state.loadedSkills).join(", ") : "none"
+  const skills = state.loadedSkills?.size ? Array.from(state.loadedSkills).join(", ") : null
+  const skillLine = skills ? `\n- Reload previously loaded skills: ${skills}` : ""
 
   const recoveryText = `<system-reminder>
 The session context has been compacted. Execute recovery protocol immediately and continue working:
 <CRITICAL_RULE>
-1. Read key files from the compaction summary (plans, specs, etc. — max 3)
-2. Search and load task-relevant memories (max 3)
-3. Reload previously loaded skills: ${skills}
-4. Respond in the user's preferred language (check USER.md if unsure)
-5. Briefly report what was recovered, then continue the previous work
+- Read key files from the compaction summary (plans, specs, etc. — max 3)
+- Search and load task-relevant memories (max 3)${skillLine}
+- Respond in the user's preferred language (check USER.md if unsure)
+- Briefly report what was recovered, then continue the previous work
 </CRITICAL_RULE>
 </system-reminder>`
 
