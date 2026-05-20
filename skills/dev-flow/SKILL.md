@@ -282,6 +282,7 @@ flow.sh complete <issue> --pr
 - 忘记执行 `complete`
 - **跳过 rook 代码审查直接 complete**
 - **rook BLOCK 后强行 complete**
+- **用户验证通过前 merge feature 分支到主分支** — merge 必须在 `verify --confirm` 之后。提前 merge 会导致未验证代码污染主分支，revert 后会制造 merge 冲突
 
 ### worktree 隔离下的验证切换（仅 --worktree 场景）
 
@@ -309,6 +310,8 @@ git -C .wopal merge <feature-branch>
 
 # 3. 执行 flow.sh verify <issue> --confirm
 ```
+
+**⚠️ 硬约束**：合并（步骤 2）**必须**在用户明确确认验证通过后执行。严禁在验证完成前执行 merge——提前 merge 后若要回退只能 revert，revert 留下的反向补丁会在后续合并时制造大量冲突。
 
 **standard 项目**：项目目录在 `projects/<name>/`，直接在该目录内 `git checkout <feature-branch>` 切换验证，验证完切回 `main` 并 merge。
 
