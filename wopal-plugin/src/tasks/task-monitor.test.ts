@@ -388,7 +388,7 @@ describe("checkProgressNotifications", () => {
 })
 
 describe("logTickStatus", () => {
-  it("should log running tasks with progress info (trace level)", () => {
+  it("should log running tasks with progress info (debug level)", () => {
     const task = createTask({
       id: "wopal-task-abc123",
       description: "Test logging",
@@ -403,8 +403,12 @@ describe("logTickStatus", () => {
       contextUsage: 30,
     }]
 
-    // logTickStatus now uses traceLog (no-op in vitest), should not throw
-    expect(() => logTickStatus(tasks, progressInfos, vi.fn())).not.toThrow()
+    const debugLog = vi.fn()
+    logTickStatus(tasks, progressInfos, debugLog)
+
+    expect(debugLog).toHaveBeenCalledTimes(1)
+    expect(debugLog).toHaveBeenCalledWith(expect.stringContaining("[tick] 1 tasks:"))
+    expect(debugLog).toHaveBeenCalledWith(expect.stringContaining("wopal-task-abc123"))
   })
 
   it("should skip logging when no running tasks", () => {
@@ -417,7 +421,7 @@ describe("logTickStatus", () => {
     expect(debugLog).not.toHaveBeenCalled()
   })
 
-  it("should not throw for high context usage (trace level)", () => {
+  it("should not throw for high context usage (debug level)", () => {
     const task = createTask({ startedAt: new Date(Date.now() - 65_000) })
     const tasks = new Map([["task-1", task]])
     const progressInfos = [{
@@ -427,7 +431,9 @@ describe("logTickStatus", () => {
       contextUsage: 60, // Above CONTEXT_WARN_THRESHOLD
     }]
 
-    // logTickStatus now uses traceLog (no-op in vitest), should not throw
-    expect(() => logTickStatus(tasks, progressInfos, vi.fn())).not.toThrow()
+    const debugLog = vi.fn()
+    logTickStatus(tasks, progressInfos, debugLog)
+
+    expect(debugLog).toHaveBeenCalledTimes(1)
   })
 })
