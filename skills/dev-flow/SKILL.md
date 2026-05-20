@@ -271,6 +271,37 @@ flow.sh complete <issue> --pr
 - **跳过 rook 代码审查直接 complete**
 - **rook BLOCK 后强行 complete**
 
+### worktree 隔离下的验证切换（仅 --worktree 场景）
+
+`complete` 后代码已提交到 feature 分支，但 `.wopal/`（或项目目录）仍在主分支。用户无法直接验证隔离 worktree 中的改动。需将运行时环境切换到 feature 分支：
+
+**ontology-worktree 项目**：
+
+```bash
+# 1. 移除隔离 worktree（代码已提交，worktree 不再需要）
+git -C ~/.wopal/ontologies/wopal-space-ontology worktree remove .worktrees/ontology-issue-<N>-<slug> --force
+
+# 2. 将运行时 .wopal/ 切换到 feature 分支
+git -C .wopal checkout <feature-branch>
+
+# 3. 提示用户：重启 ellamaka，验证功能
+```
+
+验证通过后恢复：
+```bash
+# 1. 切回主分支
+git -C .wopal checkout space/main
+
+# 2. 合并 feature 分支（验证通过的代码正式进入主分支）
+git -C .wopal merge <feature-branch>
+
+# 3. 执行 flow.sh verify <issue> --confirm
+```
+
+**standard 项目**：项目目录在 `projects/<name>/`，直接在该目录内 `git checkout <feature-branch>` 切换验证，验证完切回 `main` 并 merge。
+
+**严禁**在验证前将 feature 分支合并到主分支——合并必须在用户验证通过后才执行。
+
 ### E. 用户验证通过后进入 done
 
 用户完成验证并明确确认后，执行：
