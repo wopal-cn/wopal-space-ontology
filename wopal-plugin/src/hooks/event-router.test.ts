@@ -233,6 +233,8 @@ describe("OpenCodeRulesRuntime event handling", () => {
       expect(messageText).toContain("Reload previously loaded skills: space-master")
       expect(messageText).toContain("<CRITICAL_RULE>")
       expect(messageText).toContain("Search and load task-relevant memories")
+      expect(messageText).toContain("Check current session state")
+      expect(messageText).toContain("Check related project git status")
     })
 
     it("sends compacted notification for child session when needsAutoContinue is true", async () => {

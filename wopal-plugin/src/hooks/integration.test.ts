@@ -1010,6 +1010,8 @@ describe("Skill Reload Migration", () => {
       expect(recoveryPart.text).toContain("Read key files from the compaction summary");
       expect(recoveryPart.text).toContain("Reload previously loaded skills: space-master");
       expect(recoveryPart.text).toContain("Search and load task-relevant memories");
+      expect(recoveryPart.text).toContain("Check current session state");
+      expect(recoveryPart.text).toContain("Check related project git status");
     } finally {
       process.env.HOME = originalHome;
     }

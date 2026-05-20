@@ -39,6 +39,8 @@ The session context has been compacted. Execute recovery protocol immediately an
 <CRITICAL_RULE>
 - Read key files from the compaction summary (plans, specs, etc. — max 3)
 - Search and load task-relevant memories (max 3)${skillLine}
+- Check current session state (active tasks, pending work)
+- Check related project git status (current branch, uncommitted changes)
 - Respond in the user's preferred language (check USER.md if unsure)
 - Briefly report what was recovered, then continue the previous work
 </CRITICAL_RULE>
