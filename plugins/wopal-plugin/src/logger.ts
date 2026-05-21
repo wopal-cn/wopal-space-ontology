@@ -126,6 +126,7 @@ function ensureLogFile(logFile: string): boolean {
 }
 
 function writeLine(line: string): void {
+  if (process.env.VITEST && !process.env.WOPAL_PLUGIN_LOG_FILE) return
   const logFile = getLogFile()
   if (!ensureLogFile(logFile)) return
   try {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
-import { readFileSync, unlinkSync, existsSync } from "fs"
+import { readFileSync, unlinkSync, existsSync, rmSync } from "fs"
 import { join } from "path"
 import {
   coreLogger,
@@ -372,5 +372,46 @@ describe("formatSessionID", () => {
   it("does not truncate if sessionID <= 16 chars", () => {
     const shortID = "ses_short"
     expect(formatSessionID(shortID, true)).toBe("ses_short(task)")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Test environment suppression
+// ---------------------------------------------------------------------------
+
+describe("Test environment suppression", () => {
+  const wopalSpaceDir = join(process.cwd(), ".wopal-space")
+  const originalEnv: Record<string, string | undefined> = {}
+
+  beforeEach(() => {
+    if (existsSync(wopalSpaceDir)) {
+      rmSync(wopalSpaceDir, { recursive: true, force: true })
+    }
+
+    originalEnv["WOPAL_PLUGIN_LOG_LEVEL"] = process.env.WOPAL_PLUGIN_LOG_LEVEL
+    originalEnv["WOPAL_PLUGIN_LOG_FILE"] = process.env.WOPAL_PLUGIN_LOG_FILE
+    originalEnv["WOPAL_PLUGIN_LOG_MODULES"] = process.env.WOPAL_PLUGIN_LOG_MODULES
+
+    setEnv({
+      WOPAL_PLUGIN_LOG_LEVEL: "info",
+      WOPAL_PLUGIN_LOG_FILE: undefined,
+      WOPAL_PLUGIN_LOG_MODULES: undefined,
+    })
+  })
+
+  afterEach(() => {
+    if (existsSync(wopalSpaceDir)) {
+      rmSync(wopalSpaceDir, { recursive: true, force: true })
+    }
+    resetEnv(originalEnv)
+  })
+
+  it("VITEST env is truthy", () => {
+    expect(process.env.VITEST).toBeTruthy()
+  })
+
+  it("does not create .wopal-space/ directory when logging in test environment", () => {
+    coreLogger.info("should not write file")
+    expect(existsSync(wopalSpaceDir)).toBe(false)
   })
 })
