@@ -31,12 +31,8 @@ description: 为产品创建架构设计文档（DESIGN），基于已有 PRD
 
 **必读：**
 - 本产品的 PRD — 产品范围与当前状态
-- `docs/products/DESIGN-wopalspace.md` — 空间架构（用于对齐定位）
+- `docs/products/wopal-space/DESIGN-wopalspace.md` — 空间架构（用于对齐定位）
 
-**可选：**
-- `docs/research/` 下相关研究文档
-- `docs/analysis/` 下相关分析报告
-- 项目已有代码（如已开始实现）
 
 ### 3. 生成 DESIGN
 
