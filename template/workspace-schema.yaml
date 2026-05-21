@@ -1,0 +1,31 @@
+version: 1
+
+instance:
+  path: .wopal_space
+  entries:
+    - path: .workspace.md
+    - path: AGENTS.md
+    - path: memory
+      entries:
+        - path: USER.md
+        - path: MEMORY.md
+        - path: diary
+          keep: [".gitkeep"]
+    - path: logs
+      keep: [".gitkeep"]
+    - path: .tmp
+      keep: [".gitkeep"]
+    - path: INBOX
+    - path: backup
+      keep: [".gitkeep"]
+
+workspace:
+  entries:
+    - path: docs
+      keep: [".gitkeep"]
+    - path: projects
+      keep: [".gitkeep"]
+    - path: contents
+      keep: [".gitkeep"]
+    - path: labs
+      keep: [".gitkeep"]
