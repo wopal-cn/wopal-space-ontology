@@ -85,7 +85,7 @@ memoryLogger.debug({ enriched_query: query, token_count: 42 }, "Memory retrieval
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `WOPAL_PLUGIN_LOG_LEVEL` | **`info`** | 日志阈值：trace/debug/info/warn/error/fatal |
-| `WOPAL_PLUGIN_LOG_FILE` | `<cwd>/.wopal-space/logs/wopal-plugin.log`（直接启动）<br>`wopal-plugins.log`（emt/oct 非调试）<br>`wopal-plugins-debug.log`（emt/oct 调试） | 日志文件路径 |
+| `WOPAL_PLUGIN_LOG_FILE` | `<cwd>/.wopal-space/logs/wopal-plugin.log` | 日志文件路径 |
 | `WOPAL_PLUGIN_LOG_MODULES` | (空) | 模块过滤（逗号分隔），空=全部。可选：core/rules/task/memory/context |
 
 #### 日志编写规则
@@ -291,10 +291,7 @@ WOPAL_PLUGIN_LOG_MODULES=task                   # 仅 Task 模块
 WOPAL_PLUGIN_LOG_MODULES=task,memory            # Task + Memory
 WOPAL_PLUGIN_LOG_MODULES=core,rules,context     # 多模块
 
-# 日志文件路径
-# 直接启动：<cwd>/.wopal-space/logs/wopal-plugin.log
-# emt/oct 非调试：wopal-plugins.log
-# emt/oct 调试：wopal-plugins-debug.log
+# 日志文件路径（默认 <cwd>/.wopal-space/logs/wopal-plugin.log）
 WOPAL_PLUGIN_LOG_FILE=/tmp/wopal-plugin.log
 
 # 功能模块开关
