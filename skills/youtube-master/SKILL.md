@@ -34,19 +34,19 @@ metadata:
 
 ### Step 2: 获取字幕
 
-**固定输出到 `.tmp/`**，避免污染工作空间：
+**固定输出到 `.wopal-space/.tmp/`**，避免污染工作空间：
 
 ```bash
 ${BUN_X} {baseDir}/scripts/main.ts '<youtube-url>' \
   --languages zh,en \
   --chapters \
-  --output-dir .tmp/youtube-transcript
+  --output-dir .wopal-space/.tmp/youtube-transcript
 ```
 
 关键点：
 - URL 必须**单引号**（zsh glob 问题，`?` 会触发匹配失败）
 - 默认参数：`--languages zh,en --chapters`（中文优先、按章节分段）
-- 输出目录固定：`.tmp/youtube-transcript`
+- 输出目录固定：`.wopal-space/.tmp/youtube-transcript`
 
 ### Step 3: 读取字幕文件
 
@@ -54,7 +54,7 @@ ${BUN_X} {baseDir}/scripts/main.ts '<youtube-url>' \
 - `meta.json` — 视频元数据（标题、频道、时长、章节、封面路径）
 - `transcript.md` — 格式化字幕（按章节分段、带时间戳）
 
-路径格式：`.tmp/youtube-transcript/{channel-slug}/{title-slug}/`
+路径格式：`.wopal-space/.tmp/youtube-transcript/{channel-slug}/{title-slug}/`
 
 ### Step 4: 判断用户意图
 
@@ -110,7 +110,7 @@ ${BUN_X} {baseDir}/scripts/main.ts '<url>' --translate zh-Hans
 ## 输出目录结构
 
 ```
-.tmp/youtube-transcript/
+.wopal-space/.tmp/youtube-transcript/
 ├── .index.json                     # 视频ID → 目录映射（缓存查找）
 └── {channel-slug}/{title-slug}/
     ├── meta.json                   # 元数据（title, channel, duration, chapters）
@@ -145,7 +145,7 @@ YOUTUBE_TRANSCRIPT_COOKIES_FROM_BROWSER=safari \
 
 1. 运行脚本获取 raw transcript：
    ```bash
-   ${BUN_X} {baseDir}/scripts/main.ts '<url>' --speakers --output-dir .tmp/youtube-transcript
+   ${BUN_X} {baseDir}/scripts/main.ts '<url>' --speakers --output-dir .wopal-space/.tmp/youtube-transcript
    ```
 
 2. 读取 `{baseDir}/prompts/speaker-transcript.md`
