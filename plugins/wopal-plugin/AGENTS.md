@@ -310,5 +310,5 @@ TypeScript ESM，`.js` 后缀导入。测试文件与源文件同目录（`foo.t
 插件通过 `.wopal/plugins/` 的 symlink 自动发现加载，无需手动配置。
 
 ```
-.wopal/plugins/wopal-plugin.ts → symlink → .wopal/wopal-plugin/src/index.ts
+.wopal/plugins/wopal-plugin.ts → symlink → .wopal/plugins/wopal-plugin/src/index.ts
 ```

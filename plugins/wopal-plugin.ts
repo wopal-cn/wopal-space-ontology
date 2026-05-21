@@ -1,1 +1,1 @@
-../wopal-plugin/src/index.ts
+wopal-plugin/src/index.ts
