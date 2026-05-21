@@ -106,6 +106,10 @@ fi
 # "all" = 不做模块过滤，留空让 logger 视为 null（不过滤）
 [[ "$LOG_MODULES" == "all" ]] && LOG_MODULES=""
 
+# Determine log file
+WOPAL_LOG_FILE="$LOG_DIR/wopal-plugins.log"
+[ "$DEBUG_MODE" = true ] && WOPAL_LOG_FILE="$LOG_DIR/wopal-plugins-debug.log"
+
 # --- 后端管理 ---
 
 is_backend_running() {
@@ -131,7 +135,7 @@ start_backend() {
     nohup env \
         WOPAL_PLUGIN_LOG_LEVEL="${LOG_LEVEL}" \
         WOPAL_PLUGIN_LOG_MODULES="${LOG_MODULES}" \
-        WOPAL_PLUGIN_LOG_FILE="$LOG_DIR/wopal-plugins-debug.log" \
+        WOPAL_PLUGIN_LOG_FILE="$WOPAL_LOG_FILE" \
         opencode "${serve_args[@]}" > "$BACKEND_LOG" 2>&1 &
 
     # 记录 PID 和启动目录，stop 时用于校验
@@ -249,7 +253,7 @@ case "$COMMAND" in
     serve)
         mkdir -p "$LOG_DIR"
         [ "$DEBUG_MODE" = true ] && {
-            : > "$LOG_DIR/wopal-plugins-debug.log"
+            : > "$WOPAL_LOG_FILE"
             echo "oct: 调试模式 [$LOG_LEVEL${LOG_MODULES:+:$LOG_MODULES}] → logs/"
         }
         start_backend
@@ -302,7 +306,7 @@ create_session() {
     fi
 
     mkdir -p "$LOG_DIR"
-    [ "$DEBUG_MODE" = true ] && { : > "$LOG_DIR/wopal-plugins-debug.log"; echo "oct: 调试模式 [$LOG_LEVEL${LOG_MODULES:+:$LOG_MODULES}] → logs/"; }
+    [ "$DEBUG_MODE" = true ] && { : > "$WOPAL_LOG_FILE"; echo "oct: 调试模式 [$LOG_LEVEL${LOG_MODULES:+:$LOG_MODULES}] → logs/"; }
 
     echo "oct: 创建会话 \"$name\"$([ "$ATTACH_MODE" = true ] && echo " [attach]") → $CWD"
 
@@ -329,7 +333,7 @@ create_session() {
         if [ -n "$LOG_MODULES" ]; then
             tmux_env+=(-e "WOPAL_PLUGIN_LOG_MODULES=$LOG_MODULES")
         fi
-        tmux_env+=(-e "WOPAL_PLUGIN_LOG_FILE=$LOG_DIR/wopal-plugins-debug.log")
+        tmux_env+=(-e "WOPAL_PLUGIN_LOG_FILE=$WOPAL_LOG_FILE")
 
         tmux new-session -s "$name" -c "$CWD" "${tmux_env[@]}" -- \
             opencode "${debug_args[@]}" "${OPENCODE_ARGS[@]}"

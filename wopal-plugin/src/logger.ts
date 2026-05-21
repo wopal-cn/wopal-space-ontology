@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync } from "fs"
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "fs"
 import { dirname, join } from "path"
 
 // ---------------------------------------------------------------------------
@@ -19,8 +19,8 @@ const LEVELS: Record<string, number> = {
 // ---------------------------------------------------------------------------
 
 function getMinLevel(): number {
-  const env = process.env.WOPAL_PLUGIN_LOG_LEVEL ?? "warn"
-  return LEVELS[env] ?? LEVELS["warn"]!
+  const env = process.env.WOPAL_PLUGIN_LOG_LEVEL ?? "info"
+  return LEVELS[env] ?? LEVELS["info"]!
 }
 
 function getLogFile(): string {
@@ -111,6 +111,8 @@ function formatMeta(data: Record<string, unknown>): string {
 // File output
 // ---------------------------------------------------------------------------
 
+let _logInitialized = false
+
 function ensureLogFile(logFile: string): boolean {
   const dir = dirname(logFile)
   if (!existsSync(dir)) {
@@ -127,7 +129,12 @@ function writeLine(line: string): void {
   const logFile = getLogFile()
   if (!ensureLogFile(logFile)) return
   try {
-    appendFileSync(logFile, line, "utf-8")
+    if (!_logInitialized) {
+      _logInitialized = true
+      writeFileSync(logFile, line, "utf-8")
+    } else {
+      appendFileSync(logFile, line, "utf-8")
+    }
   } catch {
     // silently ignore write errors
   }

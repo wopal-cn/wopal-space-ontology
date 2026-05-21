@@ -45,7 +45,7 @@ Memory 双开关：`WOPAL_MEMORY_ENABLED=false` 时 `WOPAL_MEMORY_INJECTION_ENAB
 | `error` | 50 | 操作失败，需人工介入 | LanceDB 连接失败、Embedding API 错误 |
 | `fatal` | 60 | 系统不可用 | 插件初始化崩溃 |
 
-默认阈值 `warn`：生产环境只输出 error + warn。
+默认阈值 `info`：生产环境输出 info + warn + error。
 
 #### 模块 Logger
 
@@ -84,8 +84,8 @@ memoryLogger.debug({ enriched_query: query, token_count: 42 }, "Memory retrieval
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `WOPAL_PLUGIN_LOG_LEVEL` | `warn` | 日志阈值：trace/debug/info/warn/error/fatal |
-| `WOPAL_PLUGIN_LOG_FILE` | `<cwd>/.wopal-space/logs/wopal-plugin.log` | 日志文件路径 |
+| `WOPAL_PLUGIN_LOG_LEVEL` | **`info`** | 日志阈值：trace/debug/info/warn/error/fatal |
+| `WOPAL_PLUGIN_LOG_FILE` | `<cwd>/.wopal-space/logs/wopal-plugin.log`（直接启动）<br>`wopal-plugins.log`（emt/oct 非调试）<br>`wopal-plugins-debug.log`（emt/oct 调试） | 日志文件路径 |
 | `WOPAL_PLUGIN_LOG_MODULES` | (空) | 模块过滤（逗号分隔），空=全部。可选：core/rules/task/memory/context |
 
 #### 日志编写规则
@@ -281,17 +281,20 @@ bun run format:check      # Prettier 检查
 ### 调试开关
 
 ```bash
-# 日志级别（默认 warn，仅输出 error + warn）
+# 日志级别（默认 info，输出 info + warn + error）
 WOPAL_PLUGIN_LOG_LEVEL=debug                    # debug + info + warn + error
 WOPAL_PLUGIN_LOG_LEVEL=trace                    # 全部级别
-WOPAL_PLUGIN_LOG_LEVEL=info                     # info + warn + error
+WOPAL_PLUGIN_LOG_LEVEL=warn                     # warn + error（静默模式）
 
 # 模块过滤（可选，空=全部模块）
 WOPAL_PLUGIN_LOG_MODULES=task                   # 仅 Task 模块
 WOPAL_PLUGIN_LOG_MODULES=task,memory            # Task + Memory
 WOPAL_PLUGIN_LOG_MODULES=core,rules,context     # 多模块
 
-# 日志文件路径（默认 <cwd>/.wopal-space/logs/wopal-plugin.log）
+# 日志文件路径
+# 直接启动：<cwd>/.wopal-space/logs/wopal-plugin.log
+# emt/oct 非调试：wopal-plugins.log
+# emt/oct 调试：wopal-plugins-debug.log
 WOPAL_PLUGIN_LOG_FILE=/tmp/wopal-plugin.log
 
 # 功能模块开关
