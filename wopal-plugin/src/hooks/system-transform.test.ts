@@ -12,7 +12,6 @@ vi.mock('../tools/dump-formatter.js', () => ({
     hasMetadata: true,
     parsedFromRaw: false,
     blockCount: 1,
-    injectionCount: 0,
     messageCount: 1,
   }),
 }));

@@ -171,7 +171,7 @@ export async function handleDump(
       ? `parsed from ${result.blockCount} raw blocks`
       : "structured metadata"
     : `${result.blockCount} raw blocks`
-  return `Context dumped to ${result.filepath}\n\n- **Session:** ${sessionID}\n- **System prompt:** ${sysPromptLabel} (${metaLabel})\n- **Plugin injections:** ${result.injectionCount}\n- **Messages:** ${result.messageCount}`
+  return `Context dumped to ${result.filepath}\n\n- **Session:** ${sessionID}\n- **System prompt:** ${sysPromptLabel} (${metaLabel})\n- **Messages:** ${result.messageCount}`
 }
 
 /**

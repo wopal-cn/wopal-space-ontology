@@ -38,7 +38,6 @@ export interface ContextDumpResult {
   hasMetadata: boolean;
   parsedFromRaw: boolean;
   blockCount: number;
-  injectionCount: number;
   messageCount: number;
 }
 
@@ -209,7 +208,6 @@ export async function writeContextDump(options: ContextDumpOptions): Promise<Con
     hasMetadata: !!effectiveMetadata,
     parsedFromRaw: !metadata && !!effectiveMetadata,
     blockCount: snapshot?.length ?? 0,
-    injectionCount: injections?.length ?? 0,
     messageCount: messages.length,
   };
 }

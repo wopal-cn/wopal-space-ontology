@@ -23,7 +23,7 @@ const debugLog = createDebugLog();
 const warnLog = createWarnLog();
 
 function loadWopalEnv(rootDir: string): void {
-  const envPath = join(rootDir, ".env");
+  const envPath = join(rootDir, ".wopal", ".env");
   if (!existsSync(envPath)) return;
 
   debugLog(`Loading env: ${envPath}`);
