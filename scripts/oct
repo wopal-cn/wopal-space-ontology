@@ -46,7 +46,7 @@ oct - 便携式 OpenCode 启动器
   oct stop               停止后端服务
 
 选项:
-  --debug [模块]         调试模式（模块: task|rules|memory|all，默认 all）
+  --debug [模块]         调试模式（模块: core|rules|task|memory|context|all，默认 all）
   --trace [模块]         启用 trace 日志（更详细的诊断，隐含 --debug）
   --no-auto-approve      禁用自动授权
   -- <args>              传递剩余参数给 opencode

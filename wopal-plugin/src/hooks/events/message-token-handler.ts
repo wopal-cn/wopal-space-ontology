@@ -9,7 +9,7 @@ import type { OpenCodeClient } from "../../types.js"
 import type { SessionStore } from "../../session-store.js"
 import type { LoggerInstance } from "../../logger.js"
 import type { SimpleTaskManager } from "../../tasks/simple-task-manager.js"
-import { contextLogger, formatSessionID } from "../../logger.js"
+import { formatSessionID } from "../../logger.js"
 import { trackActivity } from "../../tasks/progress.js"
 import { getSessionModelInfo } from "../../tools/output-helpers.js"
 
@@ -105,7 +105,7 @@ export async function handleMessagePartUpdated(
       // ignore — percentage is informational only
     }
 
-    contextLogger.debug(`${formatSessionID(sessionID, isTask)} agent=${agent} model=${model} tokens: input=${t.input ?? 0} output=${t.output ?? 0} cache_read=${cache.read ?? 0} cache_write=${cache.write ?? 0}${pctText}`)
+    ctx.contextLog.debug(`${formatSessionID(sessionID, isTask)} agent=${agent} model=${model} tokens: input=${t.input ?? 0} output=${t.output ?? 0} cache_read=${cache.read ?? 0} cache_write=${cache.write ?? 0}${pctText}`)
 
     // Store token data + context limit in sessionStore
     if (t.input || cache.read) {

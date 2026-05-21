@@ -45,14 +45,12 @@ function createHooks(messages: MessageWithInfo[] = []) {
     memoryLogger: createMockLogger(),
     contextLogger,
     now: () => Date.now(),
-    memoryInjector: undefined,
     childSessionCache: new Map<string, boolean>(),
     taskManager: undefined,
     systemSnapshots,
     systemMetadataMap,
     systemInjectionsMap,
     transformedMessagesMap,
-    memoryInjectionEnabled: false,
   });
 
   return {
@@ -187,5 +185,63 @@ describe('system-transform auto dump deduplication', () => {
     await flushAutoDump();
 
     expect(writeContextDump).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('auto-dump gate: negative cases', () => {
+  afterEach(() => {
+    delete process.env.WOPAL_PLUGIN_LOG_LEVEL;
+    delete process.env.WOPAL_PLUGIN_LOG_MODULES;
+    vi.resetAllMocks();
+  });
+
+  it('does not trigger auto-dump when WOPAL_PLUGIN_LOG_MODULES is empty', async () => {
+    process.env.WOPAL_PLUGIN_LOG_LEVEL = 'debug';
+    // WOPAL_PLUGIN_LOG_MODULES intentionally not set
+    vi.mocked(writeContextDump).mockClear();
+
+    const { hooks } = createHooks([
+      {
+        info: { role: 'user', sessionID: 'ses_1', id: 'msg_1' },
+        parts: [{ type: 'text', text: 'hello' }],
+      },
+    ]);
+
+    await hooks._onSystemTransform(
+      {
+        sessionID: 'ses_1',
+        model: { providerID: 'test', modelID: 'test' } as never,
+        systemMetadata: { version: 1, sections: [{ kind: 'custom', content: 'Base prompt.' }] },
+      },
+      { system: ['Base prompt.'] },
+    );
+    await flushAutoDump();
+
+    expect(writeContextDump).not.toHaveBeenCalled();
+  });
+
+  it('does not trigger auto-dump when WOPAL_PLUGIN_LOG_MODULES is a non-context module', async () => {
+    process.env.WOPAL_PLUGIN_LOG_LEVEL = 'debug';
+    process.env.WOPAL_PLUGIN_LOG_MODULES = 'task';
+    vi.mocked(writeContextDump).mockClear();
+
+    const { hooks } = createHooks([
+      {
+        info: { role: 'user', sessionID: 'ses_1', id: 'msg_1' },
+        parts: [{ type: 'text', text: 'hello' }],
+      },
+    ]);
+
+    await hooks._onSystemTransform(
+      {
+        sessionID: 'ses_1',
+        model: { providerID: 'test', modelID: 'test' } as never,
+        systemMetadata: { version: 1, sections: [{ kind: 'custom', content: 'Base prompt.' }] },
+      },
+      { system: ['Base prompt.'] },
+    );
+    await flushAutoDump();
+
+    expect(writeContextDump).not.toHaveBeenCalled();
   });
 });
