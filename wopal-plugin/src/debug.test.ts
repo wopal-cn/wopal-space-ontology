@@ -79,8 +79,8 @@ describe("createDebugLog", () => {
     const log = createDebugLog();
     log("default path test");
     
-    // Default path should be in tmpdir
-    const defaultLog = join(tmpdir(), "wopal-plugin.log");
+    // Default path should be cwd/.wopal-space/logs/wopal-plugin.log
+    const defaultLog = join(process.cwd(), ".wopal-space", "logs", "wopal-plugin.log");
     expect(existsSync(defaultLog)).toBe(true);
     
     // Cleanup

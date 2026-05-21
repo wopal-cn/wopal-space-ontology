@@ -1,6 +1,5 @@
 import { appendFileSync, existsSync, mkdirSync } from "fs";
 import { dirname, join } from "path";
-import { tmpdir } from "os";
 
 export type LogFn = (message: string) => void;
 
@@ -35,7 +34,7 @@ function getLogFile(): string {
     return logPath;
   }
 
-  return join(tmpdir(), "wopal-plugin.log");
+  return join(process.cwd(), ".wopal-space", "logs", "wopal-plugin.log");
 }
 
 function ensureLogFile(logFile: string): boolean {
@@ -153,7 +152,7 @@ export function isTraceEnabled(module: DebugModule): boolean {
  *
  * Environment variables:
  * - WOPAL_PLUGIN_DEBUG: "1"/"*"/"all" for all, or comma-separated modules
- * - WOPAL_PLUGIN_LOG_FILE: Custom log file path (default: tmpdir/wopal-plugin.log)
+ * - WOPAL_PLUGIN_LOG_FILE: Custom log file path (default: cwd/.wopal-space/logs/wopal-plugin.log)
  */
 export function createDebugLog(prefix = "[plugin]", module: DebugModule = "plugin"): LogFn {
   return (message: string): void => {

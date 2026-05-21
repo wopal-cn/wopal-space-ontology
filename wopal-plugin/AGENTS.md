@@ -232,7 +232,7 @@ WOPAL_MEMORY_ENABLED=false                    # 禁用 Memory 模块
 WOPAL_MEMORY_INJECTION_ENABLED=false          # 仅禁用 Memory 注入
 ```
 
-日志位置：`<space-root>/logs/wopal-plugins-debug.log`
+日志位置：`<cwd>/.wopal-space/logs/wopal-plugin.log`（可通过 `WOPAL_PLUGIN_LOG_FILE` 覆盖）
 
 ### 代码风格
 
