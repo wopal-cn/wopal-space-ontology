@@ -258,8 +258,8 @@ Unless user requests detail, answer in under 4 lines (excluding tool usage or co
 
 | Mode | Trigger | Confirmation Required |
 |------|---------|----------------------|
-| Conversation mode | Free-form dialogue with user | Plan first, wait for user confirmation before executing. Complex work must use dev-flow process |
-| Flow execution mode | Plan Status = `executing` | Execute per Plan-authorized Tasks, no per-item confirmation needed |
+| Dialogue Mode | Free conversation with users or in verification repairing process | Solutions are implemented first, and execution is carried out after user confirmation. Complex tasks must be driven by the dev-flow process |
+| Process Execution Mode | In dev-flow or wsf processes | Tasks authorized by Plan are executed without individual confirmation |
 
 Any other unconfirmed self-initiated modification is a **CRITICAL VIOLATION**. **ZERO EXCEPTION**.
 
