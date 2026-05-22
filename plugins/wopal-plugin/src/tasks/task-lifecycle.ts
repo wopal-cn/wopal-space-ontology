@@ -3,6 +3,7 @@ import type { LoggerInstance } from "../logger.js"
 import { formatSessionID } from "../logger.js"
 import { toErrorMessage } from "./utils.js"
 import { sessionIDToTaskID } from "./task-launcher.js"
+import { taskIDToSessionID } from "../session-ref.js"
 import { isIdleTask } from "./task-phase.js"
 
 export interface TaskLifecycleDeps {
@@ -93,11 +94,11 @@ export async function interruptTask(
   const task = tasks.get(id) ?? [...tasks.values()].find(t => t.id === id)
 
   if (!task || task.parentSessionID !== parentSessionID) {
-    debugLog.debug(`[interrupt] failed: taskId=${id} not found or ownership mismatch`)
+    debugLog.debug(`[interrupt] failed: task_id=${formatSessionID(taskIDToSessionID(id), true)} not found or ownership mismatch`)
     return 'not_found'
   }
   if (task.status !== 'running') {
-    debugLog.debug(`[interrupt] failed: taskId=${id} status=${task.status}`)
+    debugLog.debug(`[interrupt] failed: task_id=${formatSessionID(task.sessionID, true)} status=${task.status}`)
     return 'not_running'
   }
 
@@ -115,7 +116,7 @@ export async function interruptTask(
       await client.session?.abort?.({
         path: { id: task.sessionID },
       })
-      debugLog.debug(`[interrupt] aborted session for taskId=${id}`)
+      debugLog.debug(`[interrupt] aborted session for task_id=${formatSessionID(task.sessionID, true)}`)
     } catch (err) {
       debugLog.debug(`[interrupt] abort error (task may already be idle): ${toErrorMessage(err)}`)
     }

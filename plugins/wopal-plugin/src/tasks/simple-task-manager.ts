@@ -316,11 +316,11 @@ export class SimpleTaskManager {
         this.tasks.set(taskID, task)
         this.taskSessions.add(childSessionID)
         recovered++
-        this.debugLog.debug(`[recover] restored task=${taskID} session=${childSessionID.slice(0, 16)} title="${child.title?.substring(0, 40) ?? ''}"`)
+        this.debugLog.debug(`[recover] restored task_id=${formatSessionID(childSessionID, true)} title="${child.title?.substring(0, 40) ?? ''}"`)
       }
 
       if (recovered > 0) {
-        this.debugLog.info(`[recover] recovered ${recovered} task(s) from parent=${parentSessionID.slice(0, 16)}`)
+        this.debugLog.info(`[recover] recovered ${recovered} task(s) from parent_id=${formatSessionID(parentSessionID, false)}`)
       }
       this.recoveredSessions.add(parentSessionID)
     } catch (err) {
