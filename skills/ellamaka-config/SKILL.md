@@ -1,44 +1,55 @@
 ---
 name: ellamaka-config
 description: |
-  Configure ellamaka (the WopalSpace fork of OpenCode). MUST use whenever the task is about ellamaka / wopal-space configuration, agent frontmatter, permission rules, model/provider setup, formatter settings, config loading order, or debugging why config changes do not take effect.
+  Configure ellamaka, a fork of OpenCode with wopal-space mode. MUST use for any task about ellamaka config, agent frontmatter, permission rules, model/provider selection, formatter settings, config loading order, or why config changes are ignored.
 
-  Trigger on requests like: “改权限配置”, “限制子代理”, “优化 agent 权限”, “改 rook/fae 提示词 frontmatter”, “settings.jsonc 怎么配”, “.wopal/agents/*.md 怎么写”, “为什么配置没生效”, “为什么读不到配置”, “切换模型/provider”, “禁用某个工具”, “自定义工具权限”, “wopal_task_* 权限”, “formatter 配置”, or any task involving `.wopal/config/settings.jsonc`, `.wopal/agents/*.md`, `~/.wopal/ellamaka/config/`, `~/.wopal/bin/ellamaka`, or `projects/ellamaka/`.
+  Trigger on requests about ellamaka or opencode config files, agent permission overrides, restricting subagents, custom/plugin tool permissions (e.g. wopal_task_*), disabling tools, configuring providers or models, formatter setup, config precedence or layering, or debugging settings that do not take effect.
 
-  Trigger even if the user says “opencode” when the actual runtime, config path, or behavior is really ellamaka. Prefer this skill whenever the question depends on the difference between ellamaka and upstream opencode.
+  Use this skill even when the user says "opencode" if the actual runtime, config path, or behavior is ellamaka. Prefer this skill whenever the answer depends on the difference between ellamaka and upstream opencode, including wopal-space config loading, plugin tool permissions, or agent frontmatter precedence.
 ---
 
-# ellamaka-config — Configure ellamaka
+# ellamaka-config
 
-Use this skill to edit or reason about ellamaka configuration, especially in WopalSpace mode.
+Configure and troubleshoot ellamaka, a fork of OpenCode with wopal-space mode and plugin tool support.
 
 ## First judgment: ellamaka or upstream opencode?
 
 Check this first, because the validation path changes everything.
 
-- If the task mentions WopalSpace, `.wopal/*`, plugin tools, custom subagents, or `.wopal/config/settings.jsonc`, treat it as **ellamaka**
+- If the task mentions wopal-space, plugin tools, custom subagents, or space-local config files, treat it as **ellamaka**
 - Do **not** validate ellamaka behavior with upstream `opencode`
-- When in doubt, inspect `projects/ellamaka/` source or use the `ellamaka` CLI directly
+- When in doubt, validate with the `ellamaka` CLI directly
 
 Why: ellamaka is a fork with wopal-space-specific config loading and plugin tools.
 
-## Config locations
+## Config layers
 
-| Type | Global | Space-local |
-|------|--------|-------------|
-| Main config | `~/.wopal/ellamaka/config/opencode.jsonc` | `.wopal/config/settings.jsonc` → `ellamaka` |
-| Agent files | `~/.wopal/agents/{name}.md` | `.wopal/agents/{name}.md` |
+### Generic ellamaka config locations
 
-## Wopal-space loading order
+| Type | Path |
+|------|------|
+| Global config | `~/.wopal/ellamaka/config/opencode.jsonc` |
+| Project config | `opencode.jsonc` in project root |
+| Global agents | `~/.wopal/agents/{name}.md` |
 
-Priority low → high:
+### WopalSpace mode (additional layer)
 
-1. built-in defaults
-2. `~/.wopal/ellamaka/config/opencode.jsonc`
-3. `.wopal/config/settings.jsonc` → `ellamaka`
-4. `.wopal/agents/{name}.md` frontmatter
+When running inside a WopalSpace, an extra space-local config layer is inserted:
 
-Important:
+| Type | Path |
+|------|------|
+| Space config | `<space-root>/.wopal/config/settings.jsonc` under `ellamaka` key |
+| Space agents | `<space-root>/.wopal/agents/{name}.md` |
+
+### Loading order (low → high precedence)
+
+1. Built-in defaults
+2. `~/.wopal/ellamaka/config/opencode.jsonc` (global)
+3. **WopalSpace only**: `.wopal/config/settings.jsonc` → `ellamaka` key
+4. **WopalSpace only**: `.wopal/agents/{name}.md` frontmatter
+5. Project `opencode.jsonc` (generic mode only)
+
+Important wopal-space differences:
 
 - wopal-space mode **skips** project `opencode.jsonc`
 - wopal-space mode **skips** `~/.config/opencode/`
@@ -80,9 +91,7 @@ permission:
 
 ### Custom/plugin tools
 
-ellamaka permission rules support custom tool names, not only built-in tools.
-
-That means these are valid:
+ellamaka permission rules support custom tool names, not only built-in tools:
 
 ```yaml
 permission:
@@ -98,10 +107,10 @@ Use wildcard rules when you want one boundary for a whole plugin tool family.
 ### 1. Change model or provider
 
 - Global default → `~/.wopal/ellamaka/config/opencode.jsonc`
-- Space-local default → `.wopal/config/settings.jsonc` under `ellamaka`
-- Per-agent model override → `.wopal/config/settings.jsonc` under `ellamaka.agent.<name>`
+- WopalSpace default → `.wopal/config/settings.jsonc` under `ellamaka`
+- Per-agent override → config under `ellamaka.agent.<name>` (WopalSpace) or `agent.<name>` (generic)
 
-Example:
+Example (WopalSpace):
 
 ```jsonc
 {
@@ -121,17 +130,17 @@ Use agent frontmatter when the rule belongs to one agent's role.
 
 Typical cases:
 
-- block nested delegation
-- block plugin tool families
-- allow `todowrite` explicitly
-- tighten `skill` visibility
+- Block nested delegation
+- Block plugin tool families
+- Allow specific tools explicitly
+- Tighten `skill` visibility
 
 ### 3. Fix config not loading
 
 Check in this order:
 
 1. Are you editing ellamaka files or upstream opencode files?
-2. Are you in wopal-space mode?
+2. Are you in wopal-space mode? (This changes which layers are active)
 3. Did a higher-precedence agent frontmatter override the global or space config?
 4. Are you validating with `ellamaka`, not `opencode`?
 
@@ -139,13 +148,11 @@ Check in this order:
 
 After config edits, validate with ellamaka itself.
 
-### Config sanity
-
 ```bash
 ellamaka run "test"
 ```
 
-### Resolved agent permissions
+Check resolved agent permissions:
 
 ```bash
 ellamaka agent list
@@ -153,12 +160,15 @@ ellamaka agent list
 
 Use `ellamaka agent list` after permission edits to confirm the resolved rules actually include your new entries.
 
+## References
+- `references/config-schema.md` — schema reference (in this skill directory)
+
 ## Troubleshooting
 
 | Problem | Check |
 |---|---|
-| Config not taking effect | You may be editing the wrong layer; check frontmatter > settings.jsonc > global |
-| Works in opencode but not ellamaka | Wrong runtime; validate with `ellamaka` or `projects/ellamaka/` source |
+| Config not taking effect | You may be editing the wrong layer; check frontmatter > space config > global |
+| Works in opencode but not ellamaka | Wrong runtime; validate with `ellamaka` directly |
 | Permission change seems ignored | Confirm with `ellamaka agent list` |
 | Custom tool rule not matching | Use exact tool name or wildcard like `wopal_*` |
 | Legacy config found | Migrate `tools` → `permission`, `maxSteps` → `steps` |
@@ -169,10 +179,3 @@ Use `ellamaka agent list` after permission edits to confirm the resolved rules a
 - Put agent-specific restrictions in agent frontmatter
 - Put shared defaults in global or space config
 - Do not add duplicate rules across multiple layers unless you want explicit override behavior
-
-## References
-
-- `references/config-schema.md` — schema reference
-- `projects/ellamaka/packages/opencode/src/config/permission.ts` — config permission shape
-- `projects/ellamaka/packages/opencode/src/permission/index.ts` — rule expansion and matching
-- `projects/ellamaka/packages/opencode/src/permission/evaluate.ts` — wildcard evaluation
