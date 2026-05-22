@@ -132,7 +132,13 @@ function writeLine(line: string): void {
   try {
     if (!_logInitialized) {
       _logInitialized = true
-      writeFileSync(logFile, line, "utf-8")
+      const minLevel = getMinLevel()
+      const clearOnStart = minLevel <= LEVELS["debug"]!
+      if (clearOnStart) {
+        writeFileSync(logFile, line, "utf-8")
+      } else {
+        appendFileSync(logFile, line, "utf-8")
+      }
     } else {
       appendFileSync(logFile, line, "utf-8")
     }
