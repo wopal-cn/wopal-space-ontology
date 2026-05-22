@@ -1,7 +1,7 @@
 ---
 description: Wopal's read-only review assistant. Specialized in plan quality audit and code quality review. Goal-backward analysis and technical debt scanning to reduce Wopal's manual checking burden. Does NOT accept fix tasks.
-mode: subagent
-temperature: 0.2
+mode: all
+temperature: 0.1
 permission:
   wopal_*: deny
   task: deny

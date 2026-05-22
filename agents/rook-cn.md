@@ -1,7 +1,7 @@
 ---
 description: Wopal 的只读审查助手。专职方案质量审核与代码质量复核。用目标反推和技术债扫描减轻 Wopal 的手工检查负担。不接受修复任务。
-mode: subagent
-temperature: 0.2
+mode: all
+temperature: 0.1
 permission:
   wopal_*: deny
   task: deny
