@@ -9,7 +9,7 @@ import type { LoggerInstance } from "../logger.js"
 import type { SessionStore } from "../session-store.js"
 import type { MonitorStrategy } from "../monitor/monitor-engine.js"
 import type { TaskMonitorRuntimeDeps } from "./task-monitor-strategy.js"
-import { taskLogger } from "../logger.js"
+import { taskLogger, formatSessionID } from "../logger.js"
 import { sessionStore as globalSessionStore } from "../session-store-instance.js"
 import { ConcurrencyManager } from "./concurrency-manager.js"
 import { registerManagerForCleanup, unregisterManagerForCleanup } from "./process-cleanup.js"
@@ -200,11 +200,11 @@ export class SimpleTaskManager {
       try {
         const result = await client.session.delete({ path: { id: task.sessionID } })
         if (isSessionDeleteResult(result) && result.error) {
-          debugLog.debug(`[finishTask] session.delete error for taskId=${taskId}: ${String(result.error).substring(0, 200)}`)
+          debugLog.debug(`[finishTask] session.delete error for task_id=${formatSessionID(task.sessionID, true)}: ${String(result.error).substring(0, 200)}`)
           return { ok: false, message: `Failed to delete session: ${String(result.error)}` }
         }
       } catch (err) {
-        debugLog.debug(`[finishTask] session.delete exception for taskId=${taskId}: ${String(err).substring(0, 200)}`)
+        debugLog.debug(`[finishTask] session.delete exception for task_id=${formatSessionID(task.sessionID, true)}: ${String(err).substring(0, 200)}`)
         return { ok: false, message: `Failed to delete session: ${String(err)}` }
       }
     }
@@ -213,7 +213,7 @@ export class SimpleTaskManager {
 
     releaseConcurrencySlot(task)
 
-    debugLog.debug(`[finishTask] taskId=${taskId} finished successfully`)
+    debugLog.debug(`[finishTask] task_id=${formatSessionID(task.sessionID, true)} finished successfully`)
     return { ok: true, message: "Task finished successfully. Session deleted from OpenCode." }
   }
 
@@ -246,9 +246,9 @@ export class SimpleTaskManager {
       if (this.concurrency.tryAcquire(this.CONCURRENCY_KEY, DEFAULT_CONCURRENCY_LIMIT)) {
         task.concurrencyKey = this.CONCURRENCY_KEY
         delete task.waitingConcurrencyKey
-        this.debugLog.debug(`[reacquireSlot] taskId=${task.id} acquired slot, cleared waitingConcurrencyKey`)
+        this.debugLog.debug(`[reacquireSlot] task_id=${formatSessionID(task.sessionID, true)} acquired slot, cleared waitingConcurrencyKey`)
       } else {
-        this.debugLog.debug(`[reacquireSlot] taskId=${task.id} concurrency limit reached, waitingConcurrencyKey preserved for retry`)
+        this.debugLog.debug(`[reacquireSlot] task_id=${formatSessionID(task.sessionID, true)} concurrency limit reached, waitingConcurrencyKey preserved for retry`)
       }
     }
   }

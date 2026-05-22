@@ -1,5 +1,6 @@
 import type { WopalTask, OpenCodeClient, SessionMessage } from "../types.js"
 import type { LoggerInstance } from "../logger.js"
+import { formatSessionID } from "../logger.js"
 import type { ProgressNotifyTrigger } from "./task-monitor.js"
 import { toErrorMessage } from "./utils.js"
 import { CONTEXT_WARN_THRESHOLD } from "./task-monitor.js"
@@ -92,7 +93,7 @@ Task is still running. Use \`wopal_task_output(task_id="${task.id}")\` for detai
   const success = await sendNotification(deps, task.parentSessionID, notification)
 
   // Mirror to debug log with concise summary
-  const debugSummary = `taskId=${task.id} msgs=${messageCount} runtime=${elapsedLine ?? 'unknown'} tools=${toolSummary.total} trigger=${triggerReason ?? 'unknown'}`
+  const debugSummary = `task_id=${formatSessionID(task.sessionID, true)} msgs=${messageCount} runtime=${elapsedLine ?? 'unknown'} tools=${toolSummary.total} trigger=${triggerReason ?? 'unknown'}`
   debugLog.debug(`[progressNotify] ${success ? 'sent' : 'failed'}: ${debugSummary}`)
 }
 
@@ -183,7 +184,7 @@ Use \`wopal_task_output(task_id="${task.id}")\` to retrieve the result.
 
   // Mirror to debug log
   const status = task.idleNotified ? 'IDLE' : task.status
-  const debugSummary = `taskId=${task.id} status=${status}`
+  const debugSummary = `task_id=${formatSessionID(task.sessionID, true)} status=${status}`
   debugLog.debug(`[notifyParent] ${success ? 'sent' : 'failed'}: ${debugSummary}`)
 }
 
@@ -207,5 +208,5 @@ The background task may be stuck in a reasoning loop. Use \`wopal_task_output(ta
 </system-reminder>`
 
   const success = await sendNotification(deps, task.parentSessionID, notification)
-  debugLog.debug(`[notifyParentStuck] ${success ? 'sent' : 'failed'}: taskId=${task.id} duration=${durationText}`)
+  debugLog.debug(`[notifyParentStuck] ${success ? 'sent' : 'failed'}: task_id=${formatSessionID(task.sessionID, true)} duration=${durationText}`)
 }

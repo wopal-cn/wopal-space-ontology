@@ -25,7 +25,7 @@ export function failTask(
   const { debugLog, releaseConcurrencySlot } = deps
 
   if (task.status === 'error') {
-    debugLog.debug(`[failTask] skipped: taskId=${task.id} status=${task.status} (already error)`)
+    debugLog.debug(`[failTask] skipped: task_id=${formatSessionID(task.sessionID, true)} status=${task.status} (already error)`)
     return false
   }
 
@@ -33,7 +33,7 @@ export function failTask(
   task.status = 'error'
   task.error = error
   task.completedAt = task.completedAt ?? new Date()
-  debugLog.debug(`[failTask] taskId=${task.id} error="${error.substring(0, 100)}"`)
+  debugLog.debug(`[failTask] task_id=${formatSessionID(task.sessionID, true)} error="${error.substring(0, 100)}"`)
   return true
 }
 
@@ -70,16 +70,16 @@ export function markTaskErrorBySession(
 
   // Don't change status if task was already interrupted (idle phase)
   if (isIdleTask(task) && task.status === 'running') {
-    debugLog.debug(`[markError] skipped: taskId=${task.id} was interrupted (idle phase), preserving running state`)
+    debugLog.debug(`[markError] skipped: task_id=${formatSessionID(task.sessionID, true)} was interrupted (idle phase), preserving running state`)
     return undefined
   }
 
   if (!failTask(deps, task, error)) {
-    debugLog.debug(`[markError] skipped: taskId=${task.id} status=${task.status} (already terminal)`)
+    debugLog.debug(`[markError] skipped: task_id=${formatSessionID(task.sessionID, true)} status=${task.status} (already terminal)`)
     return undefined
   }
 
-  debugLog.debug(`[markError] taskId=${task.id} ${formatSessionID(sessionID, true)} error="${error.substring(0, 100)}"`)
+  debugLog.debug(`[markError] task_id=${formatSessionID(sessionID, true)} error="${error.substring(0, 100)}"`)
   return task
 }
 
@@ -145,7 +145,7 @@ export async function shutdownManager(
   )
 
   for (const task of runningTasks) {
-    debugLog.debug(`[shutdown] aborting task: ${task.id}`)
+    debugLog.debug(`[shutdown] aborting task_id=${formatSessionID(task.sessionID, true)}`)
     releaseConcurrencySlot(task)
     await abortSessionFn(task.sessionID)
     // Shutdown sets error status to mark task as terminated

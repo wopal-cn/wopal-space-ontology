@@ -76,10 +76,10 @@ export async function handleSessionIdle(
       task.waitingConcurrencyKey = task.concurrencyKey
       task.concurrencyKey = undefined
     }
-    ctx.taskLogger.debug(`task ${task.id} idle`)
+    ctx.taskLogger.debug(`task_id=${formatSessionID(task.sessionID, true)} idle`)
     if (ctx.taskManager) {
       ctx.taskManager.notifyParent(task.id).catch((err) => {
-        ctx.taskLogger.debug(`[notifyParent] error for ${task.id}: ${err instanceof Error ? err.message : String(err)}`)
+        ctx.taskLogger.debug(`[notifyParent] error for task_id=${formatSessionID(task.sessionID, true)}: ${err instanceof Error ? err.message : String(err)}`)
       })
     }
   }
@@ -210,7 +210,7 @@ Use wopal_task_reply to send recovery instructions if the task should continue.
 </system-reminder>`
 
   if (typeof ctx.client.session?.promptAsync !== "function") {
-    ctx.taskLogger.debug(`[compactedNotify] promptAsync unavailable for task: ${task.id}`)
+    ctx.taskLogger.debug(`[compactedNotify] promptAsync unavailable for task_id=${formatSessionID(task.sessionID, true)}`)
     return false
   }
 
@@ -222,7 +222,7 @@ Use wopal_task_reply to send recovery instructions if the task should continue.
         parts: [{ type: "text", text: notification }],
       },
     })
-    ctx.taskLogger.debug(`[compactedNotify] sent to parent: taskId=${task.id}`)
+    ctx.taskLogger.debug(`[compactedNotify] sent to parent: task_id=${formatSessionID(task.sessionID, true)}`)
     return true
   } catch (err) {
     ctx.taskLogger.debug(`[compactedNotify] error: ${err instanceof Error ? err.message : String(err)}`)

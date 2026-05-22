@@ -7,6 +7,7 @@
 
 import type { SimpleTaskManager } from "../../tasks/simple-task-manager.js"
 import type { LoggerInstance } from "../../logger.js"
+import { formatSessionID } from "../../logger.js"
 
 export interface ErrorHandlerContext {
   taskManager: SimpleTaskManager | undefined
@@ -57,9 +58,9 @@ export function handleSessionError(
   if (sessionID) {
     const task = ctx.taskManager?.markTaskErrorBySession(sessionID, errorText)
     if (task) {
-      ctx.taskLogger.debug(`task ${task.id} error: ${errorText}`)
+      ctx.taskLogger.debug(`task_id=${formatSessionID(task.sessionID, true)} error: ${errorText}`)
       ctx.taskManager?.notifyParent(task.id).catch((err) => {
-        ctx.taskLogger.debug(`[notifyParent] error for ${task.id}: ${err instanceof Error ? err.message : String(err)}`)
+        ctx.taskLogger.debug(`[notifyParent] error for task_id=${formatSessionID(task.sessionID, true)}: ${err instanceof Error ? err.message : String(err)}`)
       })
     }
   }

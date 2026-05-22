@@ -7,6 +7,7 @@
 
 import type { WopalTask } from "../types.js"
 import type { LoggerInstance } from "../logger.js"
+import { formatSessionID } from "../logger.js"
 
 // Re-export from specialized modules for backward compatibility
 export {
@@ -105,7 +106,7 @@ export async function checkStuckTasksAndNotify(
     task.stuckNotified = true
     task.stuckNotifiedAt = new Date()
 
-    debugLog.debug(`[stuck] detected: taskId=${task.id} duration=${durationText}`)
+    debugLog.debug(`[stuck] detected: task_id=${formatSessionID(task.sessionID, true)} duration=${durationText}`)
     await notifyParentStuckFn(task, durationText)
   }
 }
@@ -121,7 +122,7 @@ export function formatTickStatusLines(
 
   const now = Date.now()
   const lines = runningTasks.map((task) => {
-    const sessionId = (task.sessionID ?? task.id).slice(-10)
+    const sessionId = formatSessionID(task.sessionID, true)
     const wasChecked = progressInfos.find(p => p.taskId === task.id)
 
     const msgsText = wasChecked ? `${wasChecked.messageCount} msgs` : '—'
@@ -139,7 +140,7 @@ export function formatTickStatusLines(
 
     const notifiedMark = wasChecked?.wasNotified ? ' ✓notified' : ''
 
-    return `${sessionId}(task) "${task.description}" ${msgsText}, ${timeText}${ctxText}${notifiedMark}`
+    return `${sessionId} "${task.description}" ${msgsText}, ${timeText}${ctxText}${notifiedMark}`
   })
 
   return { count: runningTasks.length, lines }

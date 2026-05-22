@@ -9,6 +9,7 @@ import type { WopalTask } from "../types.js"
 import type { OpenCodeClient } from "../types.js"
 import type { SessionStore } from "../session-store.js"
 import type { LoggerInstance } from "../logger.js"
+import { formatSessionID } from "../logger.js"
 import { fetchContextPercent, type TaskSessionInspector } from "../session-runtime-info.js"
 
 // Progress notification thresholds
@@ -130,7 +131,7 @@ export async function checkProgressNotifications(
         ...(triggerReason ? { triggerReason } : {}),
       })
     } catch (err) {
-      debugLog.debug(`[progressNotify] error for ${task.id}: ${err instanceof Error ? err.message : String(err)}`)
+      debugLog.debug(`[progressNotify] error for task_id=${formatSessionID(task.sessionID, true)}: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 

@@ -114,7 +114,7 @@ describe("task-notifier", () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         expect.stringContaining("[progressNotify] sent:")
       )
-      expect(mockLogger.debug.mock.calls[0][0]).toContain("taskId=wopal-task-123")
+      expect(mockLogger.debug.mock.calls[0][0]).toContain("task_id=ession-123(task)")
       expect(mockLogger.debug.mock.calls[0][0]).toContain("msgs=42")
     })
 
@@ -295,7 +295,7 @@ describe("task-notifier", () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         expect.stringContaining("[notifyParent] sent:")
       )
-      expect(mockLogger.debug.mock.calls[0][0]).toContain("taskId=wopal-task-123")
+      expect(mockLogger.debug.mock.calls[0][0]).toContain("task_id=ession-123(task)")
       expect(mockLogger.debug.mock.calls[0][0]).toContain("status=IDLE")
     })
 
@@ -430,7 +430,7 @@ describe("task-notifier", () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         expect.stringContaining("[notifyParentStuck] sent:")
       )
-      expect(mockLogger.debug.mock.calls[0][0]).toContain("taskId=wopal-task-123")
+      expect(mockLogger.debug.mock.calls[0][0]).toContain("task_id=ession-123(task)")
       expect(mockLogger.debug.mock.calls[0][0]).toContain("duration=1m 45s")
     })
 

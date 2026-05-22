@@ -1,4 +1,5 @@
 import type { SimpleTaskManager } from "./simple-task-manager.js"
+import type { WopalTask } from "../types.js"
 import { taskLogger, formatSessionID, type LoggerInstance } from "../logger.js"
 import { toErrorMessage } from "./utils.js"
 import type { OpenCodeClient } from "../types.js"
@@ -50,38 +51,33 @@ export async function handleQuestionAsked(
     if (requestID) {
       task.pendingQuestionID = requestID
     }
-    log.debug(`[question] set task ${task.id} to waiting (question_tool), requestID=${requestID ?? "N/A"}`)
+    log.debug(`[question] set task_id=${formatSessionID(task.sessionID, true)} to waiting (question_tool), requestID=${requestID ?? "N/A"}`)
   }
 
-  log.debug(`[question] child session, relaying to parent: taskID=${task.id}`)
+  log.debug(`[question] child session, relaying to parent: task_id=${formatSessionID(task.sessionID, true)}`)
 
   try {
-    await notifyParentQuestion(taskManager, task.id, question, log)
+    await notifyParentQuestion(taskManager, task, question, log)
     return true
   } catch (err) {
     // 捕获异常，不传播
-    log.debug(`[question] relay failed for task ${task.id}: ${toErrorMessage(err)}`)
+    log.debug(`[question] relay failed for task_id=${formatSessionID(task.sessionID, true)}: ${toErrorMessage(err)}`)
     return false
   }
 }
 
 async function notifyParentQuestion(
   taskManager: SimpleTaskManager,
-  taskId: string,
+  task: WopalTask,
   question: QuestionAskedEvent["question"],
   debugLog?: LoggerInstance,
 ): Promise<void> {
   const log = debugLog ?? defaultDebugLog
 
-  const task = taskManager.getTask(taskId)
-  if (!task) {
-    log.debug(`[question] task not found: ${taskId}`)
-    return
-  }
-
   // 构造通知消息
   const header = question.header ?? "Question from background task"
   const body = question.question ?? header
+  const taskId = task.id // Keep original taskId for notification text
   let optionsText = ""
   if (question.options && question.options.length > 0) {
     const formattedOptions = question.options
@@ -114,9 +110,9 @@ This question requires your attention. The background task is waiting.
         parts: [{ type: "text", text: notification, synthetic: true }],
       },
     })
-    log.debug(`[question] notified parent for task ${taskId}`)
+    log.debug(`[question] notified parent for task_id=${formatSessionID(task.sessionID, true)}`)
   } catch (err) {
-    log.debug(`[question] notify parent failed for task ${taskId}: ${toErrorMessage(err)}`)
+    log.debug(`[question] notify parent failed for task_id=${formatSessionID(task.sessionID, true)}: ${toErrorMessage(err)}`)
     throw err // Re-throw so caller knows it failed
   }
 }
