@@ -5,10 +5,11 @@ import { getCategoryLabel, formatTime, ECHO_REMINDER } from "./formatters.js";
 import {
   loadAllMemories,
   resolveMemoryByShortId,
-  mergeSearchResults,
   sortByCreatedAt,
   filterByCategory,
   sliceWithPagination,
+  normalizeSearchLimit,
+  rankMemorySearchResults,
 } from "./query-helpers.js";
 
 const VALID_CATEGORIES: MemoryCategory[] = [
@@ -94,28 +95,36 @@ export async function formatStats(store: MemoryStore): Promise<string> {
 export async function formatSearch(
   store: MemoryStore,
   query: string,
-  tags?: string
+  tags?: string,
+  limit?: number,
 ): Promise<string> {
   if (!query && !tags) return "用法: search 需要 query 或 tags 参数";
 
-  const fullQuery = tags
-    ? `${query} ${tags.replace(/,/g, " ")}`.trim()
-    : query;
+  const all = await loadAllMemories(store);
+  const ranked = rankMemorySearchResults(all, query, tags);
+  const displayLimit = normalizeSearchLimit(limit);
+  const displayed = ranked.slice(0, displayLimit);
+  const queryLabel = query.trim() || "-";
+  const tagsLabel = tags?.trim() || "-";
 
-  const results = await store.searchByQuery(fullQuery, 20, "fts");
-  const likeResults = await store.searchByQuery(query || "", 20, "like");
-  const merged = mergeSearchResults(results, likeResults);
-
-  if (merged.length === 0) {
-    return `搜索 "${fullQuery}" — 无结果`;
+  if (ranked.length === 0) {
+    return `Search: query="${queryLabel}" tags=${tagsLabel} — no matches`;
   }
 
-  const lines = [`搜索 "${fullQuery}" — 找到 ${merged.length} 条结果\n`];
+  const lines = [
+    `Search: query="${queryLabel}" tags=${tagsLabel}`,
+    `Shown: ${displayed.length}/${ranked.length} matches (limit=${displayLimit})`,
+    "",
+  ];
 
-  for (let i = 0; i < merged.length; i++) {
-    const r = merged[i];
-    const tagsDisplay = r.tags || "(无)";
-    lines.push(`${i + 1}. [${r.id.slice(0, 8)}] [${getCategoryLabel(r.category)}] [重要性: ${r.importance}] [标签: ${tagsDisplay}]`);
+  for (let i = 0; i < displayed.length; i++) {
+    const result = displayed[i];
+    const r = result.memory;
+    const tagsDisplay = r.tags || "none";
+    const updated = r.updated_at ? formatTime(r.updated_at).slice(0, 10) : "unknown";
+    lines.push(`${i + 1}. [${r.id.slice(0, 8)}] score=${result.score} cat=${r.category} imp=${r.importance} updated=${updated}`);
+    lines.push(`   tags: ${tagsDisplay}`);
+    lines.push(`   match: ${result.matchSummary}`);
     lines.push(r.text);
     lines.push("");
   }

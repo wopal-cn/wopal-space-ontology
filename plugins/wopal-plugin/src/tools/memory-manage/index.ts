@@ -17,59 +17,75 @@ export function createMemoryManageTool(
   client?: any,
 ): ToolDefinition {
   return tool({
-    description:
-      "管理 LanceDB 中的长期记忆。子命令: list（列出全部）, stats（统计）, search（搜索）, delete（删除）, add（添加单条）, update（更新单条）, injected（查看当前上下文注入的记忆）。 " +
-      "Distill current session: distill（预览候选）, confirm（写入数据库）, cancel（丢弃候选）。\n\n" +
-      "展示义务区分：\n" +
-      "- list/add/update/delete：需展示给用户（用户 CRUD 操作，必须逐字完整展示，严禁省略）\n" +
-      "- search/stats/injected：仅供内部参考（Agent 自主调用时无需展示；用户通过 /memory 命令发起时由命令层控制展示）\n\n" +
-      "参数用法：search 用 query（关键词）；delete 用 id（记忆 ID，逗号分隔多个）；update 用 id + 要修改的字段。id 从 list/search 结果的方括号中获取（如 [53cc9388] → id=\"53cc9388\"）。禁止将正文内容作为 id 传入。",
+    description: `Manage long-term memory in LanceDB.
+
+## Read:
+- search: Internal keyword scoring search with compact ranked output. USE PROACTIVELY before complex tasks, when facing ambiguity, or after criticism. No display needed unless user asked.
+- stats: Memory system statistics. No display needed unless user asked.
+- injected: View memories currently injected into your context. No display needed unless user asked.
+- list: User-facing inventory. If user asked to list memories, display the full result.
+
+## Mutation (MUST show full content to user + wait for explicit approval before executing):
+- add: Create a memory. Required flow: search for duplicates → show full text to user → wait for approval → execute. Category required.
+- update: Modify a memory. Show before/after content to user → wait for approval → execute.
+- delete: Remove memories. Show full content of each memory to user → wait for approval → execute.
+- distill: Preview session distillation candidates (no write yet).
+- confirm: Write candidates to database. Show candidates to user → wait for approval → execute.
+- cancel: Discard pending candidates.
+
+Categories: requirement, profile, preference, knowledge, fact, gotcha, experience (English only).
+
+⚠️ Tags quality determines retrieval quality. When adding memories, choose 3-5 specific tags that capture the core topic — avoid generic tags like "wopal" or "task". Good: "wopal-plugin,tool-description,prompt-engineering". Bad: "plugin,tool,fix". When searching, combine query + tags for best results.
+
+⚠️ Showing content then immediately calling the tool WITHOUT waiting for user response = violation. Valid approval signals: "ok", "同意", "写入", "可以". Your own display is NOT confirmation.
+
+ID format: from list/search results in brackets (e.g., [53cc9388] → id="53cc9388"). Never pass body text as id.`,
     args: {
       command: tool.schema
         .enum(["list", "stats", "search", "delete", "add", "update", "injected", "distill", "confirm", "cancel"])
-        .describe("子命令"),
+        .describe("Subcommand"),
       query: tool.schema
         .string()
         .optional()
-        .describe("search 时为搜索关键词（FTS + LIKE 混合检索）"),
+        .describe("Search keywords or phrase. Search uses deterministic keyword scoring, not vector similarity."),
       category: tool.schema
         .string()
         .optional()
-        .describe("分类（profile/preference/knowledge/fact/gotcha/experience/requirement）。add 必填，update 可选"),
+        .describe("Category: requirement/profile/preference/knowledge/fact/gotcha/experience. Required for add, optional for update."),
       limit: tool.schema
         .number()
         .optional()
-        .describe("list 最大显示条数"),
+        .describe("Max items for list/search. Search default: 6, capped at 12."),
       text: tool.schema
         .string()
         .optional()
-        .describe("add/update 的记忆正文（add 至少 20 字符）"),
+        .describe("Memory text for add/update (minimum 20 chars for add)"),
       importance: tool.schema
         .number()
         .min(0)
         .max(1)
         .optional()
-        .describe("重要性（0-1，add 默认 0.5）"),
+        .describe("Importance 0-1 (default 0.5 for add)"),
       project: tool.schema
         .string()
         .optional()
-        .describe("所属项目（add 默认 wopal-space）"),
+        .describe("Project scope (default wopal-space for add)"),
       tags: tool.schema
         .string()
         .optional()
-        .describe("逗号分隔的关键词，用于精确检索"),
+        .describe("Comma-separated keywords for precise retrieval. Add: choose 3-5 specific tags (avoid generic ones). Search: combine with query for best results."),
       id: tool.schema
         .string()
         .optional()
-        .describe("记忆 ID（从 list/search 结果方括号获取，如 53cc9388）。delete 支持逗号分隔多个 ID"),
+        .describe("Memory ID from list/search brackets (e.g., 53cc9388). Delete accepts comma-separated IDs."),
       force: tool.schema
         .boolean()
         .optional()
-        .describe("强制重新蒸馏（仅 distill 命令）"),
+        .describe("Force re-distill (distill command only)"),
       selectedIndices: tool.schema
         .array(tool.schema.number())
         .optional()
-        .describe("指定写入的候选索引（仅 confirm 命令，0-based）"),
+        .describe("Candidate indices to write (confirm command only, 0-based)"),
     },
     execute: async (args, context: ToolContext) => {
       const { command, query, category, limit, text, importance, project, tags, force, selectedIndices, id } = args;
@@ -80,7 +96,7 @@ export function createMemoryManageTool(
         case "stats":
           return await formatStats(store);
         case "search":
-          return await formatSearch(store, query ?? "", tags);
+          return await formatSearch(store, query ?? "", tags, limit);
         case "delete":
           return (await deleteMemories(store, id ?? "")) + ECHO_REMINDER;
         case "add":

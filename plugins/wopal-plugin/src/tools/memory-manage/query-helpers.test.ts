@@ -3,6 +3,8 @@ import {
   loadAllMemories,
   resolveMemoryByShortId,
   mergeSearchResults,
+  normalizeSearchLimit,
+  rankMemorySearchResults,
   sortByCreatedAt,
   filterByCategory,
   sliceWithPagination,
@@ -185,5 +187,95 @@ describe('sliceWithPagination', () => {
     expect(result.displayed).toHaveLength(100)
     expect(result.total).toBe(150)
     expect(result.remaining).toBe(50)
+  })
+})
+
+describe('normalizeSearchLimit', () => {
+  it('uses compact default and caps large limits', () => {
+    expect(normalizeSearchLimit()).toBe(6)
+    expect(normalizeSearchLimit(0)).toBe(1)
+    expect(normalizeSearchLimit(20)).toBe(12)
+  })
+})
+
+describe('rankMemorySearchResults', () => {
+  it('ranks exact tag matches above text-only matches', () => {
+    const tagMatch = createMemory('mem-tag', {
+      text: 'Tool description guidance',
+      tags: 'wopal-plugin,tool-description,prompt-engineering',
+      importance: 0.6,
+      updated_at: 100,
+    })
+    const textOnly = createMemory('mem-text', {
+      text: 'wopal plugin task tool description details',
+      tags: 'plugin,tool,fix',
+      importance: 1,
+      updated_at: 200,
+    })
+
+    const results = rankMemorySearchResults(
+      [textOnly, tagMatch],
+      'tool description',
+      'wopal-plugin,tool-description',
+    )
+
+    expect(results.map((r) => r.memory.id)).toEqual(['mem-tag', 'mem-text'])
+    expect(results[0].matchSummary).toContain('tags 2/2')
+  })
+
+  it('filters unrelated memories instead of returning noisy results', () => {
+    const unrelated = createMemory('mem-unrelated', {
+      text: 'Git reset safety workflow',
+      tags: 'git,reset,safety',
+      importance: 1,
+    })
+
+    const results = rankMemorySearchResults(
+      [unrelated],
+      'memory search',
+      'wopal-plugin',
+    )
+
+    expect(results).toEqual([])
+  })
+
+  it('does not treat generic memory tags as matches for specific search tags', () => {
+    const generic = createMemory('mem-generic', {
+      text: 'unrelated implementation note',
+      tags: 'plugin,tool,fix',
+      importance: 1,
+    })
+    const specific = createMemory('mem-specific', {
+      text: 'tool description guidance',
+      tags: 'wopal-plugin,tool-description',
+      importance: 0.5,
+    })
+
+    const results = rankMemorySearchResults(
+      [generic, specific],
+      '',
+      'tool-description',
+    )
+
+    expect(results.map((r) => r.memory.id)).toEqual(['mem-specific'])
+  })
+
+  it('uses updated_at as tie-break when score and importance match', () => {
+    const older = createMemory('mem-old', {
+      text: 'memory search tags',
+      tags: 'memory,search',
+      importance: 0.5,
+      updated_at: 100,
+    })
+    const newer = createMemory('mem-new', {
+      text: 'memory search tags',
+      tags: 'memory,search',
+      importance: 0.5,
+      updated_at: 200,
+    })
+
+    const results = rankMemorySearchResults([older, newer], 'memory search', 'memory')
+
+    expect(results.map((r) => r.memory.id)).toEqual(['mem-new', 'mem-old'])
   })
 })

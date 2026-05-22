@@ -50,13 +50,15 @@ export function createContextManageTool(
   const store = sessionStore ?? new SessionStoreClass();
 
   return tool({
-    description:
-      "Cross-session context manager. Operates on main OR child sessions via optional session_id (accepts 'ses_xxx' or 'wopal-task-xxx', defaults to current).\n" +
-      "Actions:\n" +
-      "- 'status': Session stats + active tasks list (main sessions only).\n" +
-      "- 'summary': Generate title summary (main sessions only, user-requested).\n" +
-      "- 'dump': Export context to file. Default: compact mode (detail=false). Use detail=true only when user explicitly requests full content.\n" +
-      "- 'compact': Trigger context compaction (manual or sub-session recovery).",
+    description: `Cross-session context manager. Operates on main or child sessions via optional session_id (accepts 'ses_xxx' or 'wopal-task-xxx', defaults to current).
+
+Actions:
+- 'status': Session stats (context %, model, tokens) + active tasks list (main sessions only). Use before compact decisions or when context usage is uncertain.
+- 'summary': Generate session title (main sessions only). Only when user requests — not for casual use.
+- 'dump': Export context to file. Default: compact mode (detail=false). Use detail=true only when user explicitly requests full content. Low-frequency diagnostic tool.
+- 'compact': Trigger context compaction.
+
+⚠️ compact is ASYNC — it schedules compaction but does NOT start immediately. Actual compaction begins only after YOUR turn finishes. After calling compact, finish your turn as soon as possible. Every message you generate delays compaction and degrades quality under high context. You will receive a notification when compaction completes — resume work only after that.`,
     args: {
       action: tool.schema
         .enum(["summary", "status", "dump", "compact"] as const)
