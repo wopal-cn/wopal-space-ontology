@@ -37,6 +37,11 @@ Categories: requirement, profile, preference, knowledge, fact, gotcha, experienc
 
 ⚠️ Tags quality determines retrieval quality. When adding memories, choose 3-5 specific tags that capture the core topic — avoid generic tags like "wopal" or "task". Good: "wopal-plugin,tool-description,prompt-engineering". Bad: "plugin,tool,fix". When searching, combine query + tags for best results.
 
+## Search scoring hints:
+- Tag exact match scores +35 (highest priority), text phrase +25, text term +8.
+- Combining query + tags can boost relevant memories from score ~20 to ~60+ (tier-breaking boost).
+- Use known tags from memory results (e.g., "dev-flow", "wopal-plugin"), don't invent new ones.
+
 ⚠️ Showing content then immediately calling the tool WITHOUT waiting for user response = violation. Valid approval signals: "ok", "同意", "写入", "可以". Your own display is NOT confirmation.
 
 ID format: from list/search results in brackets (e.g., [53cc9388] → id="53cc9388"). Never pass body text as id.`,
@@ -73,7 +78,7 @@ ID format: from list/search results in brackets (e.g., [53cc9388] → id="53cc93
       tags: tool.schema
         .string()
         .optional()
-        .describe("Comma-separated keywords for precise retrieval. Add: choose 3-5 specific tags (avoid generic ones). Search: combine with query for best results."),
+        .describe("Comma-separated keywords for precise retrieval. Add: choose 3-5 specific tags (avoid generic ones). Search: tag exact match = +35 score (highest), combine with query to boost relevant memories. Use existing tags from memory results, not invented ones."),
       id: tool.schema
         .string()
         .optional()
