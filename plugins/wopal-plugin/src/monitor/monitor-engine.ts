@@ -40,7 +40,6 @@ export class MonitorEngine {
         this.tickRunning = false
       })
     }, this.intervalMs)
-    this.timer.unref()
   }
 
   stop(): void {
