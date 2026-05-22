@@ -237,6 +237,5 @@ export function formatSessionID(
   isTask: boolean,
 ): string {
   if (!sessionID) return "unknown"
-  const suffix = sessionID.length > 10 ? sessionID.slice(-10) : sessionID
-  return `${suffix}(${isTask ? "task" : "main"})`
+  return `${sessionID.slice(-10)}(${isTask ? "task" : "main"})`
 }

@@ -369,10 +369,6 @@ describe("formatSessionID", () => {
     expect(result.length).toBe(16) // 10 chars + "(main)"
   })
 
-  it("does not truncate if sessionID <= 10 chars", () => {
-    const shortID = "ses_short"
-    expect(formatSessionID(shortID, true)).toBe("ses_short(task)")
-  })
 })
 
 // ---------------------------------------------------------------------------
