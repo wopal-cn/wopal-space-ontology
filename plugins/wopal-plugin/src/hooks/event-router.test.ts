@@ -77,6 +77,7 @@ describe("OpenCodeRulesRuntime event handling", () => {
       },
       sessionStore,
       taskLogger: createMockLogger(),
+      coreLogger: createMockLogger(),
     contextLogger: createMockLogger(),
       taskManager: {
         findBySession: vi.fn().mockReturnValue(mockTask),

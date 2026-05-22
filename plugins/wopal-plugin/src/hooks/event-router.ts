@@ -21,6 +21,7 @@ export interface EventRouterHookContext {
   sessionStore: SessionStore
   contextLogger: LoggerInstance
   taskLogger: LoggerInstance
+  coreLogger: LoggerInstance
   taskManager: SimpleTaskManager | undefined
 }
 
@@ -43,9 +44,13 @@ export function createEventRouter(ctx: EventRouterHookContext) {
       if (typeof client?.session?.get === "function") {
         try {
           const result = await client.session.get({ path: { id: sessionID } })
-          const session = (result as { data?: { parentID?: string } } | undefined)?.data
+          const session = (result as { data?: { parentID?: string; title?: string } } | undefined)?.data
           if (session && !session.parentID) {
-            ctx.taskLogger.info(`[recover] main session detected: ${formatSessionID(sessionID, false)}, triggering recovery`)
+            // Ensure main session is registered in sessionStore with title
+            ctx.sessionStore.upsert(sessionID, (s) => {
+              if (session.title) s.title = session.title
+            })
+            ctx.coreLogger.info(`[recover] main session detected: ${formatSessionID(sessionID, false)}, triggering recovery`)
             void ctx.taskManager.recoverFromSession(sessionID)
           }
         } catch {

@@ -82,7 +82,7 @@ export class MonitorEngine {
         if (r.mainSessions?.lines) rawLines.push(...r.mainSessions.lines)
       }
       const numberedLines = rawLines.map((line, i) => `[${i}] ${line}`)
-      this.logger.debug(`[tick] ${taskCount} tasks, ${mainCount} main sessions:\n${numberedLines.join('\n')}`)
+      this.logger.info(`[tick] ${taskCount} tasks, ${mainCount} main sessions:\n${numberedLines.join('\n')}`)
     }
     return results
   }

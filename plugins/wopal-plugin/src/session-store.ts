@@ -44,7 +44,7 @@ export interface SessionState {
     output: number;
     reasoning?: number;
     cache?: { read?: number; write?: number };
-    updatedAt: number; // timestamp for freshness check
+    updatedAt: number;
   };
   /** Context warning pending — set by MainSessionMonitorStrategy when pct >= threshold */
   pendingContextWarningPct?: number;

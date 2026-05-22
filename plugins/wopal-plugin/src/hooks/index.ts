@@ -151,6 +151,7 @@ export function createAllHooks(ctx: HookContext): AllHooksResult {
     sessionStore: ctx.sessionStore,
     contextLogger: ctx.contextLogger,
     taskLogger: ctx.taskLogger,
+    coreLogger: ctx.coreLogger,
     taskManager: ctx.taskManager,
   });
 

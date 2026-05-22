@@ -56,7 +56,7 @@ export async function launchTask(
     return { ok: false, status: 'error', error }
   }
 
-  debugLog.debug(`[launch] starting: description="${input.description}" agent="${input.agent}" parentSessionID=${input.parentSessionID}`)
+  debugLog.trace(`[launch] starting: description="${input.description}" agent="${input.agent}" parentSessionID=${input.parentSessionID}`)
 
   if (!concurrency.tryAcquire(concurrencyKey, DEFAULT_CONCURRENCY_LIMIT)) {
     debugLog.debug(`[launch] concurrency limit reached (${DEFAULT_CONCURRENCY_LIMIT}/${DEFAULT_CONCURRENCY_LIMIT})`)
@@ -83,8 +83,8 @@ export async function launchTask(
       } as { parentID: string; title: string; agent?: string },
     })
 
-    debugLog.debug(`[launch] session.create returned: ${JSON.stringify(session)}`)
     const extractedSessionID = session?.data?.id ?? session?.id ?? session?.info?.id
+    debugLog.trace(`[launch] task created: ${formatSessionID(extractedSessionID, true)}`)
     if (extractedSessionID) {
       sessionID = extractedSessionID
     } else {
@@ -145,6 +145,16 @@ export async function launchTask(
   task.startedAt = new Date()
   task.progress = { toolCalls: 0, lastUpdate: new Date() }
 
+  debugLog.info(
+    {
+      task_id: taskId,
+      description: input.description,
+      agent: input.agent,
+      parent_id: formatSessionID(input.parentSessionID, false),
+    },
+    "Task launched",
+  )
+
   void Promise.resolve(promptResult).catch(async (err: unknown) => {
     const error = `Background task execution failed: ${toErrorMessage(err)}`
     debugLog.debug(`[launch] promptAsync error for ${taskId}: idleNotified=${task.idleNotified} status=${task.status}`)
@@ -159,8 +169,6 @@ export async function launchTask(
       await abortSession(task.sessionID)
     }
   })
-
-  debugLog.debug(`[launch] success: taskId=${taskId} session=${formatSessionID(task.sessionID, true)}`)
 
   return { ok: true, taskId, status: 'running' }
 }

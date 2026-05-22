@@ -177,14 +177,7 @@ export function extractContextFromStore(
   const isTask = taskManager?.isTaskSession(sessionID) ?? false
 
   if (!tokens) {
-    debugLog?.debug(`[ctxFromStore] ${formatSessionID(sessionID, isTask)} no lastTokens in store`)
-    return null
-  }
-
-  // Stale check: tokens older than 60s may be outdated
-  const ageMs = Date.now() - tokens.updatedAt
-  if (ageMs > 60_000) {
-    taskLogger.trace(`[ctxFromStore] ${formatSessionID(sessionID, isTask)} tokens stale (${Math.floor(ageMs / 1000)}s ago)`)
+    debugLog?.trace(`[ctxFromStore] ${formatSessionID(sessionID, isTask)} no lastTokens in store`)
     return null
   }
 
@@ -192,14 +185,14 @@ export function extractContextFromStore(
   const modelID = state.modelID
 
   if (!providerID || !modelID) {
-    debugLog?.debug(`[ctxFromStore] ${formatSessionID(sessionID, isTask)} missing provider/model info`)
+    debugLog?.trace(`[ctxFromStore] ${formatSessionID(sessionID, isTask)} missing provider/model info`)
     return null
   }
 
   const used = (tokens.input ?? 0) + (tokens.cache?.read ?? 0)
 
   if (used === 0) {
-    debugLog?.debug(`[ctxFromStore] ${formatSessionID(sessionID, isTask)} used=0`)
+    debugLog?.trace(`[ctxFromStore] ${formatSessionID(sessionID, isTask)} used=0`)
     return null
   }
 
@@ -207,12 +200,12 @@ export function extractContextFromStore(
   const contextLimit = provider?.models?.[modelID]?.limit?.context
 
   if (!contextLimit) {
-    debugLog?.debug(`[ctxFromStore] ${formatSessionID(sessionID, isTask)} no contextLimit for ${providerID}/${modelID}`)
+    debugLog?.trace(`[ctxFromStore] ${formatSessionID(sessionID, isTask)} no contextLimit for ${providerID}/${modelID}`)
     return null
   }
 
   const pct = Math.round((used / contextLimit) * 100)
-  debugLog?.debug(`[ctxFromStore] ${formatSessionID(sessionID, isTask)} ${used}/${contextLimit} = ${pct}%`)
+  debugLog?.trace(`[ctxFromStore] ${formatSessionID(sessionID, isTask)} ${used}/${contextLimit} = ${pct}%`)
   return { pct, used, contextLimit }
 }
 

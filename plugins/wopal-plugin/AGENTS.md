@@ -94,7 +94,7 @@ memoryLogger.debug({ enriched_query: query, token_count: 42 }, "Memory retrieval
 1. **模块归属正确**：使用对应模块的 logger，禁止跨模块混用（如 task 模块代码用 `memoryLogger`）
 2. **结构化字段**：上下文通过 `data` 对象传递，禁止拼接到 message 里
 3. **字段命名 snake_case**：`task_id`、`session_id`、`duration_ms`、`token_count`
-4. **sessionID 统一格式**：必须使用 `formatSessionID(sessionID, isTask)`，输出 `ses_<16chars>(main/task)`
+4. **sessionID 统一格式**：必须使用 `formatSessionID(sessionID, isTask)`，输出 `<last10chars>(main|task)`（如 `a5cd417ffe(main)`、`63bf80effe(task)`）
 5. **敏感信息脱敏**：`token`、`password`、`api_key`、`secret`、`credential`、`authorization` 等字段自动替换为 `[REDACTED]`
 6. **禁止日志截断**：不使用 `.slice(0, N)`，排错时看不到完整内容等于白打
 7. **禁止空洞描述**：避免 "found"、"completed" 等无实际值的 message，必须携带关键数据
@@ -104,7 +104,7 @@ memoryLogger.debug({ enriched_query: query, token_count: 42 }, "Memory retrieval
 #### 输出格式
 
 ```
-2026-05-21 14:30:00 [INFO] [task] task_id=wopal-task-abc123 session_id=ses_1da5cd41(main) Task started
+2026-05-21 14:30:00 [INFO] [task] task_id=wopal-task-abc123 session_id=a5cd417ffe(main) Task started
 2026-05-21 14:30:01 [WARN] [memory] err=Connection refused Memory retrieval failed, skipping injection
 2026-05-21 14:30:02 [DEBUG] [context] enriched_query="how to debug" token_count=15 Memory retrieval completed
 ```

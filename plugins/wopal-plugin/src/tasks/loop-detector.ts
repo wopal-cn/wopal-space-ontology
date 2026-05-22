@@ -29,7 +29,7 @@ function detectToolLoop(toolSequence: string[]): LoopWarning | null {
 
   // Only warn if 3+ consecutive calls
   if (consecutiveCount >= 3) {
-    taskLogger.debug(`[loop] detected: tool_loop for ${lastTool}`)
+    taskLogger.trace(`[loop] detected: tool_loop for ${lastTool}`)
     return {
       type: "tool_loop",
       message: `Tool "${lastTool}" called ${consecutiveCount} times consecutively`,
@@ -77,7 +77,7 @@ function detectRapidCycle(timestamps: number[]): LoopWarning | null {
   const allRapid = intervals.every((interval) => interval > 0 && interval < 1000)
 
   if (allRapid) {
-    taskLogger.debug(`[loop] detected: rapid_cycle (${intervals.join(", ")}ms intervals)`)
+    taskLogger.trace(`[loop] detected: rapid_cycle (${intervals.join(", ")}ms intervals)`)
     return {
       type: "rapid_cycle",
       message: `Last ${recent.length} assistant messages generated within <1s intervals`,

@@ -218,21 +218,6 @@ describe('extractContextFromStore', () => {
     expect(result).toBeNull()
   })
 
-  it('returns null when tokens are stale (>60s)', () => {
-    const sessionStore = new SessionStore({ max: 10 })
-    sessionStore.upsert('ses_2', (state) => {
-      state.lastTokens = {
-        input: 1000,
-        updatedAt: Date.now() - 120_000, // 2 minutes ago
-      }
-      state.providerID = 'anthropic'
-      state.modelID = 'claude-3'
-    })
-
-    const result = extractContextFromStore(sessionStore, 'ses_2', providers)
-    expect(result).toBeNull()
-  })
-
   it('returns null when missing provider/model info', () => {
     const sessionStore = new SessionStore({ max: 10 })
     sessionStore.upsert('ses_3', (state) => {

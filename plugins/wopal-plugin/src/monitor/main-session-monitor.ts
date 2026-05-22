@@ -64,12 +64,16 @@ export function createMainSessionMonitorStrategy(
             args.taskManager,
           )
 
-          if (!ctxInfo) continue
-
           const shortId = sessionID.slice(-10)
-          const warnMark = ctxInfo.pct >= MAIN_SESSION_CONTEXT_WARNING_THRESHOLD_PCT ? ' ⚠️' : ''
           const title = state.title?.slice(0, 40) ?? ''
           const titleText = title ? `"${title}" ` : ''
+
+          if (!ctxInfo) {
+            lines.push(`${shortId}(main) ${titleText}ctx:—`)
+            continue
+          }
+
+          const warnMark = ctxInfo.pct >= MAIN_SESSION_CONTEXT_WARNING_THRESHOLD_PCT ? ' ⚠️' : ''
           lines.push(`${shortId}(main) ${titleText}ctx:${ctxInfo.pct}%${warnMark}`)
 
           if (ctxInfo.pct >= MAIN_SESSION_CONTEXT_WARNING_THRESHOLD_PCT) {
