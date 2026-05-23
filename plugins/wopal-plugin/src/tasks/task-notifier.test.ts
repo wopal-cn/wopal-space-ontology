@@ -226,7 +226,6 @@ describe("task-notifier", () => {
 
       expect(notificationText).toContain("[WOPAL TASK IDLE]")
       expect(notificationText).toContain("**Agent:** test")
-      expect(notificationText).toContain("2 calls") // Tool count (bash:1, todowrite:1)
       expect(notificationText).toContain("✓2 (2/2, 100%)") // Todo summary with percentage
       expect(notificationText).toContain("Task completed successfully") // Last output
     })
@@ -265,9 +264,38 @@ describe("task-notifier", () => {
       expect(notificationText).toContain("[WOPAL TASK STUCK]")
       expect(notificationText).toContain("**Agent:** test")
       expect(notificationText).toContain("Task crashed with timeout")
+      expect(notificationText).toContain("wopal_task_reply")
       expect(notificationText).not.toContain("Tools:")
       expect(notificationText).not.toContain("Todos:")
       expect(notificationText).not.toContain("Last output:")
+    })
+
+    it("ERR notification is finish-only and not resumable", async () => {
+      const mockPromptAsync = vi.fn().mockResolvedValue(undefined)
+      const client: OpenCodeClient = {
+        session: { promptAsync: mockPromptAsync },
+      } as OpenCodeClient
+
+      const task: WopalTask = {
+        id: "wopal-task-123",
+        sessionID: "session-123",
+        parentSessionID: "parent-456",
+        description: "Invalid agent",
+        status: "error",
+        error: "Agent not found",
+        createdAt: new Date(),
+        agent: "nonexistent-agent",
+        prompt: "test",
+      }
+
+      await notifyParent({ client, debugLog: mockLogger }, task)
+
+      const notificationText = mockPromptAsync.mock.calls[0][0].body.parts[0].text
+      expect(notificationText).toContain("[WOPAL TASK ERR]")
+      expect(notificationText).toContain("Agent not found")
+      expect(notificationText).toContain("cannot be resumed")
+      expect(notificationText).toContain("wopal_task_finish")
+      expect(notificationText).not.toContain("wopal_task_reply")
     })
 
     it("logs debug summary on success", async () => {
@@ -289,11 +317,12 @@ describe("task-notifier", () => {
 
       await notifyParent({ client, debugLog: mockLogger }, task)
 
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        expect.stringContaining("[notifyParent] sent:")
+      expect(mockLogger.trace).toHaveBeenCalledWith(
+        expect.stringContaining("sion-123(task)"),
       )
-      expect(mockLogger.debug.mock.calls[0][0]).toContain("task_id=ession-123(task)")
-      expect(mockLogger.debug.mock.calls[0][0]).toContain("status=idle")
+      expect(mockLogger.trace).toHaveBeenCalledWith(
+        expect.stringContaining("[IDLE] notification sent"),
+      )
     })
 
     it("logs debug summary on failure", async () => {
@@ -315,8 +344,11 @@ describe("task-notifier", () => {
 
       await notifyParent({ client, debugLog: mockLogger }, task)
 
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        expect.stringContaining("[notifyParent] failed:")
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("sion-123(task)"),
+      )
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("[RUNNING] notification failed"),
       )
     })
 
@@ -411,7 +443,8 @@ describe("task-notifier", () => {
 
       expect(result).toBe(false)
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        expect.stringContaining("[sendNotification] error:")
+        { err: "Network error" },
+        "[sendNotification] Failed",
       )
     })
 

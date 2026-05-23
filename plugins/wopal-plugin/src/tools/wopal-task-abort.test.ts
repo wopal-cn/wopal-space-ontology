@@ -120,6 +120,7 @@ describe("wopal_task_abort", () => {
     // Verify task state changes - status becomes idle
     expect(runningTask.status).toBe("idle")
     expect(runningTask.waitingConcurrencyKey).toBe("default")
+    expect(runningTask.stopNotificationSuppressions?.[0]?.reason).toBe("abort")
     expect(mockManager.releaseConcurrencySlot).toHaveBeenCalledWith(runningTask)
   })
 

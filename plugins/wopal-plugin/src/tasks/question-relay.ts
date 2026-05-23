@@ -40,7 +40,7 @@ export async function handleQuestionAsked(
   const task = taskManager.findBySession(sessionID)
   if (!task) {
     // 主会话，让 TUI 处理
-    log.debug(`[question] ${formatSessionID(sessionID, false)} skipping relay (main session)`)
+    log.debug({ session_id: formatSessionID(sessionID, false) }, "[question] Skipped relay for main session")
     return false
   }
 
@@ -50,17 +50,17 @@ export async function handleQuestionAsked(
     if (requestID) {
       task.pendingQuestionID = requestID
     }
-    log.debug(`[question] set task_id=${formatSessionID(task.sessionID, true)} to waiting, requestID=${requestID ?? "N/A"}`)
+    log.debug({ task_id: formatSessionID(task.sessionID, true), request_id: requestID ?? "N/A" }, "[question] Task set to waiting")
   }
 
-  log.debug(`[question] child session, relaying to parent: task_id=${formatSessionID(task.sessionID, true)}`)
+  log.debug({ task_id: formatSessionID(task.sessionID, true) }, "[question] Relaying child question to parent")
 
   try {
     await notifyParentQuestion(taskManager, task, question, log)
     return true
   } catch (err) {
     // 捕获异常，不传播
-    log.debug(`[question] relay failed for task_id=${formatSessionID(task.sessionID, true)}: ${toErrorMessage(err)}`)
+    log.debug({ task_id: formatSessionID(task.sessionID, true), err: toErrorMessage(err) }, "[question] Relay failed")
     return false
   }
 }
@@ -97,7 +97,7 @@ This question requires your attention. The background task is waiting.
   const client = taskManager.getClient() as OpenCodeClient
 
   if (typeof client?.session?.promptAsync !== "function") {
-    log.debug(`[question] session.promptAsync unavailable for notification`)
+    log.debug("[question] session.promptAsync unavailable for notification")
     return
   }
 
@@ -109,9 +109,9 @@ This question requires your attention. The background task is waiting.
         parts: [{ type: "text", text: notification, synthetic: true }],
       },
     })
-    log.debug(`[question] notified parent for task_id=${formatSessionID(task.sessionID, true)}`)
+    log.debug({ task_id: formatSessionID(task.sessionID, true) }, "[question] Notified parent")
   } catch (err) {
-    log.debug(`[question] notify parent failed for task_id=${formatSessionID(task.sessionID, true)}: ${toErrorMessage(err)}`)
+    log.debug({ task_id: formatSessionID(task.sessionID, true), err: toErrorMessage(err) }, "[question] Notify parent failed")
     throw err // Re-throw so caller knows it failed
   }
 }

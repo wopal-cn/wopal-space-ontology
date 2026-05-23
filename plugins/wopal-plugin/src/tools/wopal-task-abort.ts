@@ -1,7 +1,8 @@
 import { tool, type ToolDefinition, type ToolContext } from "@opencode-ai/plugin"
 import type { SimpleTaskManager } from "../tasks/simple-task-manager.js"
-import { taskLogger } from "../logger.js"
+import { taskLogger, formatSessionID } from "../logger.js"
 import { toErrorMessage } from "../tasks/utils.js"
+import { armStopNotificationSuppression, clearStopNotificationSuppression } from "../tasks/task-stop-suppression.js"
 
 export function createWopalTaskAbortTool(manager: SimpleTaskManager): ToolDefinition {
   return tool({
@@ -18,7 +19,6 @@ export function createWopalTaskAbortTool(manager: SimpleTaskManager): ToolDefini
       }
 
       const { task_id } = args
-      taskLogger.debug(`wopal_abort called: task_id=${task_id}`)
 
       const task = manager.getTaskForParent(task_id, context.sessionID)
       if (!task) {
@@ -38,32 +38,36 @@ export function createWopalTaskAbortTool(manager: SimpleTaskManager): ToolDefini
       const client = manager.getClient()
 
       try {
-        // Abort current execution
-        if (typeof client?.session?.abort === "function") {
-          try {
-            await client.session.abort({ path: { id: task.sessionID } })
-            taskLogger.debug(`task ${task_id} aborted`)
-          } catch (abortErr) {
-            taskLogger.debug(`abort failed (task may already be idle): ${toErrorMessage(abortErr)}`)
-          }
-        }
+        const sessionClient = client?.session
+        const canAbort = typeof sessionClient?.abort === "function"
+        const suppression = canAbort
+          ? armStopNotificationSuppression(task, "abort")
+          : undefined
 
-        // Set task status to idle
         task.status = 'idle'
 
-        // Preserve concurrency key for potential reply resume
         if (task.concurrencyKey) {
           task.waitingConcurrencyKey = task.concurrencyKey
         }
 
-        // Release concurrency slot
         manager.releaseConcurrencySlot(task)
 
-        taskLogger.debug(`task ${task_id} aborted, now idle`)
+        // Abort current execution
+        if (canAbort) {
+          try {
+            await sessionClient.abort({ path: { id: task.sessionID } })
+          } catch (abortErr) {
+            if (suppression) {
+              clearStopNotificationSuppression(task, suppression.id)
+            }
+            taskLogger.debug({ task_id: formatSessionID(task.sessionID, true), err: toErrorMessage(abortErr) }, "Abort failed; task may already be idle")
+          }
+        }
+
+        taskLogger.info({ task_id: formatSessionID(task_id, true) }, "Task aborted")
 
         return `Task ${task_id} aborted. Execution stopped. Task is now idle awaiting your judgment: (1) wopal_task_finish to delete, or (2) TTL 30min auto cleanup. Use wopal_task_reply to wake up and redirect if needed.`
       } catch (err) {
-        taskLogger.debug(`wopal_abort error: ${err}`)
         return `Failed to abort task: ${err instanceof Error ? err.message : String(err)}`
       }
     },

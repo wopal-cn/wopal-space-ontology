@@ -122,7 +122,7 @@ export async function sendNotification(
     })
     return true
   } catch (err: unknown) {
-    debugLog.debug(`[sendNotification] error: ${toErrorMessage(err)}`)
+    debugLog.debug({ err: toErrorMessage(err) }, "[sendNotification] Failed")
     return false
   }
 }
@@ -135,7 +135,7 @@ export async function notifyParent(
 
   const { client, debugLog } = deps
 
-  const statusText = task.status.toUpperCase()
+  const statusText = task.status === 'error' ? 'ERR' : task.status.toUpperCase()
 
   // Stuck notifications: concise, no enrichment
   const errorLine = task.error ? `\n**Error:** ${task.error}` : ''
@@ -153,11 +153,6 @@ export async function notifyParent(
       debugLog.debug(`[notifyParent] failed to fetch messages: ${toErrorMessage(err)}`)
     }
 
-    const toolSummary = extractToolCallSummary(messages)
-    const toolLine = toolSummary.total > 0
-      ? `\n**Tools:** ${formatToolCallSummary(toolSummary)}`
-      : ''
-
     const todoSummary = extractTodoSummary(messages)
     const todoSummaryStr = formatTodoSummary(todoSummary)
     const todoPercentageStr = formatTodoPercentage(todoSummary)
@@ -171,12 +166,14 @@ export async function notifyParent(
       ? `\n\n**Result:**\n${lastOutput}${truncated ? `\n\n[Output truncated to ${IDLE_OUTPUT_MAX_CHARS} chars. Call \`wopal_task_output(task_id="${task.id}")\` for full content.]` : ''}`
       : ''
 
-    resultBlock = `${toolLine}${todoLine}${outputLine}`
+    resultBlock = `${todoLine}${outputLine}`
   }
 
   let footerLine = ''
   if (task.status === 'stuck') {
-    footerLine = `\n\nTask stopped but no new assistant text was produced this round. Use \`wopal_task_output(task_id="${task.id}")\` to check content, \`wopal_task_reply(task_id="${task.id}")\` to continue, or \`wopal_task_finish(task_id="${task.id}")\` to clean up.`
+    footerLine = `\n\nTask stopped after assistant activity, but no new assistant text was produced this round. Use \`wopal_task_output(task_id="${task.id}")\` to check content, \`wopal_task_reply(task_id="${task.id}")\` to continue, or \`wopal_task_finish(task_id="${task.id}")\` to clean up.`
+  } else if (task.status === 'error') {
+    footerLine = `\n\nTask failed before assistant activity was observed. This task cannot be resumed. Use \`wopal_task_output(task_id="${task.id}")\` to inspect details or \`wopal_task_finish(task_id="${task.id}")\` to clean up, then launch a new task with a valid configuration.`
   } else if (task.status === 'idle' && !task.error && !resultBlock.includes("wopal_task_output")) {
     footerLine = ''
   } else {
@@ -192,8 +189,9 @@ export async function notifyParent(
 
   const success = await sendNotification(deps, task.parentSessionID, notification)
 
-  // Mirror to debug log
-  const status = task.status
-  const debugSummary = `task_id=${formatSessionID(task.sessionID, true)} status=${status}`
-  debugLog.debug(`[notifyParent] ${success ? 'sent' : 'failed'}: ${debugSummary}`)
+  if (success) {
+    debugLog.trace(`${formatSessionID(task.sessionID, true)} [${task.status.toUpperCase()}] notification sent`)
+  } else {
+    debugLog.warn(`${formatSessionID(task.sessionID, true)} [${task.status.toUpperCase()}] notification failed, parent session did not receive stop event`)
+  }
 }

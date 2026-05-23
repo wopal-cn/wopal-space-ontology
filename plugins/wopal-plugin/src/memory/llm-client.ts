@@ -87,7 +87,7 @@ export class DistillLLMClient {
 
     if (!jsonStr) {
       memoryLogger.warn(`[LLM.completeJson] No JSON found in response`);
-      memoryLogger.warn(`[LLM.completeJson] Response first 500 chars:\n${rawResponse.substring(0, 500)}`);
+      memoryLogger.warn(`[LLM.completeJson] Response:\n  ${rawResponse.replace(/\n/g, "\n  ")}`);
       throw new Error("No JSON found in LLM response");
     }
 
@@ -106,7 +106,7 @@ export class DistillLLMClient {
     } catch (parseError) {
       const message = parseError instanceof Error ? parseError.message : String(parseError);
       memoryLogger.warn(`[LLM.completeJson] Parse failed: ${message}`);
-      memoryLogger.warn(`[LLM.completeJson] Failed JSON:\n${repaired.substring(0, 500)}`);
+      memoryLogger.warn(`[LLM.completeJson] Failed JSON:\n  ${repaired.replace(/\n/g, "\n  ")}`);
       throw new Error(`Failed to parse JSON after repair: ${message}`);
     }
   }

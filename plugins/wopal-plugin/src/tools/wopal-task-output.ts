@@ -23,13 +23,13 @@ export function createWopalOutputTool(manager: SimpleTaskManager): ToolDefinitio
     description: `Get status and output for a background task. Use \`section\` param: 'tools' (tool calls), 'reasoning' (thinking), 'text' (output), 'todos' (todo list progress). Omit for summary.
 
 ⚠️ Do NOT poll. Only call when:
-- You received a system notification [WOPAL TASK IDLE/STUCK/PROGRESS/WAITING]
+- You received a system notification [WOPAL TASK IDLE/STUCK/PROGRESS/WAITING/ERR]
 - You need to diagnose a stuck task
 - The task's result is needed for your next step
 
 Default returns only the last message — sufficient for most cases. Use \`last_n\` only when you genuinely need more history. "Just checking progress" is never a valid reason to call this.`,
     args: {
-      task_id: tool.schema.string().describe("Task ID to query. Sources: (1) System notification [WOPAL TASK IDLE/STUCK/WAITING], (2) wopal_task return value, (3) context_manage(status) → tasks[].taskID for all active tasks"),
+      task_id: tool.schema.string().describe("Task ID to query. Sources: (1) System notification [WOPAL TASK IDLE/STUCK/WAITING/ERR], (2) wopal_task return value, (3) context_manage(status) → tasks[].taskID for all active tasks"),
       section: tool.schema.enum(["tools", "reasoning", "text", "todos"]).optional().describe("Content section to retrieve: 'tools' (tool calls & results), 'reasoning' (thinking process), 'text' (text output), 'todos' (todo list progress). Omit for summary only."),
       detail: tool.schema.boolean().optional().describe("Return detailed output. For 'todos': full list with content instead of summary counts. Default: false."),
       last_n: tool.schema.number().optional().describe("Number of recent messages to retrieve. Default: 1 (last message only). Increase only when you need more history for diagnosis."),
@@ -70,6 +70,11 @@ Default returns only the last message — sufficient for most cases. Use \`last_
       if (isIdleTask(task)) {
         result += `\n\n**Idle:** awaiting your judgment`
         result += `\nUse wopal_task_finish to delete, or wopal_task_reply to wake up and redirect.`
+      }
+
+      if (task.status === 'error') {
+        result += `\n\n**Error:** ${task.error ?? "Task failed before assistant activity was observed"}`
+        result += `\nUse wopal_task_finish to clean up. This task cannot be resumed; launch a new task with a valid configuration.`
       }
 
       // stuck task: show error info if present

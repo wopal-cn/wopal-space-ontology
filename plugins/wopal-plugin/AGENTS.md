@@ -236,11 +236,11 @@ memoryLogger.debug({ enriched_query: query, token_count: 42 }, "Memory retrieval
 所有异步操作（网络、文件 I/O、LanceDB 操作）**必须 try/catch**。catch 块中：
 - 用模块 logger 的 `error` 级别记录错误（必须携带 `{ err: error }`，禁止吞异常）
 - 返回安全的降级值或 `null`/`undefined`，不要让未捕获的 Promise rejection 上泡到 EllaMaka 运行时
-- 错误分类走 `tasks/task-stop-classifier.ts`，统一按 assistant text 有无判断 idle/stuck
+- 错误分类走 `tasks/task-stop-classifier.ts`：有新 assistant text → `idle`；无新 text 但已有 assistant 执行证据 → `stuck`；未进入 assistant 执行链即失败 → `error`
 
 ### 任务模块
 
-- 子会话异常 → 停止分类器判断 `idle`（有新 assistant text）或 `stuck`（无新 assistant text），不要静默忽略
+- 子会话异常 → 停止分类器判断 `idle`（有新 assistant text）、`stuck`（有 assistant 执行证据但无新 text）或 `error`（未进入可恢复执行链），不要静默忽略
 - 权限请求超时 → `permission-proxy.ts` 自动 `once` 授权，不要让子会话永久阻塞
 - 进程清理 → `process-cleanup.ts` 注册 handler，保证僵尸进程不残留
 

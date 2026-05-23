@@ -96,7 +96,7 @@ export class MonitorEngine {
     const sessionCount = orderedSessions.length
 
     if (sessionCount > 0) {
-      const numberedLines = orderedSessions.map((session, i) => `[${i}] ${session.text}`)
+      const numberedLines = orderedSessions.map((session, i) => `  [${i}] ${session.text}`)
       this.logger.debug(`[tick] ${sessionCount} sessions:\n${numberedLines.join('\n')}`)
     }
     return results

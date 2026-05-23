@@ -39,6 +39,14 @@ function createAssistantMessage(text: string, synthetic: boolean = false): Sessi
   }
 }
 
+function createAssistantToolMessage(tool: string): SessionMessage {
+  return {
+    id: "msg-tool-1",
+    info: { role: "assistant" },
+    parts: [{ type: "tool", tool }],
+  }
+}
+
 function createClientWithMessages(messages: SessionMessage[]): OpenCodeClient {
   return {
     session: {
@@ -73,12 +81,12 @@ describe("task-stop-classifier", () => {
       expect(result.status).toBe("idle")
       expect(task.status).toBe("idle")
       expect(task.lastAssistantMessage).toBe("New output from fae")
-      expect(mockLogger.debug).toHaveBeenCalledWith(
+      expect(mockLogger.trace).toHaveBeenCalledWith(
         expect.stringContaining("[classifyTaskStop] idle"),
       )
     })
 
-    it("sets stuck when no assistant text exists", async () => {
+    it("sets error when no assistant activity evidence exists", async () => {
       const task = createTask()
       const client = createClientWithMessages([])
 
@@ -88,9 +96,28 @@ describe("task-stop-classifier", () => {
         debugLog: mockLogger,
       })
 
+      expect(result.status).toBe("error")
+      expect(task.status).toBe("error")
+      expect(mockLogger.trace).toHaveBeenCalledWith(
+        expect.stringContaining("[classifyTaskStop] error"),
+      )
+    })
+
+    it("sets stuck when assistant tool activity exists without assistant text", async () => {
+      const task = createTask()
+      const client = createClientWithMessages([
+        createAssistantToolMessage("bash"),
+      ])
+
+      const result = await classifyTaskStop({
+        task,
+        client,
+        debugLog: mockLogger,
+      })
+
       expect(result.status).toBe("stuck")
       expect(task.status).toBe("stuck")
-      expect(mockLogger.debug).toHaveBeenCalledWith(
+      expect(mockLogger.trace).toHaveBeenCalledWith(
         expect.stringContaining("[classifyTaskStop] stuck"),
       )
     })
@@ -112,13 +139,36 @@ describe("task-stop-classifier", () => {
       expect(result.status).toBe("stuck")
       expect(task.status).toBe("stuck")
       expect(task.lastAssistantMessage).toBe("Same output")
-      expect(mockLogger.debug).toHaveBeenCalledWith(
+      expect(mockLogger.trace).toHaveBeenCalledWith(
         expect.stringContaining("[classifyTaskStop] stuck"),
       )
     })
 
-    it("sets stuck when messages API fails", async () => {
+    it("sets error when messages API fails and no activity evidence exists", async () => {
       const task = createTask()
+      const client = {
+        session: {
+          messages: vi.fn().mockRejectedValue(new Error("API failure")),
+        },
+      } as OpenCodeClient
+
+      const result = await classifyTaskStop({
+        task,
+        client,
+        debugLog: mockLogger,
+      })
+
+      expect(result.status).toBe("error")
+      expect(task.status).toBe("error")
+      expect(mockLogger.trace).toHaveBeenCalledWith(
+        expect.stringContaining("[classifyTaskStop] error"),
+      )
+    })
+
+    it("sets stuck when messages API fails but progress evidence exists", async () => {
+      const task = createTask({
+        progress: { toolCalls: 1, lastUpdate: new Date(), lastMeaningfulActivity: new Date() },
+      })
       const client = {
         session: {
           messages: vi.fn().mockRejectedValue(new Error("API failure")),
@@ -133,9 +183,6 @@ describe("task-stop-classifier", () => {
 
       expect(result.status).toBe("stuck")
       expect(task.status).toBe("stuck")
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        expect.stringContaining("[classifyTaskStop] stuck"),
-      )
     })
 
     it("sets idle when waiting task has new assistant text", async () => {
@@ -207,12 +254,12 @@ describe("task-stop-classifier", () => {
       })
 
       expect(result.status).toBe("idle") // unchanged
-      expect(mockLogger.debug).toHaveBeenCalledWith(
+      expect(mockLogger.trace).toHaveBeenCalledWith(
         expect.stringContaining("[classifyTaskStop] skipped"),
       )
     })
 
-    it("sets stuck when only synthetic text exists (no real text)", async () => {
+    it("sets error when only synthetic text exists (no assistant activity evidence)", async () => {
       const task = createTask()
       const client = createClientWithMessages([
         createAssistantMessage("Synthetic only", true),
@@ -224,8 +271,8 @@ describe("task-stop-classifier", () => {
         debugLog: mockLogger,
       })
 
-      expect(result.status).toBe("stuck")
-      expect(task.status).toBe("stuck")
+      expect(result.status).toBe("error")
+      expect(task.status).toBe("error")
     })
 
     it("handles multiple assistant messages and uses latest non-synthetic", async () => {

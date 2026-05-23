@@ -33,7 +33,7 @@ function createMockTaskManager(
     getV2Client: vi.fn(() => v2Client),
     getServerUrl: vi.fn(() => serverUrl),
     releaseConcurrencySlot: vi.fn(),
-    reacquireSlotOnWakeUp: vi.fn(),
+    reacquireSlotOnWakeUp: vi.fn(() => true),
   }
 }
 
@@ -87,6 +87,21 @@ describe("wopal_task_reply", () => {
 
     // stuck is resumable, reply works
     expect(mockManager.reacquireSlotOnWakeUp).toHaveBeenCalled()
+  })
+
+  it("task status is error: reply is rejected and does not re-acquire slot", async () => {
+    const errorTask = createWaitingTask({ status: "error" })
+    const mockManager = createMockTaskManager(errorTask)
+    const execute = getExecute(createWopalReplyTool(mockManager as never))
+
+    const result = await execute(
+      { task_id: errorTask.id, message: "test" },
+      { sessionID: parentSessionID },
+    )
+
+    expect(result).toContain("error state")
+    expect(result).toContain("cannot be resumed")
+    expect(mockManager.reacquireSlotOnWakeUp).not.toHaveBeenCalled()
   })
 
   
@@ -253,6 +268,24 @@ describe("wopal_task_reply", () => {
     expect(result).toBe("Error: session.promptAsync is unavailable")
   })
 
+  it("reply does not wake task when concurrency slot is unavailable", async () => {
+    const mockClient = createMockClient()
+    const waitingTask = createWaitingTask({ waitingConcurrencyKey: "default" })
+    const mockManager = createMockTaskManager(waitingTask, mockClient)
+    mockManager.reacquireSlotOnWakeUp.mockReturnValueOnce(false)
+    const execute = getExecute(createWopalReplyTool(mockManager as never))
+
+    const result = await execute(
+      { task_id: waitingTask.id, message: "test" },
+      { sessionID: parentSessionID },
+    )
+
+    expect(result).toBe("Error: Concurrency limit reached; task remains waiting. Try again after running tasks finish.")
+    expect(mockClient.session.promptAsync).not.toHaveBeenCalled()
+    expect(waitingTask.status).toBe("waiting")
+    expect(waitingTask.waitingConcurrencyKey).toBe("default")
+  })
+
   it("interrupt=true calls abort + promptAsync on running task", async () => {
     const mockClient = createMockClient()
     const runningTask = createWaitingTask({ status: "running" as WopalTask["status"] })
@@ -273,6 +306,7 @@ describe("wopal_task_reply", () => {
       }),
     )
     expect(runningTask.status).toBe("running")
+    expect(runningTask.stopNotificationSuppressions?.[0]?.reason).toBe("interrupt")
   })
 
   it("interrupt=true returns error for non-running task", async () => {
@@ -304,6 +338,28 @@ describe("wopal_task_reply", () => {
     expect(result).toBe(`Interrupt sent to task ${runningTask.id}. Previous execution aborted, new message injected. Task will continue with new direction.`)
     expect(mockClient.session.abort).toHaveBeenCalled()
     expect(mockClient.session.promptAsync).toHaveBeenCalled()
+  })
+
+  it("interrupt=true does not wake task when concurrency slot is unavailable", async () => {
+    const mockClient = createMockClient()
+    const runningTask = createWaitingTask({
+      status: "running" as WopalTask["status"],
+      concurrencyKey: "default",
+    })
+    const mockManager = createMockTaskManager(runningTask, mockClient)
+    mockManager.reacquireSlotOnWakeUp.mockReturnValueOnce(false)
+    const execute = getExecute(createWopalReplyTool(mockManager as never))
+
+    const result = await execute(
+      { task_id: runningTask.id, message: "new direction", interrupt: true },
+      { sessionID: parentSessionID },
+    )
+
+    expect(result).toBe("Error: Concurrency limit reached; task remains idle. Try again after running tasks finish.")
+    expect(mockClient.session.abort).toHaveBeenCalled()
+    expect(mockClient.session.promptAsync).not.toHaveBeenCalled()
+    expect(runningTask.status).toBe("idle")
+    expect(runningTask.waitingConcurrencyKey).toBe("default")
   })
 
 it("interrupt=true reacquireSlotOnWakeUp clears waitingConcurrencyKey and acquires concurrency slot", async () => {
@@ -356,8 +412,7 @@ it("interrupt=true reacquireSlotOnWakeUp clears waitingConcurrencyKey and acquir
     expect(mockManager.reacquireSlotOnWakeUp).toHaveBeenCalledWith(runningTask)
     expect(mockManager.releaseConcurrencySlot).toHaveBeenCalledWith(runningTask)
     
-    // Task state should NOT be reset (failed before resetTaskForResume)
-    expect(runningTask.status).toBe("running")
+    expect(runningTask.status).toBe("idle")
   })
 
   it("non-interrupt reply rollback releases slot when promptAsync fails", async () => {

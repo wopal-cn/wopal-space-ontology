@@ -72,13 +72,14 @@ export async function handleSessionError(
         task,
         client: ctx.client,
         debugLog: ctx.taskLogger,
+        errorText,
       })
 
-      ctx.taskLogger.debug(`${formatSessionID(task.sessionID, true)} error event: ${errorText}, status=${task.status}`)
+      ctx.taskLogger.debug({ task_id: formatSessionID(task.sessionID, true), error: errorText, status: task.status }, "session.error classified")
 
       if (result.statusChanged && ctx.taskManager) {
         ctx.taskManager.notifyParent(task.id).catch((err) => {
-          ctx.taskLogger.debug(`[notifyParent] error for ${formatSessionID(task.sessionID, true)}: ${err instanceof Error ? err.message : String(err)}`)
+          ctx.taskLogger.debug({ task_id: formatSessionID(task.sessionID, true), err }, "[notifyParent] Failed")
         })
       }
     }

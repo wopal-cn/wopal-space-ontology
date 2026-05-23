@@ -275,9 +275,10 @@ describe("SimpleTaskManager", () => {
       deferred.reject(new Error("Prompt failed"))
       await flushAsyncWork()
 
-      // Task is classified as stuck by stop classifier (no messages), concurrency is released
+      // Task is classified as error by stop classifier (no assistant activity), concurrency is released
       const task = manager.getTask(result.taskId)
-      expect(task?.status).toBe("stuck")
+      expect(task?.status).toBe("error")
+      expect(task?.error).toBe("Prompt failed")
       expect(manager.getConcurrencyStatus().used).toBe(0)
 
       expect(mockClient.session.abort).toHaveBeenCalledWith({
@@ -739,9 +740,10 @@ describe("SimpleTaskManager", () => {
       task.concurrencyKey = undefined
 
       // Call reacquireSlotOnWakeUp with available slots
-      manager.reacquireSlotOnWakeUp(task)
+      const acquired = manager.reacquireSlotOnWakeUp(task)
 
       // Verify: concurrencyKey restored, waitingConcurrencyKey cleared
+      expect(acquired).toBe(true)
       expect(task.concurrencyKey).toBe("default")
       expect(task.waitingConcurrencyKey).toBeUndefined()
       
@@ -786,10 +788,11 @@ describe("SimpleTaskManager", () => {
       task.concurrencyKey = undefined
 
       // Call reacquireSlotOnWakeUp when limit is reached
-      manager.reacquireSlotOnWakeUp(task)
+      const acquired = manager.reacquireSlotOnWakeUp(task)
 
       // Verify: concurrencyKey NOT set (acquisition failed)
       // waitingConcurrencyKey preserved for retry
+      expect(acquired).toBe(false)
       expect(task.concurrencyKey).toBeUndefined()
       expect(task.waitingConcurrencyKey).toBe("default")
     })
@@ -811,9 +814,10 @@ describe("SimpleTaskManager", () => {
       expect(task.status).toBe("running")
 
       // Call reacquireSlotOnWakeUp - should do nothing
-      manager.reacquireSlotOnWakeUp(task)
+      const acquired = manager.reacquireSlotOnWakeUp(task)
 
       // Verify: no state change
+      expect(acquired).toBe(false)
       expect(task.concurrencyKey).toBe("default") // Still has the original slot
       expect(task.waitingConcurrencyKey).toBeUndefined()
     })

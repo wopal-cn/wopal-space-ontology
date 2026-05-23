@@ -94,7 +94,7 @@ export async function launchTask(
       return releaseAndReturnError(error)
     }
   } catch (err) {
-    debugLog.debug(`[launch] session.create error: ${err}`)
+    debugLog.debug({ err }, "[launch] session.create failed")
     const error = `Background task launch failed: ${toErrorMessage(err)}`
     return releaseAndReturnError(error)
   }
@@ -147,10 +147,8 @@ export async function launchTask(
 
   debugLog.info(
     {
-      task_id: formatSessionID(task.sessionID, true),
       description: input.description,
       agent: input.agent,
-      parent_id: formatSessionID(input.parentSessionID, false),
     },
     "Task launched",
   )
@@ -168,11 +166,11 @@ export async function launchTask(
     concurrency.release(concurrencyKey)
     task.concurrencyKey = undefined
 
-    // Classify task stop: idle if new assistant text, stuck otherwise
     await classifyTaskStop({
       task,
       client: client,
       debugLog,
+      errorText: toErrorMessage(_err),
     })
 
     // Abort the session

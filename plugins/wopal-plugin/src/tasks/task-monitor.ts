@@ -66,6 +66,7 @@ export function logTickStatus(
 ): void {
   const lines = formatTaskTickLines(tasks, progressInfos)
   if (lines.length > 0) {
-    debugLog.debug(`[tick] ${lines.length} tasks:\n${lines.join('\n')}`)
+    const numberedLines = lines.map((line, i) => `  [${i}] ${line}`)
+    debugLog.debug(`[tick] ${lines.length} tasks:\n${numberedLines.join('\n')}`)
   }
 }

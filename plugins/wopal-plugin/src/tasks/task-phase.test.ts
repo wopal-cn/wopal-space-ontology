@@ -41,6 +41,11 @@ describe("task-phase", () => {
       const task = createTask({ status: "stuck" })
       expect(isTaskActive(task)).toBe(false)
     })
+
+    it("returns false for error task", () => {
+      const task = createTask({ status: "error" })
+      expect(isTaskActive(task)).toBe(false)
+    })
   })
 
   describe("isResumableTask", () => {
@@ -62,6 +67,11 @@ describe("task-phase", () => {
     it("returns true for stuck task", () => {
       const task = createTask({ status: "stuck" })
       expect(isResumableTask(task)).toBe(true)
+    })
+
+    it("returns false for error task", () => {
+      const task = createTask({ status: "error" })
+      expect(isResumableTask(task)).toBe(false)
     })
   })
 
@@ -85,6 +95,11 @@ describe("task-phase", () => {
       const task = createTask({ status: "stuck" })
       expect(canDeleteTask(task)).toBe(true)
     })
+
+    it("returns true for error task", () => {
+      const task = createTask({ status: "error" })
+      expect(canDeleteTask(task)).toBe(true)
+    })
   })
 
   describe("getDisplayStatus", () => {
@@ -106,6 +121,11 @@ describe("task-phase", () => {
     it("returns status directly for stuck task", () => {
       const task = createTask({ status: "stuck" })
       expect(getDisplayStatus(task)).toBe("stuck")
+    })
+
+    it("returns status directly for error task", () => {
+      const task = createTask({ status: "error" })
+      expect(getDisplayStatus(task)).toBe("error")
     })
   })
 })

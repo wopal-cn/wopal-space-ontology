@@ -199,11 +199,11 @@ export class SimpleTaskManager {
       try {
         const result = await client.session.delete({ path: { id: task.sessionID } })
         if (isSessionDeleteResult(result) && result.error) {
-          debugLog.debug(`[finishTask] session.delete error for task_id=${formatSessionID(task.sessionID, true)}: ${String(result.error).substring(0, 200)}`)
+          debugLog.debug({ task_id: formatSessionID(task.sessionID, true), err: result.error }, "[finishTask] Session delete failed")
           return { ok: false, message: `Failed to delete session: ${String(result.error)}` }
         }
       } catch (err) {
-        debugLog.debug(`[finishTask] session.delete exception for task_id=${formatSessionID(task.sessionID, true)}: ${String(err).substring(0, 200)}`)
+        debugLog.debug({ task_id: formatSessionID(task.sessionID, true), err }, "[finishTask] Session delete threw")
         return { ok: false, message: `Failed to delete session: ${String(err)}` }
       }
     }
@@ -212,7 +212,7 @@ export class SimpleTaskManager {
 
     releaseConcurrencySlot(task)
 
-    debugLog.debug(`[finishTask] task_id=${formatSessionID(task.sessionID, true)} finished successfully`)
+    debugLog.info({ task_id: formatSessionID(task.sessionID, true) }, "[finishTask] Task finished")
     return { ok: true, message: "Task finished successfully. Session deleted from OpenCode." }
   }
 
@@ -239,17 +239,25 @@ export class SimpleTaskManager {
     }
   }
 
-  reacquireSlotOnWakeUp(task: WopalTask): void {
-    // Reacquire slot for resumable tasks (idle, waiting, stuck)
-    if (isResumableTask(task)) {
-      if (this.concurrency.tryAcquire(this.CONCURRENCY_KEY, DEFAULT_CONCURRENCY_LIMIT)) {
-        task.concurrencyKey = this.CONCURRENCY_KEY
-        delete task.waitingConcurrencyKey
-        this.debugLog.debug(`[reacquireSlot] task_id=${formatSessionID(task.sessionID, true)} acquired slot, cleared waitingConcurrencyKey`)
-      } else {
-        this.debugLog.debug(`[reacquireSlot] task_id=${formatSessionID(task.sessionID, true)} concurrency limit reached, waitingConcurrencyKey preserved for retry`)
-      }
+  reacquireSlotOnWakeUp(task: WopalTask): boolean {
+    if (!isResumableTask(task)) {
+      return false
     }
+
+    if (task.concurrencyKey) {
+      delete task.waitingConcurrencyKey
+      return true
+    }
+
+    if (this.concurrency.tryAcquire(this.CONCURRENCY_KEY, DEFAULT_CONCURRENCY_LIMIT)) {
+      task.concurrencyKey = this.CONCURRENCY_KEY
+      delete task.waitingConcurrencyKey
+      this.debugLog.debug({ task_id: formatSessionID(task.sessionID, true) }, "[reacquireSlot] Acquired slot")
+      return true
+    }
+
+    this.debugLog.debug({ task_id: formatSessionID(task.sessionID, true) }, "[reacquireSlot] Concurrency limit reached")
+    return false
   }
 
   getConcurrencyStatus(): { used: number; limit: number; available: number } {
@@ -314,15 +322,15 @@ export class SimpleTaskManager {
         this.tasks.set(taskID, task)
         this.taskSessions.add(childSessionID)
         recovered++
-        this.debugLog.debug(`[recover] restored task_id=${formatSessionID(childSessionID, true)} title="${child.title?.substring(0, 40) ?? ''}"`)
+        this.debugLog.debug({ task_id: formatSessionID(childSessionID, true), title: child.title ?? '' }, "[recover] Restored task")
       }
 
       if (recovered > 0) {
-        this.debugLog.info(`[recover] recovered ${recovered} task(s) from parent_id=${formatSessionID(parentSessionID, false)}`)
+        this.debugLog.info({ recovered, parent_id: formatSessionID(parentSessionID, false) }, "[recover] Recovered tasks")
       }
       this.recoveredSessions.add(parentSessionID)
     } catch (err) {
-      this.debugLog.debug(`[recover] error: ${err instanceof Error ? err.message : String(err)}`)
+      this.debugLog.debug({ err }, "[recover] Failed")
     } finally {
       this.recoveringSessions.delete(parentSessionID)
     }

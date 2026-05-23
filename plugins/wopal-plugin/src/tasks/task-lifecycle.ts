@@ -29,13 +29,13 @@ export function setIdleStatus(
 
   // Skip if already in inactive state
   if (task.status !== 'running') {
-    debugLog.debug(`[setIdle] skipped: task_id=${formatSessionID(task.sessionID, true)} status=${task.status} (already inactive)`)
+    debugLog.debug({ task_id: formatSessionID(task.sessionID, true), status: task.status }, "setIdle skipped: task already inactive")
     return false
   }
 
   releaseConcurrencySlot(task)
   task.status = 'idle'
-  debugLog.debug(`[setIdle] task_id=${formatSessionID(task.sessionID, true)} status=idle`)
+  debugLog.debug({ task_id: formatSessionID(task.sessionID, true) }, "Task stopped, classified as idle")
   return true
 }
 
@@ -53,7 +53,7 @@ export async function abortSession(
       path: { id: sessionID },
     })
   } catch (err) {
-    debugLog.debug(`[abortSession] error for ${formatSessionID(sessionID, true)}: ${toErrorMessage(err)}`)
+    debugLog.debug({ task_id: formatSessionID(sessionID, true), err: toErrorMessage(err) }, "[abortSession] Failed")
   }
 }
 
@@ -65,13 +65,13 @@ export function markTaskIdleBySession(
 
   const task = tasks.get(sessionIDToTaskID(sessionID))
   if (!task) {
-    debugLog.debug(`[markIdle] skipped: no task found for ${formatSessionID(sessionID, true)}`)
+    debugLog.debug({ task_id: formatSessionID(sessionID, true) }, "[markIdle] Skipped; task not found")
     return undefined
   }
 
   // Skip if already in inactive state
   if (task.status !== 'running') {
-    debugLog.debug(`[markIdle] skipped: task_id=${formatSessionID(task.sessionID, true)} status=${task.status} (already inactive)`)
+    debugLog.debug({ task_id: formatSessionID(task.sessionID, true), status: task.status }, "markIdle skipped: task already inactive")
     return undefined
   }
 
@@ -79,7 +79,7 @@ export function markTaskIdleBySession(
     return undefined
   }
 
-  debugLog.debug(`[markIdle] task_id=${formatSessionID(sessionID, true)} status=idle`)
+  debugLog.debug({ task_id: formatSessionID(sessionID, true) }, "Task stopped, marked as idle")
   return task
 }
 
@@ -93,11 +93,11 @@ export async function interruptTask(
   const task = tasks.get(id) ?? [...tasks.values()].find(t => t.id === id)
 
   if (!task || task.parentSessionID !== parentSessionID) {
-    debugLog.debug(`[interrupt] failed: task_id=${formatSessionID(taskIDToSessionID(id), true)} not found or ownership mismatch`)
+    debugLog.debug({ task_id: formatSessionID(taskIDToSessionID(id), true) }, "[interrupt] Failed; task not found or ownership mismatch")
     return 'not_found'
   }
   if (task.status !== 'running') {
-    debugLog.debug(`[interrupt] failed: task_id=${formatSessionID(task.sessionID, true)} status=${task.status}`)
+    debugLog.debug({ task_id: formatSessionID(task.sessionID, true), status: task.status }, "[interrupt] Failed; task not running")
     return 'not_running'
   }
 
@@ -116,9 +116,9 @@ export async function interruptTask(
       await client.session?.abort?.({
         path: { id: task.sessionID },
       })
-      debugLog.debug(`[interrupt] aborted session for task_id=${formatSessionID(task.sessionID, true)}`)
+      debugLog.debug({ task_id: formatSessionID(task.sessionID, true) }, "[interrupt] Aborted session")
     } catch (err) {
-      debugLog.debug(`[interrupt] abort error (task may already be idle): ${toErrorMessage(err)}`)
+      debugLog.debug({ task_id: formatSessionID(task.sessionID, true), err: toErrorMessage(err) }, "[interrupt] Abort failed; task may already be idle")
     }
   }
 
@@ -146,7 +146,7 @@ export async function shutdownManager(
   )
 
   for (const task of runningTasks) {
-    debugLog.debug(`[shutdown] aborting task_id=${formatSessionID(task.sessionID, true)}`)
+    debugLog.debug({ task_id: formatSessionID(task.sessionID, true) }, "[shutdown] Aborting task")
     releaseConcurrencySlot(task)
     await abortSessionFn(task.sessionID)
     // Shutdown sets idle status to mark task as stopped

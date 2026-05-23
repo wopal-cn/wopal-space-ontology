@@ -1,9 +1,10 @@
 /**
  * Task Phase Helpers
  *
- * Four-state model: running | idle | waiting | stuck
+ * State model: running | idle | waiting | stuck | error
  * - running: the only active state (task is executing)
- * - idle/waiting/stuck: inactive states, all resumable and deletable
+ * - idle/waiting/stuck: inactive states, resumable and deletable
+ * - error: inactive state, deletable but not resumable
  */
 
 import type { WopalTask } from "../types.js"
@@ -42,8 +43,8 @@ export function getDisplayStatus(task: WopalTask): string {
 
 /**
  * Check if task can be deleted by parent session.
- * Deletable: idle, waiting, stuck.
+ * Deletable: idle, waiting, stuck, error.
  */
 export function canDeleteTask(task: WopalTask): boolean {
-  return task.status === "idle" || task.status === "waiting" || task.status === "stuck"
+  return task.status === "idle" || task.status === "waiting" || task.status === "stuck" || task.status === "error"
 }

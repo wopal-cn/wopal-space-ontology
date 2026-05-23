@@ -1,4 +1,12 @@
-export type WopalTaskStatus = 'running' | 'idle' | 'waiting' | 'stuck'
+export type WopalTaskStatus = 'running' | 'idle' | 'waiting' | 'stuck' | 'error'
+
+export type TaskStopSuppressionReason = 'abort' | 'interrupt'
+
+export interface TaskStopSuppression {
+  id: number
+  reason: TaskStopSuppressionReason
+  requestedAt: number
+}
 
 export type ErrorCategory = 'timeout' | 'crash' | 'network' | 'cancelled' | 'unknown'
 
@@ -46,6 +54,7 @@ export interface WopalTask {
   providerID?: string
   modelID?: string
   contextLimit?: number
+  stopNotificationSuppressions?: TaskStopSuppression[]
   lastTokens?: {
     input: number
     output: number

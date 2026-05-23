@@ -11,18 +11,28 @@
 import type { WopalTask, OpenCodeClient, SessionMessage } from "../types.js"
 import type { LoggerInstance } from "../logger.js"
 import { formatSessionID } from "../logger.js"
-import { extractMessages, getLastAssistantMessage, extractAssistantText } from "./session-messages.js"
+import { extractMessages, getLastAssistantMessage, extractAssistantText, hasAssistantExecutionPart } from "./session-messages.js"
 
 export interface ClassifyTaskStopDeps {
   task: WopalTask
   client: OpenCodeClient
   debugLog: LoggerInstance
+  errorText?: string | undefined
 }
 
 export interface ClassifyResult {
-  status: "idle" | "stuck" | WopalTask["status"]
+  status: "idle" | "stuck" | "error" | WopalTask["status"]
   lastAssistantMessage?: string | undefined
   statusChanged: boolean
+}
+
+function hasExecutionEvidence(task: WopalTask, messages: SessionMessage[]): boolean {
+  return Boolean(
+    task.lastAssistantMessage ||
+    task.progress?.lastMeaningfulActivity ||
+    (task.progress?.toolCalls ?? 0) > 0 ||
+    hasAssistantExecutionPart(messages),
+  )
 }
 
 /**
@@ -38,19 +48,16 @@ export interface ClassifyResult {
  * Skips classification for tasks not in running/waiting state.
  */
 export async function classifyTaskStop(deps: ClassifyTaskStopDeps): Promise<ClassifyResult> {
-  const { task, client, debugLog } = deps
+  const { task, client, debugLog, errorText } = deps
   const taskId = formatSessionID(task.sessionID, true)
   const originalStatus = task.status
 
   // Only classify running or waiting tasks
   if (task.status !== "running" && task.status !== "waiting") {
-    debugLog.debug(`[classifyTaskStop] skipped: ${taskId} status=${task.status}`)
+    debugLog.trace(`[classifyTaskStop] skipped: ${taskId} status=${task.status}`)
     return { status: task.status, lastAssistantMessage: task.lastAssistantMessage, statusChanged: false }
   }
 
-  // Synchronously mark as stuck to prevent concurrent event handlers
-  // from entering classification for the same task. The final status
-  // will be determined after fetching messages below.
   task.status = "stuck"
 
   // Fetch session messages
@@ -61,7 +68,7 @@ export async function classifyTaskStop(deps: ClassifyTaskStopDeps): Promise<Clas
       messages = extractMessages(messagesResult)
     }
   } catch (err) {
-    debugLog.debug(`[classifyTaskStop] messages fetch failed: ${taskId} err=${err instanceof Error ? err.message : String(err)}`)
+    debugLog.trace(`[classifyTaskStop] messages fetch failed: ${taskId} err=${err instanceof Error ? err.message : String(err)}`)
   }
 
   // Find latest non-synthetic assistant text
@@ -70,24 +77,38 @@ export async function classifyTaskStop(deps: ClassifyTaskStopDeps): Promise<Clas
     ? extractAssistantText(latestAssistantMsg)
     : ""
 
-  // Classify: new text → idle; no text or unchanged → stuck
+  // Classify: new text → idle; assistant execution evidence without new text → stuck; no evidence → error
   const hasNewText = latestText.length > 0 && latestText !== task.lastAssistantMessage
+  const hasEvidence = hasExecutionEvidence(task, messages)
 
   if (hasNewText) {
     task.lastAssistantMessage = latestText
     task.status = "idle"
+    delete task.error
     // Clear pendingQuestionID if transitioning from waiting
     if (task.pendingQuestionID) {
       delete task.pendingQuestionID
     }
-    debugLog.debug(`[classifyTaskStop] idle: ${taskId} text_len=${latestText.length}`)
-  } else {
+    debugLog.trace(`[classifyTaskStop] idle: ${taskId} text_len=${latestText.length}`)
+  } else if (hasEvidence) {
     task.status = "stuck"
+    if (errorText) {
+      task.error = errorText
+    } else {
+      delete task.error
+    }
     // Clear pendingQuestionID if transitioning from waiting
     if (task.pendingQuestionID) {
       delete task.pendingQuestionID
     }
-    debugLog.debug(`[classifyTaskStop] stuck: ${taskId} reason=${latestText.length === 0 ? "no_text" : "text_unchanged"}`)
+    debugLog.trace(`[classifyTaskStop] stuck: ${taskId} reason=${latestText.length === 0 ? "no_text" : "text_unchanged"}`)
+  } else {
+    task.status = "error"
+    task.error = errorText ?? "Task stopped before producing assistant activity"
+    if (task.pendingQuestionID) {
+      delete task.pendingQuestionID
+    }
+    debugLog.trace(`[classifyTaskStop] error: ${taskId} reason=no_assistant_activity`)
   }
 
   return { status: task.status, lastAssistantMessage: task.lastAssistantMessage, statusChanged: task.status !== originalStatus }

@@ -30,7 +30,7 @@ function createMockTaskManager(
     ),
     getClient: vi.fn(() => mockClient),
     releaseConcurrencySlot: vi.fn(),
-    reacquireSlotOnWakeUp: vi.fn(),
+    reacquireSlotOnWakeUp: vi.fn(() => true),
     finishTask: vi.fn(async (taskId: string, parentSessionID: string) => {
       const t = task && task.id === taskId && task.parentSessionID === parentSessionID ? task : undefined
       if (!t) {
@@ -58,7 +58,7 @@ function createMockTaskManager(
   }
 }
 
-describe("four-state task boundary tests", () => {
+describe("task status boundary tests", () => {
   const parentSessionID = "parent-session-123"
 
   // Helper to create tasks with specific status
@@ -134,6 +134,20 @@ describe("four-state task boundary tests", () => {
       expect(result).toContain("Failed to abort task")
       expect(result).toContain("abort only works on running tasks")
     })
+
+    it("rejects error task (abort only works on running)", async () => {
+      const errorTask = createTaskWithStatus("error")
+      const mockManager = createMockTaskManager(errorTask)
+      const execute = getExecute(createWopalTaskAbortTool(mockManager as never))
+
+      const result = await execute(
+        { task_id: errorTask.id },
+        { sessionID: parentSessionID },
+      )
+
+      expect(result).toContain("Failed to abort task")
+      expect(result).toContain("abort only works on running tasks")
+    })
   })
 
   describe("wopal_task_reply", () => {
@@ -192,6 +206,20 @@ describe("four-state task boundary tests", () => {
 
       // reply should succeed on stuck task
       expect(result).toContain("Reply sent to task")
+    })
+
+    it("rejects error task (error is not resumable)", async () => {
+      const errorTask = createTaskWithStatus("error")
+      const mockManager = createMockTaskManager(errorTask)
+      const execute = getExecute(createWopalReplyTool(mockManager as never))
+
+      const result = await execute(
+        { task_id: errorTask.id, message: "continue" },
+        { sessionID: parentSessionID },
+      )
+
+      expect(result).toContain("error state")
+      expect(result).toContain("cannot be resumed")
     })
 
     it("succeeds on running task with interrupt flag", async () => {
@@ -277,6 +305,19 @@ describe("four-state task boundary tests", () => {
 
       expect(result).toBe("Task finished successfully. Session deleted from OpenCode.")
     })
+
+    it("succeeds on error task (error is deletable)", async () => {
+      const errorTask = createTaskWithStatus("error")
+      const mockManager = createMockTaskManager(errorTask)
+      const execute = getExecute(createWopalTaskFinishTool(mockManager as never))
+
+      const result = await execute(
+        { task_id: errorTask.id },
+        { sessionID: parentSessionID },
+      )
+
+      expect(result).toBe("Task finished successfully. Session deleted from OpenCode.")
+    })
   })
 
   describe("isTaskActive function (running is the only active state)", () => {
@@ -297,6 +338,11 @@ describe("four-state task boundary tests", () => {
 
     it("returns false for stuck", () => {
       const task = createTaskWithStatus("stuck")
+      expect(isTaskActive(task)).toBe(false)
+    })
+
+    it("returns false for error", () => {
+      const task = createTaskWithStatus("error")
       expect(isTaskActive(task)).toBe(false)
     })
   })
@@ -321,9 +367,14 @@ describe("four-state task boundary tests", () => {
       const task = createTaskWithStatus("stuck")
       expect(isResumableTask(task)).toBe(true)
     })
+
+    it("returns false for error", () => {
+      const task = createTaskWithStatus("error")
+      expect(isResumableTask(task)).toBe(false)
+    })
   })
 
-  describe("canDeleteTask function (idle/waiting/stuck are deletable)", () => {
+  describe("canDeleteTask function (idle/waiting/stuck/error are deletable)", () => {
     it("returns false for running (active, cannot delete)", () => {
       const task = createTaskWithStatus("running")
       expect(canDeleteTask(task)).toBe(false)
@@ -341,6 +392,11 @@ describe("four-state task boundary tests", () => {
 
     it("returns true for stuck", () => {
       const task = createTaskWithStatus("stuck")
+      expect(canDeleteTask(task)).toBe(true)
+    })
+
+    it("returns true for error", () => {
+      const task = createTaskWithStatus("error")
       expect(canDeleteTask(task)).toBe(true)
     })
   })
@@ -379,6 +435,13 @@ describe("four-state task boundary tests", () => {
     it("running: canDeleteTask returns false (active states cannot be deleted)", () => {
       const task = createTaskWithStatus("running")
       expect(canDeleteTask(task)).toBe(false)
+    })
+
+    it("error: isTaskActive false, isResumableTask false, canDeleteTask true", () => {
+      const task = createTaskWithStatus("error")
+      expect(isTaskActive(task)).toBe(false)
+      expect(isResumableTask(task)).toBe(false)
+      expect(canDeleteTask(task)).toBe(true)
     })
   })
 })
