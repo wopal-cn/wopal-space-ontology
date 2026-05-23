@@ -15,31 +15,31 @@
                 "model": "wopal-ai/glm-5.1"
             },
             "compaction": {                
-                "model": "wopal-ai/qwen-3.6-plus"
+                "model": "github-copilot/gpt-5-mini"
             },
             "fae": {
               "model": "wopal-ai/glm-5.1"
             },
             "rook": {
               "model": "github-copilot/gpt-5.4"
-            },         
+            },
             "wsf-planner": {
               "model": "github-copilot/gpt-5.4"
             },
             "wsf-plan-checker": {
-              "model": "wopal-ai/glm-5"
+              "model": "github-copilot/gpt-5.4"
             },
             "wsf-executor": {
-              "model": "wopal-ai/glm-5"
+              "model": "wopal-ai/glm-5.1"
             },
             "wsf-code-reviewer": {
               "model": "github-copilot/gpt-5.4"
             },
             "wsf-code-fixer": {
-              "model": "wopal-ai/glm-5"
+              "model": "wopal-ai/glm-5.1"
             },
             "wsf-codebase-mapper": {
-              "model": "wopal-ai/qwen-3.6-plus"
+              "model": "wopal-ai/deepseek-v4-flash"
             }  
         },
         "instructions": [
