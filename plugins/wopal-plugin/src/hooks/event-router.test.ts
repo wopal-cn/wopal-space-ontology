@@ -24,7 +24,7 @@ const mockLoggers = {
 
 function createEventRouterWithTaskManager(taskManager: {
   markTaskCompletedBySession?: ReturnType<typeof vi.fn>
-  markTaskErrorBySession: ReturnType<typeof vi.fn>
+  markTaskIdleBySession: ReturnType<typeof vi.fn>
   notifyParent: ReturnType<typeof vi.fn>
   findBySession?: ReturnType<typeof vi.fn>
   getClient?: ReturnType<typeof vi.fn>
@@ -64,7 +64,90 @@ function createEventRouterWithTaskManager(taskManager: {
 }
 
 describe("OpenCodeRulesRuntime event handling", () => {
-  it("marks running task idle on session.idle and notifies parent", async () => {
+  it("marks running task idle on session.idle when new assistant text exists, and notifies parent", async () => {
+    const mockTask = { id: "task-1", sessionID: "child-1", status: "running" }
+
+    const sessionStore = new SessionStore({ max: 10 });
+    const ctx = {
+      client: {
+        session: {
+          messages: vi.fn().mockResolvedValue({ data: [
+            { info: { role: "assistant" }, parts: [{ type: "text", text: "Task output" }] },
+          ] }),
+          promptAsync: vi.fn().mockResolvedValue(undefined),
+        },
+      },
+      sessionStore,
+      taskLogger: createMockLogger(),
+      coreLogger: createMockLogger(),
+    contextLogger: createMockLogger(),
+      taskManager: {
+        findBySession: vi.fn().mockReturnValue(mockTask),
+        markTaskCompletedBySession: vi.fn(),
+        markTaskIdleBySession: vi.fn(),
+        notifyParent: vi.fn().mockResolvedValue(undefined),
+        releaseConcurrencySlot: vi.fn(),
+        recoverFromSession: vi.fn().mockResolvedValue(undefined),
+      } as never,
+    };
+    const hooks = createEventRouter(ctx as never);
+
+    await hooks.event({
+      event: { type: "session.idle", properties: { sessionID: "child-1" } },
+    })
+
+    expect(ctx.taskManager.findBySession).toHaveBeenCalledWith("child-1")
+    expect(mockTask.status).toBe("idle")
+    expect(ctx.taskManager.markTaskCompletedBySession).not.toHaveBeenCalled()
+    expect(ctx.taskManager.notifyParent).toHaveBeenCalledWith("task-1")
+  })
+
+  it("preserves waitingConcurrencyKey before releasing slot on session.idle", async () => {
+    const mockTask: { id: string; sessionID: string; status: string; concurrencyKey?: string; waitingConcurrencyKey?: string } = {
+      id: "task-1",
+      sessionID: "child-1",
+      status: "running",
+      concurrencyKey: "default",
+    }
+    const releaseConcurrencySlot = vi.fn((task: typeof mockTask) => {
+      task.concurrencyKey = undefined
+    })
+
+    const sessionStore = new SessionStore({ max: 10 })
+    const ctx = {
+      client: {
+        session: {
+          messages: vi.fn().mockResolvedValue({ data: [
+            { info: { role: "assistant" }, parts: [{ type: "text", text: "Task output" }] },
+          ] }),
+          promptAsync: vi.fn().mockResolvedValue(undefined),
+        },
+      },
+      sessionStore,
+      taskLogger: createMockLogger(),
+      coreLogger: createMockLogger(),
+      contextLogger: createMockLogger(),
+      taskManager: {
+        findBySession: vi.fn().mockReturnValue(mockTask),
+        markTaskCompletedBySession: vi.fn(),
+        markTaskIdleBySession: vi.fn(),
+        notifyParent: vi.fn().mockResolvedValue(undefined),
+        releaseConcurrencySlot,
+        recoverFromSession: vi.fn().mockResolvedValue(undefined),
+      } as never,
+    }
+    const hooks = createEventRouter(ctx as never)
+
+    await hooks.event({
+      event: { type: "session.idle", properties: { sessionID: "child-1" } },
+    })
+
+    expect(releaseConcurrencySlot).toHaveBeenCalledWith(mockTask)
+    expect(mockTask.waitingConcurrencyKey).toBe("default")
+    expect(mockTask.concurrencyKey).toBeUndefined()
+  })
+
+  it("marks running task error on session.idle when no assistant activity evidence exists, and notifies parent", async () => {
     const mockTask = { id: "task-1", sessionID: "child-1", status: "running" }
 
     const sessionStore = new SessionStore({ max: 10 });
@@ -78,11 +161,11 @@ describe("OpenCodeRulesRuntime event handling", () => {
       sessionStore,
       taskLogger: createMockLogger(),
       coreLogger: createMockLogger(),
-    contextLogger: createMockLogger(),
+      contextLogger: createMockLogger(),
       taskManager: {
         findBySession: vi.fn().mockReturnValue(mockTask),
         markTaskCompletedBySession: vi.fn(),
-        markTaskErrorBySession: vi.fn(),
+        markTaskIdleBySession: vi.fn(),
         notifyParent: vi.fn().mockResolvedValue(undefined),
         releaseConcurrencySlot: vi.fn(),
         recoverFromSession: vi.fn().mockResolvedValue(undefined),
@@ -95,14 +178,157 @@ describe("OpenCodeRulesRuntime event handling", () => {
     })
 
     expect(ctx.taskManager.findBySession).toHaveBeenCalledWith("child-1")
-    expect(mockTask.idleNotified).toBe(true)
-    expect(ctx.taskManager.markTaskCompletedBySession).not.toHaveBeenCalled()
+    expect(mockTask.status).toBe("error")
     expect(ctx.taskManager.notifyParent).toHaveBeenCalledWith("task-1")
+  })
+
+  it("marks running task stuck on session.idle when assistant tool activity exists but no text", async () => {
+    const mockTask = { id: "task-1", sessionID: "child-1", status: "running" }
+
+    const sessionStore = new SessionStore({ max: 10 });
+    const ctx = {
+      client: {
+        session: {
+          messages: vi.fn().mockResolvedValue({ data: [
+            { info: { role: "assistant" }, parts: [{ type: "tool", tool: "bash" }] },
+          ] }),
+          promptAsync: vi.fn().mockResolvedValue(undefined),
+        },
+      },
+      sessionStore,
+      taskLogger: createMockLogger(),
+      coreLogger: createMockLogger(),
+      contextLogger: createMockLogger(),
+      taskManager: {
+        findBySession: vi.fn().mockReturnValue(mockTask),
+        markTaskCompletedBySession: vi.fn(),
+        markTaskIdleBySession: vi.fn(),
+        notifyParent: vi.fn().mockResolvedValue(undefined),
+        releaseConcurrencySlot: vi.fn(),
+        recoverFromSession: vi.fn().mockResolvedValue(undefined),
+      } as never,
+    };
+    const hooks = createEventRouter(ctx as never);
+
+    await hooks.event({
+      event: { type: "session.idle", properties: { sessionID: "child-1" } },
+    })
+
+    expect(mockTask.status).toBe("stuck")
+    expect(ctx.taskManager.notifyParent).toHaveBeenCalledWith("task-1")
+  })
+
+  it("suppresses one controlled stop idle notification for a running task", async () => {
+    const mockTask = {
+      id: "task-1",
+      sessionID: "child-1",
+      status: "running",
+      stopNotificationSuppressions: [{ id: 1, reason: "abort", requestedAt: Date.now() }],
+    }
+    const mockMessages = vi.fn().mockResolvedValue({ data: [] })
+    const mockNotifyParent = vi.fn().mockResolvedValue(undefined)
+
+    const sessionStore = new SessionStore({ max: 10 })
+    const ctx = {
+      client: {
+        session: {
+          messages: mockMessages,
+          promptAsync: vi.fn().mockResolvedValue(undefined),
+        },
+      },
+      sessionStore,
+      taskLogger: createMockLogger(),
+      coreLogger: createMockLogger(),
+      contextLogger: createMockLogger(),
+      taskManager: {
+        findBySession: vi.fn().mockReturnValue(mockTask),
+        markTaskCompletedBySession: vi.fn(),
+        markTaskIdleBySession: vi.fn(),
+        notifyParent: mockNotifyParent,
+        releaseConcurrencySlot: vi.fn(),
+        recoverFromSession: vi.fn().mockResolvedValue(undefined),
+      } as never,
+    }
+    const hooks = createEventRouter(ctx as never)
+
+    await hooks.event({
+      event: { type: "session.idle", properties: { sessionID: "child-1" } },
+    })
+
+    expect(mockTask.status).toBe("running")
+    expect(mockTask.stopNotificationSuppressions).toBeUndefined()
+    expect(mockMessages).not.toHaveBeenCalled()
+    expect(mockNotifyParent).not.toHaveBeenCalled()
+  })
+
+  it("consumes controlled stop suppression even when task is already idle", async () => {
+    const mockTask = {
+      id: "task-1",
+      sessionID: "child-1",
+      status: "idle",
+      stopNotificationSuppressions: [{ id: 1, reason: "interrupt", requestedAt: Date.now() }],
+    }
+    const { hooks, taskManager } = createEventRouterWithTaskManager({
+      findBySession: vi.fn().mockReturnValue(mockTask),
+      markTaskIdleBySession: vi.fn(),
+      notifyParent: vi.fn().mockResolvedValue(undefined),
+    })
+
+    await hooks.event({
+      event: { type: "session.idle", properties: { sessionID: "child-1" } },
+    })
+
+    expect(mockTask.stopNotificationSuppressions).toBeUndefined()
+    expect(taskManager.notifyParent).not.toHaveBeenCalled()
+  })
+
+  it("does not leak controlled stop suppression between task sessions", async () => {
+    const suppressedTask = {
+      id: "task-1",
+      sessionID: "child-1",
+      status: "running",
+      stopNotificationSuppressions: [{ id: 1, reason: "abort", requestedAt: Date.now() }],
+    }
+    const normalTask = { id: "task-2", sessionID: "child-2", status: "running" }
+    const mockNotifyParent = vi.fn().mockResolvedValue(undefined)
+
+    const sessionStore = new SessionStore({ max: 10 })
+    const ctx = {
+      client: {
+        session: {
+          messages: vi.fn().mockResolvedValue({ data: [
+            { info: { role: "assistant" }, parts: [{ type: "text", text: "done" }] },
+          ] }),
+          promptAsync: vi.fn().mockResolvedValue(undefined),
+        },
+      },
+      sessionStore,
+      taskLogger: createMockLogger(),
+      coreLogger: createMockLogger(),
+      contextLogger: createMockLogger(),
+      taskManager: {
+        findBySession: vi.fn((sessionID: string) => sessionID === "child-1" ? suppressedTask : normalTask),
+        markTaskCompletedBySession: vi.fn(),
+        markTaskIdleBySession: vi.fn(),
+        notifyParent: mockNotifyParent,
+        releaseConcurrencySlot: vi.fn(),
+        recoverFromSession: vi.fn().mockResolvedValue(undefined),
+      } as never,
+    }
+    const hooks = createEventRouter(ctx as never)
+
+    await hooks.event({
+      event: { type: "session.idle", properties: { sessionID: "child-2" } },
+    })
+
+    expect(normalTask.status).toBe("idle")
+    expect(mockNotifyParent).toHaveBeenCalledWith("task-2")
+    expect(suppressedTask.stopNotificationSuppressions).toHaveLength(1)
   })
 
   it("filters MessageAbortedError and does not mark task as error", async () => {
     const { hooks, taskManager } = createEventRouterWithTaskManager({
-      markTaskErrorBySession: vi.fn(),
+      markTaskIdleBySession: vi.fn(),
       notifyParent: vi.fn().mockResolvedValue(undefined),
     })
 
@@ -117,15 +343,38 @@ describe("OpenCodeRulesRuntime event handling", () => {
     })
 
     // MessageAbortedError should be filtered, no error marking
-    expect(taskManager.markTaskErrorBySession).not.toHaveBeenCalled()
+    expect(taskManager.markTaskIdleBySession).not.toHaveBeenCalled()
     expect(taskManager.notifyParent).not.toHaveBeenCalled()
   })
 
-  it("marks running task errored on session.error and notifies parent", async () => {
-    const { hooks, taskManager } = createEventRouterWithTaskManager({
-      markTaskErrorBySession: vi.fn().mockReturnValue({ id: "task-1" }),
-      notifyParent: vi.fn().mockResolvedValue(undefined),
-    })
+  it("classifies running task on session.error via stop classifier and notifies parent", async () => {
+    const mockTask = { id: "task-1", sessionID: "child-1", status: "running", concurrencyKey: "default" }
+    const mockMessages = vi.fn().mockResolvedValue({ data: [] })
+    const mockNotifyParent = vi.fn().mockResolvedValue(undefined)
+    const mockReleaseSlot = vi.fn()
+
+    const sessionStore = new SessionStore({ max: 10 })
+    const ctx = {
+      client: {
+        session: {
+          messages: mockMessages,
+          promptAsync: vi.fn().mockResolvedValue(undefined),
+        },
+      },
+      sessionStore,
+      taskLogger: createMockLogger(),
+      coreLogger: createMockLogger(),
+      contextLogger: createMockLogger(),
+      taskManager: {
+        findBySession: vi.fn().mockReturnValue(mockTask),
+        markTaskCompletedBySession: vi.fn(),
+        markTaskIdleBySession: vi.fn(),
+        notifyParent: mockNotifyParent,
+        releaseConcurrencySlot: mockReleaseSlot,
+        recoverFromSession: vi.fn().mockResolvedValue(undefined),
+      } as never,
+    }
+    const hooks = createEventRouter(ctx as never)
 
     await hooks.event({
       event: {
@@ -134,18 +383,17 @@ describe("OpenCodeRulesRuntime event handling", () => {
       },
     })
 
-    expect(taskManager.markTaskErrorBySession).toHaveBeenCalledWith(
-      "child-1",
-      JSON.stringify({ code: "boom" }),
-    )
-    expect(taskManager.notifyParent).toHaveBeenCalledWith("task-1")
+    // Classifier called with empty messages and no activity evidence → error
+    expect(mockTask.status).toBe("error")
+    expect(mockReleaseSlot).toHaveBeenCalled()
+    expect(mockNotifyParent).toHaveBeenCalledWith("task-1")
   })
 
   it("does not process idle event for non-wopal_task session", async () => {
     // findBySession returns undefined means this is not a wopal_task child session
     const { hooks, taskManager } = createEventRouterWithTaskManager({
       findBySession: vi.fn().mockReturnValue(undefined),
-      markTaskErrorBySession: vi.fn(),
+      markTaskIdleBySession: vi.fn(),
       notifyParent: vi.fn().mockResolvedValue(undefined),
     })
 
@@ -163,7 +411,7 @@ describe("OpenCodeRulesRuntime event handling", () => {
     const completedTask = { id: "task-1", sessionID: "child-1", status: "completed" }
     const { hooks, taskManager } = createEventRouterWithTaskManager({
       findBySession: vi.fn().mockReturnValue(completedTask),
-      markTaskErrorBySession: vi.fn(),
+      markTaskIdleBySession: vi.fn(),
       notifyParent: vi.fn().mockResolvedValue(undefined),
     })
 
@@ -176,7 +424,7 @@ describe("OpenCodeRulesRuntime event handling", () => {
 
   it("does not notify when error event arrives after task already finalized", async () => {
     const { hooks, taskManager } = createEventRouterWithTaskManager({
-      markTaskErrorBySession: vi.fn().mockReturnValue(undefined),
+      markTaskIdleBySession: vi.fn().mockReturnValue(undefined),
       notifyParent: vi.fn().mockResolvedValue(undefined),
     })
 
@@ -215,7 +463,7 @@ describe("OpenCodeRulesRuntime event handling", () => {
             },
           }),
           markTaskCompletedBySession: vi.fn(),
-          markTaskErrorBySession: vi.fn(),
+          markTaskIdleBySession: vi.fn(),
           notifyParent: vi.fn(),
           releaseConcurrencySlot: vi.fn(),
           recoverFromSession: vi.fn().mockResolvedValue(undefined),
@@ -291,7 +539,7 @@ describe("OpenCodeRulesRuntime event handling", () => {
             },
           }),
           markTaskCompletedBySession: vi.fn(),
-          markTaskErrorBySession: vi.fn(),
+          markTaskIdleBySession: vi.fn(),
           notifyParent: vi.fn(),
           releaseConcurrencySlot: vi.fn(),
           recoverFromSession: vi.fn().mockResolvedValue(undefined),
@@ -354,7 +602,7 @@ describe("OpenCodeRulesRuntime event handling", () => {
             },
           }),
           markTaskCompletedBySession: vi.fn(),
-          markTaskErrorBySession: vi.fn(),
+          markTaskIdleBySession: vi.fn(),
           notifyParent: vi.fn(),
           releaseConcurrencySlot: vi.fn(),
           recoverFromSession: vi.fn().mockResolvedValue(undefined),
@@ -401,7 +649,7 @@ describe("OpenCodeRulesRuntime event handling", () => {
             },
           }),
           markTaskCompletedBySession: vi.fn(),
-          markTaskErrorBySession: vi.fn(),
+          markTaskIdleBySession: vi.fn(),
           notifyParent: vi.fn(),
           releaseConcurrencySlot: vi.fn(),
           recoverFromSession: vi.fn().mockResolvedValue(undefined),
@@ -668,7 +916,6 @@ describe("OpenCodeRulesRuntime event handling", () => {
       // Should set task to waiting status
       expect(mockTask.status).toBe("waiting")
       expect(mockTask.pendingQuestionID).toBe("q-123")
-      expect(mockTask.waitingReason).toBe("question_tool")
 
       // Should notify parent session
       expect(mockPromptAsync).toHaveBeenCalledWith({

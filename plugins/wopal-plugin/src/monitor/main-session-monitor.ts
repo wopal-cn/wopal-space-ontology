@@ -10,7 +10,7 @@ import type { SessionStore } from "../session-store.js"
 import type { OpenCodeClient } from "../types.js"
 import type { TaskSessionInspector } from "../session-runtime-info.js"
 import type { LoggerInstance } from "../logger.js"
-import { fetchContextPercent } from "../session-runtime-info.js"
+import { extractContextFromStore, fetchContextPercent } from "../session-runtime-info.js"
 import { formatSessionID } from "../logger.js"
 
 /** Context usage percentage threshold to trigger warning */
@@ -28,8 +28,9 @@ export interface MainSessionMonitorArgs {
  * Create a MainSessionMonitorStrategy for registration with MonitorEngine.
  *
  * On each tick, scans all sessions in SessionStore:
- * - Skips task sessions, compacting sessions
- * - Calls fetchContextPercent() for each main session
+ * - Skips task sessions
+ * - Reports compacting sessions from cached sessionStore context only
+ * - Calls fetchContextPercent() for each non-compacting main session
  * - If pct >= threshold, queues a pending context warning via SessionStore
  * - Does NOT call promptAsync
  */
@@ -51,8 +52,25 @@ export function createMainSessionMonitorStrategy(
           const state = args.sessionStore.get(sessionID)
           if (!state) continue
 
-          // Skip compacting sessions
-          if (state.isCompacting) continue
+          const sessionLabel = formatSessionID(sessionID, false)
+          const title = state.title ?? ''
+          const titleText = title ? `"${title}" ` : ''
+
+          if (state.isCompacting) {
+            const cachedCtx = extractContextFromStore(
+              args.sessionStore,
+              sessionID,
+              [],
+              args.logger,
+              args.taskManager,
+            )
+            const ctxText = cachedCtx ? `${cachedCtx.pct}%` : '—'
+            sessions.push({
+              kind: "main",
+              text: `${sessionLabel} ${titleText}ctx:${ctxText} [compacting]`,
+            })
+            continue
+          }
 
           // Fetch context usage
           const ctxInfo = await fetchContextPercent(
@@ -64,14 +82,10 @@ export function createMainSessionMonitorStrategy(
             args.taskManager,
           )
 
-          const sessionLabel = formatSessionID(sessionID, false)
-          const title = state.title ?? ''
-          const titleText = title ? `"${title}" ` : ''
-
           if (!ctxInfo) {
             sessions.push({
               kind: "main",
-              text: `${sessionLabel} [main] ${titleText}ctx:—`,
+              text: `${sessionLabel} ${titleText}ctx:—`,
             })
             continue
           }
@@ -79,7 +93,7 @@ export function createMainSessionMonitorStrategy(
           const warnMark = ctxInfo.pct >= MAIN_SESSION_CONTEXT_WARNING_THRESHOLD_PCT ? ' ⚠️' : ''
           sessions.push({
             kind: "main",
-            text: `${sessionLabel} [main] ${titleText}ctx:${ctxInfo.pct}%${warnMark}`,
+            text: `${sessionLabel} ${titleText}ctx:${ctxInfo.pct}%${warnMark}`,
           })
 
           if (ctxInfo.pct >= MAIN_SESSION_CONTEXT_WARNING_THRESHOLD_PCT) {

@@ -132,10 +132,11 @@ memoryLogger.debug({ enriched_query: query, token_count: 42 }, "Memory retrieval
 ### tasks
 
 `SimpleTaskManager` 是唯一的公共入口。内部模块各司其职：
-- 生命周期：`task-lifecycle.ts`（failTask, abortSession, cleanup）
+- 生命周期：`task-lifecycle.ts`（setIdleStatus, abortSession, interruptTask, shutdown）
 - 启动：`task-launcher.ts`
 - 监控：`task-monitor.ts` + `progress.ts`
-- 诊断：`idle-diagnostic.ts` + `loop-detector.ts` + `error-classifier.ts`
+- 停止分类：`task-stop-classifier.ts`
+- 诊断：`idle-diagnostic.ts` + `loop-detector.ts`
 - 并发：`concurrency-manager.ts`
 
 `SimpleTaskManager` **禁止拥有 tick loop**（`setInterval` / 递归 `setTimeout`）。所有周期性监控必须通过注册 `MonitorStrategy` 到 `MonitorEngine` 实现。
@@ -235,11 +236,11 @@ memoryLogger.debug({ enriched_query: query, token_count: 42 }, "Memory retrieval
 所有异步操作（网络、文件 I/O、LanceDB 操作）**必须 try/catch**。catch 块中：
 - 用模块 logger 的 `error` 级别记录错误（必须携带 `{ err: error }`，禁止吞异常）
 - 返回安全的降级值或 `null`/`undefined`，不要让未捕获的 Promise rejection 上泡到 EllaMaka 运行时
-- 错误分类走 `tasks/error-classifier.ts`，不要在调用方临时 `String(e)`
+- 错误分类走 `tasks/task-stop-classifier.ts`：有新 assistant text → `idle`；无新 text 但已有 assistant 执行证据 → `stuck`；未进入 assistant 执行链即失败 → `error`
 
 ### 任务模块
 
-- 子会话异常 → `failTask()` 标记 `error` 状态 + `errorCategory`，不要静默忽略
+- 子会话异常 → 停止分类器判断 `idle`（有新 assistant text）、`stuck`（有 assistant 执行证据但无新 text）或 `error`（未进入可恢复执行链），不要静默忽略
 - 权限请求超时 → `permission-proxy.ts` 自动 `once` 授权，不要让子会话永久阻塞
 - 进程清理 → `process-cleanup.ts` 注册 handler，保证僵尸进程不残留
 

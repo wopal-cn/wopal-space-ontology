@@ -191,6 +191,26 @@ describe('extractContextFromStore', () => {
     { id: 'anthropic', models: { 'claude-3': { limit: { context: 200000 } } } },
   ]
 
+  it('extracts context from cached contextLimit without provider lookup', () => {
+    const sessionStore = new SessionStore({ max: 10 })
+    sessionStore.upsert('ses_cached_limit', (state) => {
+      state.lastTokens = {
+        input: 50000,
+        cache: { read: 10000 },
+        updatedAt: Date.now(),
+      }
+      state.contextLimit = 100000
+    })
+
+    const result = extractContextFromStore(sessionStore, 'ses_cached_limit')
+
+    expect(result).toEqual({
+      pct: 60,
+      used: 60000,
+      contextLimit: 100000,
+    })
+  })
+
   it('extracts context from sessionStore cache', () => {
     const sessionStore = new SessionStore({ max: 10 })
     sessionStore.upsert('ses_1', (state) => {
@@ -242,6 +262,7 @@ describe('fetchContextPercent', () => {
       }
       state.providerID = 'anthropic'
       state.modelID = 'claude-3'
+      state.contextLimit = 200000
     })
 
     const mockClient: OpenCodeClient = {
@@ -264,6 +285,7 @@ describe('fetchContextPercent', () => {
     )
 
     expect(result?.pct).toBe(10) // 20000 / 200000 * 100
+    expect(mockClient.config?.providers).not.toHaveBeenCalled()
     expect(mockClient.session?.messages).toBeUndefined() // Should not call messages API
   })
 

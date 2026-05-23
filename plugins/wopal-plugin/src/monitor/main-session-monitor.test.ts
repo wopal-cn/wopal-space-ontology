@@ -177,7 +177,7 @@ describe("createMainSessionMonitorStrategy", () => {
     expect(queueContextWarning).not.toHaveBeenCalled()
   })
 
-  it("skips compacting sessions", async () => {
+  it("reports compacting sessions from cached context without queueing warnings", async () => {
     const { store, queueContextWarning } = createMockSessionStore({
       ids: ["ses_main_1"],
       states: {
@@ -188,22 +188,31 @@ describe("createMainSessionMonitorStrategy", () => {
           recentMessages: [],
           loadedSkills: new Set(),
           isCompacting: true,
+          title: "Compacting session",
+          contextLimit: 100_000,
+          lastTokens: { input: 8_000, output: 100, updatedAt: Date.now() },
         },
       },
     })
 
     const taskManager = { isTaskSession: vi.fn().mockReturnValue(false) }
+    const client = createMockClient(80)
 
     const strategy = createMainSessionMonitorStrategy({
       sessionStore: store,
-      client: createMockClient(80),
+      client,
       directory: "/test",
       taskManager: taskManager as unknown as { isTaskSession: (id: string) => boolean },
       logger,
     })
 
-    await strategy.tick()
+    const result = await strategy.tick()
 
+    expect(result.sessions).toHaveLength(1)
+    expect(result.sessions?.[0].text).toContain("Compacting session")
+    expect(result.sessions?.[0].text).toContain("ctx:8% [compacting]")
+    expect(client.config?.providers).not.toHaveBeenCalled()
+    expect(client.session?.messages).not.toHaveBeenCalled()
     expect(queueContextWarning).not.toHaveBeenCalled()
   })
 
@@ -326,7 +335,6 @@ describe("createMainSessionMonitorStrategy", () => {
 
     expect(result.sessions).toHaveLength(1)
     expect(result.sessions?.[0]).toMatchObject({ kind: "main" })
-    expect(result.sessions?.[0].text).toContain("[main]")
     expect(result.sessions?.[0].text).toContain(longTitle)
   })
 

@@ -120,7 +120,7 @@ export async function fetchSessionModelInfo(
  */
 export function extractContextUsage(
   messages: SessionMessage[],
-  providers: ProviderModelConfig["providers"],
+  providers: ProviderModelConfig["providers"] = [],
   debugLog?: LoggerInstance,
 ): ContextUsageInfo | null {
   const lastAssistant = [...messages].reverse().find((m) =>
@@ -168,7 +168,7 @@ export function extractContextUsage(
 export function extractContextFromStore(
   sessionStore: SessionStore,
   sessionID: string,
-  providers: ProviderModelConfig["providers"],
+  providers: ProviderModelConfig["providers"] = [],
   debugLog?: LoggerInstance,
   taskManager?: TaskSessionInspector,
 ): ContextUsageInfo | null {
@@ -181,18 +181,24 @@ export function extractContextFromStore(
     return null
   }
 
+  const used = (tokens.input ?? 0) + (tokens.cache?.read ?? 0)
+
+  if (used === 0) {
+    debugLog?.trace(`[ctxFromStore] ${formatSessionID(sessionID, isTask)} used=0`)
+    return null
+  }
+
+  if (state.contextLimit && state.contextLimit > 0) {
+    const pct = Math.round((used / state.contextLimit) * 100)
+    debugLog?.trace(`[ctxFromStore] ${formatSessionID(sessionID, isTask)} ${used}/${state.contextLimit} = ${pct}%`)
+    return { pct, used, contextLimit: state.contextLimit }
+  }
+
   const providerID = state.providerID
   const modelID = state.modelID
 
   if (!providerID || !modelID) {
     debugLog?.trace(`[ctxFromStore] ${formatSessionID(sessionID, isTask)} missing provider/model info`)
-    return null
-  }
-
-  const used = (tokens.input ?? 0) + (tokens.cache?.read ?? 0)
-
-  if (used === 0) {
-    debugLog?.trace(`[ctxFromStore] ${formatSessionID(sessionID, isTask)} used=0`)
     return null
   }
 
@@ -211,8 +217,9 @@ export function extractContextFromStore(
 
 /**
  * Fetch context usage percentage with cache-first strategy.
- * 1. Try sessionStore.lastTokens (captured from step-finish event)
- * 2. Fallback to messages API (may return 0 during streaming)
+ * 1. Try sessionStore.lastTokens + contextLimit (captured from step-finish event)
+ * 2. Try sessionStore.lastTokens + provider config lookup
+ * 3. Fallback to messages API (may return 0 during streaming)
  */
 export async function fetchContextPercent(
   client: OpenCodeClient,
@@ -226,7 +233,14 @@ export async function fetchContextPercent(
   const ctxLog = (msg: string) => debugLog?.trace(`[ctxUsage] ${formatSessionID(sessionID, isTask)} ${msg}`)
 
   try {
-    // Get providers config (needed for contextLimit lookup)
+    // Fast path: complete cached state needs no provider/messages API.
+    const cached = extractContextFromStore(sessionStore, sessionID, [], debugLog, taskManager)
+    if (cached) {
+      ctxLog(`from store: ${cached.pct}%`)
+      return cached
+    }
+
+    // Get providers config only when cached contextLimit is unavailable.
     const configResult = await fetchProvidersConfig(client.config, directory, debugLog)
     if (!configResult) {
       ctxLog("no providers config")

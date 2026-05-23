@@ -122,7 +122,7 @@ export async function sendNotification(
     })
     return true
   } catch (err: unknown) {
-    debugLog.debug(`[sendNotification] error: ${toErrorMessage(err)}`)
+    debugLog.debug({ err: toErrorMessage(err) }, "[sendNotification] Failed")
     return false
   }
 }
@@ -135,14 +135,14 @@ export async function notifyParent(
 
   const { client, debugLog } = deps
 
-  const statusText = task.idleNotified ? 'IDLE' : task.status.toUpperCase()
+  const statusText = task.status === 'error' ? 'ERR' : task.status.toUpperCase()
 
-  // Error notifications remain concise (no enrichment)
+  // Stuck notifications: concise, no enrichment
   const errorLine = task.error ? `\n**Error:** ${task.error}` : ''
 
   // For IDLE notifications, return full assistant output to avoid re-query
   let resultBlock = ''
-  if (task.idleNotified && !task.error) {
+  if (task.status === 'idle' && !task.error) {
     let messages: SessionMessage[] = []
     try {
       if (client.session?.messages) {
@@ -152,11 +152,6 @@ export async function notifyParent(
     } catch (err) {
       debugLog.debug(`[notifyParent] failed to fetch messages: ${toErrorMessage(err)}`)
     }
-
-    const toolSummary = extractToolCallSummary(messages)
-    const toolLine = toolSummary.total > 0
-      ? `\n**Tools:** ${formatToolCallSummary(toolSummary)}`
-      : ''
 
     const todoSummary = extractTodoSummary(messages)
     const todoSummaryStr = formatTodoSummary(todoSummary)
@@ -171,12 +166,19 @@ export async function notifyParent(
       ? `\n\n**Result:**\n${lastOutput}${truncated ? `\n\n[Output truncated to ${IDLE_OUTPUT_MAX_CHARS} chars. Call \`wopal_task_output(task_id="${task.id}")\` for full content.]` : ''}`
       : ''
 
-    resultBlock = `${toolLine}${todoLine}${outputLine}`
+    resultBlock = `${todoLine}${outputLine}`
   }
 
-  const footerLine = task.idleNotified && !task.error && !resultBlock.includes("wopal_task_output")
-    ? ''
-    : `\n\nUse \`wopal_task_output(task_id="${task.id}")\` to retrieve the result.`
+  let footerLine = ''
+  if (task.status === 'stuck') {
+    footerLine = `\n\nTask stopped after assistant activity, but no new assistant text was produced this round. Use \`wopal_task_output(task_id="${task.id}")\` to check content, \`wopal_task_reply(task_id="${task.id}")\` to continue, or \`wopal_task_finish(task_id="${task.id}")\` to clean up.`
+  } else if (task.status === 'error') {
+    footerLine = `\n\nTask failed before assistant activity was observed. This task cannot be resumed. Use \`wopal_task_output(task_id="${task.id}")\` to inspect details or \`wopal_task_finish(task_id="${task.id}")\` to clean up, then launch a new task with a valid configuration.`
+  } else if (task.status === 'idle' && !task.error && !resultBlock.includes("wopal_task_output")) {
+    footerLine = ''
+  } else {
+    footerLine = `\n\nUse \`wopal_task_output(task_id="${task.id}")\` to retrieve the result.`
+  }
 
   const notification = `<system-reminder>
 [WOPAL TASK ${statusText}]
@@ -187,31 +189,9 @@ export async function notifyParent(
 
   const success = await sendNotification(deps, task.parentSessionID, notification)
 
-  // Mirror to debug log
-  const status = task.idleNotified ? 'IDLE' : task.status
-  const debugSummary = `task_id=${formatSessionID(task.sessionID, true)} status=${status}`
-  debugLog.debug(`[notifyParent] ${success ? 'sent' : 'failed'}: ${debugSummary}`)
-}
-
-export async function notifyParentStuck(
-  deps: TaskNotifierDeps,
-  task: WopalTask,
-  durationText: string,
-): Promise<void> {
-  if (!task.sessionID) return
-
-  const { debugLog } = deps
-
-  const notification = `<system-reminder>
-[WOPAL TASK STUCK]
-**ID:** \`${task.id}\`
-**Agent:** ${task.agent}
-**Description:** ${task.description}
-**Duration:** No meaningful output for ${durationText}
-
-The background task may be stuck in a reasoning loop. Use \`wopal_task_output(task_id="${task.id}", section="reasoning")\` to check its thinking content. If it's truly stuck, use \`wopal_task_reply(task_id="${task.id}", interrupt=true, message="Stop current attempt and report status")\` to interrupt it.
-</system-reminder>`
-
-  const success = await sendNotification(deps, task.parentSessionID, notification)
-  debugLog.debug(`[notifyParentStuck] ${success ? 'sent' : 'failed'}: task_id=${formatSessionID(task.sessionID, true)} duration=${durationText}`)
+  if (success) {
+    debugLog.trace(`${formatSessionID(task.sessionID, true)} [${task.status.toUpperCase()}] notification sent`)
+  } else {
+    debugLog.warn(`${formatSessionID(task.sessionID, true)} [${task.status.toUpperCase()}] notification failed, parent session did not receive stop event`)
+  }
 }

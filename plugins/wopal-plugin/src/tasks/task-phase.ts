@@ -1,59 +1,50 @@
 /**
  * Task Phase Helpers
  *
- * Unified state determination for task lifecycle phases.
- * Eliminates scattered idleNotified / resumable / delete eligibility judgments.
+ * State model: running | idle | waiting | stuck | error
+ * - running: the only active state (task is executing)
+ * - idle/waiting/stuck: inactive states, resumable and deletable
+ * - error: inactive state, deletable but not resumable
  */
 
 import type { WopalTask } from "../types.js"
 
 /**
- * Check if task is in idle phase (running + idleNotified).
- * Idle tasks await Wopal judgment before proceeding.
+ * Check if task is in idle state.
+ * Idle: task stopped with new assistant text, awaiting Wopal judgment.
  */
 export function isIdleTask(task: WopalTask): boolean {
-  return task.status === "running" && task.idleNotified === true
+  return task.status === "idle"
+}
+
+/**
+ * Check if task is actively executing.
+ * Active: only running.
+ */
+export function isTaskActive(task: WopalTask): boolean {
+  return task.status === "running"
 }
 
 /**
  * Check if task can be resumed via wopal_task_reply.
- * Resumable: waiting, error, or running + idleNotified.
+ * Resumable: idle, waiting, stuck.
  */
 export function isResumableTask(task: WopalTask): boolean {
-  if (task.status === "waiting") return true
-  if (task.status === "error") return true
-  return isIdleTask(task)
+  return task.status === "idle" || task.status === "waiting" || task.status === "stuck"
 }
 
 /**
  * Get display-friendly status string.
- * - idleNotified running tasks show "idle"
- * - Other status values shown directly
+ * Returns task.status directly — no hidden phases.
  */
 export function getDisplayStatus(task: WopalTask): string {
-  if (isIdleTask(task)) {
-    return "idle"
-  }
   return task.status
 }
 
 /**
  * Check if task can be deleted by parent session.
- * Deletable: pending, idle, error, or waiting (not actively running).
+ * Deletable: idle, waiting, stuck, error.
  */
 export function canDeleteTask(task: WopalTask): boolean {
-  // Only actively running tasks (running without idleNotified) cannot be deleted
-  if (task.status === "running" && !task.idleNotified) {
-    return false
-  }
-  // All other states (pending, idle, error, waiting) are deletable
-  return true
-}
-
-/**
- * Check if task is actively executing (not waiting for external input).
- * Active: running without idleNotified.
- */
-export function isTaskActive(task: WopalTask): boolean {
-  return task.status === "running" && !task.idleNotified
+  return task.status === "idle" || task.status === "waiting" || task.status === "stuck" || task.status === "error"
 }

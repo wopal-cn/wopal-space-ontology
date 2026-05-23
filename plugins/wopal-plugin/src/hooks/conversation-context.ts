@@ -132,19 +132,15 @@ export function buildEnrichedQuery(
     ? `近期背景 (Session): ${sessCtx.summary.text}\n`
     : "";
 
+  let result: string
   if (conversation) {
-    const result = `当前意图: ${trimmed}\n---\n${summaryText}${conversation}`;
-    debugLog.debug(`[enrichedQuery]\n${result}`);
-    return result;
+    result = `当前意图: ${trimmed}\n---\n${summaryText}${conversation}`
+  } else if (summaryText) {
+    result = `当前意图: ${trimmed}\n---\n${summaryText}`
+  } else {
+    result = trimmed
   }
 
-  // No conversation found — use summary + raw query or just raw query
-  if (summaryText) {
-    const result = `当前意图: ${trimmed}\n---\n${summaryText}`;
-    debugLog.debug(`[enrichedQuery] (no conversation)\n${result}`);
-    return result;
-  }
-
-  debugLog.debug(`[enrichedQuery] (raw query only): ${trimmed}`);
-  return trimmed;
+  debugLog.debug(`[enrichedQuery]\n  ${result.replace(/\n/g, '\n  ')}`)
+  return result
 }

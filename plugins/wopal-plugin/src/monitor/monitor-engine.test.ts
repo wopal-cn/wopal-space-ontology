@@ -80,7 +80,7 @@ describe("MonitorEngine", () => {
       const mainStrategy: MonitorStrategy = {
         name: "main-session-monitor",
         tick: async () => ({
-          sessions: [{ kind: "main", text: "main-1(main) [main] \"Main\" ctx:4%" }],
+          sessions: [{ kind: "main", text: "main-1(main) \"Main\" ctx:4%" }],
         }),
       }
 
@@ -88,7 +88,7 @@ describe("MonitorEngine", () => {
       await engine.runOnceForTesting()
 
       expect(logger.debug).toHaveBeenCalledWith(
-        `[tick] 2 sessions:\n[0] main-1(main) [main] "Main" ctx:4%\n[1] task-1(task) [running] "Task" 1 msgs, 0m10s`,
+        `[tick] 2 sessions:\n  [0] main-1(main) "Main" ctx:4%\n  [1] task-1(task) [running] "Task" 1 msgs, 0m10s`,
       )
     })
   })

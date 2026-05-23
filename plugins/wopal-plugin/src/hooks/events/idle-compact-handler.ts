@@ -10,7 +10,8 @@ import type { SessionStore } from "../../session-store.js"
 import type { LoggerInstance } from "../../logger.js"
 import type { SimpleTaskManager } from "../../tasks/simple-task-manager.js"
 import { formatSessionID } from "../../logger.js"
-import { isTaskActive } from "../../tasks/task-phase.js"
+import { classifyTaskStop } from "../../tasks/task-stop-classifier.js"
+import { consumeStopNotificationSuppression } from "../../tasks/task-stop-suppression.js"
 
 export interface IdleCompactHandlerContext {
   client: OpenCodeClient
@@ -45,7 +46,7 @@ export async function handleSessionIdle(
     }
 
     ctx.sessionStore.markCompacting(sessionID, Date.now(), "plugin")
-    ctx.contextLogger.debug(`${formatSessionID(sessionID, false)} idle -> starting deferred main-session compact`)
+    ctx.contextLogger.debug(`${formatSessionID(sessionID, false)} idle -> starting deferred compact`)
 
     try {
       await ctx.client.session.summarize({
@@ -58,28 +59,43 @@ export async function handleSessionIdle(
         delete s.compactingSince
         delete s.compactingTrigger
       })
-      ctx.contextLogger.debug(`${formatSessionID(sessionID, false)} deferred compact failed: ${err instanceof Error ? err.message : String(err)}`)
+      ctx.contextLogger.debug({ session_id: formatSessionID(sessionID, false), err }, "Deferred compact failed")
     }
     return
   }
 
-  // Child session idle: notify parent
+  // Child session idle: classify stop and notify parent
   const task = ctx.taskManager?.findBySession(sessionID)
   if (!task) return
 
-  // Mark idle only for actively running tasks
-  if (isTaskActive(task)) {
-    task.idleNotified = true
+  // Controlled-stop tools pre-set status to idle before session.abort emits session.idle.
+  // Consume suppression before status gating so that exact controlled-stop event is swallowed once.
+  const suppression = consumeStopNotificationSuppression(task)
+  if (suppression) {
+    ctx.taskLogger.trace({ task_id: formatSessionID(task.sessionID, true), reason: suppression.reason }, "Suppressed controlled stop notification")
+    return
+  }
+
+  // Only classify running or waiting tasks
+  if (task.status === "running" || task.status === "waiting") {
+    const result = await classifyTaskStop({
+      task,
+      client: ctx.client,
+      debugLog: ctx.taskLogger,
+    })
+
+    if (!result.statusChanged) return
+
     // Release concurrency slot so new tasks can launch
     if (task.concurrencyKey && ctx.taskManager) {
-      ctx.taskManager.releaseConcurrencySlot(task)
       task.waitingConcurrencyKey = task.concurrencyKey
-      task.concurrencyKey = undefined
+      ctx.taskManager.releaseConcurrencySlot(task)
     }
-    ctx.taskLogger.debug(`task_id=${formatSessionID(task.sessionID, true)} idle`)
+
+    ctx.taskLogger.trace({ task_id: formatSessionID(task.sessionID, true), status: task.status }, "Task stop classified")
     if (ctx.taskManager) {
       ctx.taskManager.notifyParent(task.id).catch((err) => {
-        ctx.taskLogger.debug(`[notifyParent] error for task_id=${formatSessionID(task.sessionID, true)}: ${err instanceof Error ? err.message : String(err)}`)
+        ctx.taskLogger.debug({ task_id: formatSessionID(task.sessionID, true), err }, "[notifyParent] Failed")
       })
     }
   }
@@ -97,7 +113,7 @@ export async function handleSessionCompacted(
   ctx.sessionStore.markCompacted(sessionID)
   const compactedState = ctx.sessionStore.get(sessionID)
   const isTask = !!ctx.taskManager?.isTaskSession(sessionID)
-  ctx.contextLogger.debug(`${formatSessionID(sessionID, isTask)} compact completed (event-driven)`)
+  ctx.contextLogger.info({ session_id: formatSessionID(sessionID, isTask) }, "Compact completed")
 
   // Only handle Plugin-initiated compacts (skip EllaMaka auto-compact or manual /compact)
   const state = compactedState
@@ -127,7 +143,7 @@ export async function handleSessionCompacted(
       delete s.needsAutoContinue
       s.needsRecoveryInjection = true // Fallback: messages.transform will inject
     })
-    ctx.contextLogger.debug(`${formatSessionID(sessionID, !!task)} promptAsync failed, fallback to messages.transform injection`)
+    ctx.contextLogger.debug({ session_id: formatSessionID(sessionID, !!task) }, "promptAsync failed; falling back to messages.transform injection")
     return // Do not continue - needsRecoveryInjection will trigger recovery
   }
 
@@ -167,7 +183,7 @@ The session context has been compacted. Execute recovery protocol immediately an
 </system-reminder>`
 
   if (typeof ctx.client.session?.promptAsync !== "function") {
-    ctx.taskLogger.debug(`[autoContinue] promptAsync unavailable for main session: ${formatSessionID(sessionID, false)}`)
+    ctx.taskLogger.debug({ session_id: formatSessionID(sessionID, false) }, "[autoContinue] promptAsync unavailable for main session")
     return false
   }
 
@@ -179,10 +195,10 @@ The session context has been compacted. Execute recovery protocol immediately an
         parts: [{ type: "text", text: recoveryText }],
       },
     })
-    ctx.taskLogger.debug(`[autoContinue] sent recovery to main session: ${formatSessionID(sessionID, false)}`)
+    ctx.taskLogger.debug({ session_id: formatSessionID(sessionID, false) }, "[autoContinue] Sent recovery to main session")
     return true
   } catch (err) {
-    ctx.taskLogger.debug(`[autoContinue] error: ${err instanceof Error ? err.message : String(err)}`)
+    ctx.taskLogger.debug({ session_id: formatSessionID(sessionID, false), err }, "[autoContinue] Failed")
     return false
   }
 }
@@ -210,7 +226,7 @@ Use wopal_task_reply to send recovery instructions if the task should continue.
 </system-reminder>`
 
   if (typeof ctx.client.session?.promptAsync !== "function") {
-    ctx.taskLogger.debug(`[compactedNotify] promptAsync unavailable for task_id=${formatSessionID(task.sessionID, true)}`)
+    ctx.taskLogger.debug({ task_id: formatSessionID(task.sessionID, true) }, "[compactedNotify] promptAsync unavailable")
     return false
   }
 
@@ -222,10 +238,10 @@ Use wopal_task_reply to send recovery instructions if the task should continue.
         parts: [{ type: "text", text: notification }],
       },
     })
-    ctx.taskLogger.debug(`[compactedNotify] sent to parent: task_id=${formatSessionID(task.sessionID, true)}`)
+    ctx.taskLogger.debug({ task_id: formatSessionID(task.sessionID, true) }, "[compactedNotify] Sent to parent")
     return true
   } catch (err) {
-    ctx.taskLogger.debug(`[compactedNotify] error: ${err instanceof Error ? err.message : String(err)}`)
+    ctx.taskLogger.debug({ task_id: formatSessionID(task.sessionID, true), err }, "[compactedNotify] Failed")
     return false
   }
 }

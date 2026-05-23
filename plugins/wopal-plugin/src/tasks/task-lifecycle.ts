@@ -4,7 +4,6 @@ import { formatSessionID } from "../logger.js"
 import { toErrorMessage } from "./utils.js"
 import { sessionIDToTaskID } from "./task-launcher.js"
 import { taskIDToSessionID } from "../session-ref.js"
-import { isIdleTask } from "./task-phase.js"
 
 export interface TaskLifecycleDeps {
   tasks: Map<string, WopalTask>
@@ -18,23 +17,25 @@ export interface TaskLifecycleDeps {
   releaseConcurrencySlot: (task: WopalTask) => void
 }
 
-export function failTask(
+/**
+ * Mark task as idle (stopped execution, awaiting parent decision).
+ * Used by: markTaskErrorBySession, interruptTask, abort, shutdown.
+ */
+export function setIdleStatus(
   deps: TaskLifecycleDeps,
   task: WopalTask,
-  error: string,
 ): boolean {
   const { debugLog, releaseConcurrencySlot } = deps
 
-  if (task.status === 'error') {
-    debugLog.debug(`[failTask] skipped: task_id=${formatSessionID(task.sessionID, true)} status=${task.status} (already error)`)
+  // Skip if already in inactive state
+  if (task.status !== 'running') {
+    debugLog.debug({ task_id: formatSessionID(task.sessionID, true), status: task.status }, "setIdle skipped: task already inactive")
     return false
   }
 
   releaseConcurrencySlot(task)
-  task.status = 'error'
-  task.error = error
-  task.completedAt = task.completedAt ?? new Date()
-  debugLog.debug(`[failTask] task_id=${formatSessionID(task.sessionID, true)} error="${error.substring(0, 100)}"`)
+  task.status = 'idle'
+  debugLog.debug({ task_id: formatSessionID(task.sessionID, true) }, "Task stopped, classified as idle")
   return true
 }
 
@@ -52,35 +53,33 @@ export async function abortSession(
       path: { id: sessionID },
     })
   } catch (err) {
-    debugLog.debug(`[abortSession] error for ${formatSessionID(sessionID, true)}: ${toErrorMessage(err)}`)
+    debugLog.debug({ task_id: formatSessionID(sessionID, true), err: toErrorMessage(err) }, "[abortSession] Failed")
   }
 }
 
-export function markTaskErrorBySession(
+export function markTaskIdleBySession(
   deps: TaskLifecycleDeps,
   sessionID: string,
-  error: string,
 ): WopalTask | undefined {
   const { tasks, debugLog } = deps
 
   const task = tasks.get(sessionIDToTaskID(sessionID))
   if (!task) {
-    debugLog.debug(`[markError] skipped: no task found for ${formatSessionID(sessionID, true)}`)
+    debugLog.debug({ task_id: formatSessionID(sessionID, true) }, "[markIdle] Skipped; task not found")
     return undefined
   }
 
-  // Don't change status if task was already interrupted (idle phase)
-  if (isIdleTask(task) && task.status === 'running') {
-    debugLog.debug(`[markError] skipped: task_id=${formatSessionID(task.sessionID, true)} was interrupted (idle phase), preserving running state`)
+  // Skip if already in inactive state
+  if (task.status !== 'running') {
+    debugLog.debug({ task_id: formatSessionID(task.sessionID, true), status: task.status }, "markIdle skipped: task already inactive")
     return undefined
   }
 
-  if (!failTask(deps, task, error)) {
-    debugLog.debug(`[markError] skipped: task_id=${formatSessionID(task.sessionID, true)} status=${task.status} (already terminal)`)
+  if (!setIdleStatus(deps, task)) {
     return undefined
   }
 
-  debugLog.debug(`[markError] task_id=${formatSessionID(sessionID, true)} error="${error.substring(0, 100)}"`)
+  debugLog.debug({ task_id: formatSessionID(sessionID, true) }, "Task stopped, marked as idle")
   return task
 }
 
@@ -94,31 +93,32 @@ export async function interruptTask(
   const task = tasks.get(id) ?? [...tasks.values()].find(t => t.id === id)
 
   if (!task || task.parentSessionID !== parentSessionID) {
-    debugLog.debug(`[interrupt] failed: task_id=${formatSessionID(taskIDToSessionID(id), true)} not found or ownership mismatch`)
+    debugLog.debug({ task_id: formatSessionID(taskIDToSessionID(id), true) }, "[interrupt] Failed; task not found or ownership mismatch")
     return 'not_found'
   }
   if (task.status !== 'running') {
-    debugLog.debug(`[interrupt] failed: task_id=${formatSessionID(task.sessionID, true)} status=${task.status}`)
+    debugLog.debug({ task_id: formatSessionID(task.sessionID, true), status: task.status }, "[interrupt] Failed; task not running")
     return 'not_running'
   }
 
-  // Mark idleNotified so session.error event won't change status
-  task.idleNotified = true
+  // Save concurrency key for potential reply resume
   if (task.concurrencyKey) {
     task.waitingConcurrencyKey = task.concurrencyKey
   }
   releaseConcurrencySlot(task)
 
-  // Only abort session, don't change status
-  // Status remains running, waiting for user reply to wake up
+  // Set status to idle (task stopped, awaiting parent decision)
+  task.status = 'idle'
+
+  // Abort session execution
   if (task.sessionID) {
     try {
       await client.session?.abort?.({
         path: { id: task.sessionID },
       })
-      debugLog.debug(`[interrupt] aborted session for task_id=${formatSessionID(task.sessionID, true)}`)
+      debugLog.debug({ task_id: formatSessionID(task.sessionID, true) }, "[interrupt] Aborted session")
     } catch (err) {
-      debugLog.debug(`[interrupt] abort error (task may already be idle): ${toErrorMessage(err)}`)
+      debugLog.debug({ task_id: formatSessionID(task.sessionID, true), err: toErrorMessage(err) }, "[interrupt] Abort failed; task may already be idle")
     }
   }
 
@@ -140,22 +140,20 @@ export async function shutdownManager(
   // 2. Cancel all waiting tasks in concurrency queue
   concurrency.clear()
 
-  // 3. Abort all running tasks
+  // 3. Abort all running tasks and set to idle
   const runningTasks = Array.from(tasks.values()).filter(
     (t) => t.status === 'running'
   )
 
   for (const task of runningTasks) {
-    debugLog.debug(`[shutdown] aborting task_id=${formatSessionID(task.sessionID, true)}`)
+    debugLog.debug({ task_id: formatSessionID(task.sessionID, true) }, "[shutdown] Aborting task")
     releaseConcurrencySlot(task)
     await abortSessionFn(task.sessionID)
-    // Shutdown sets error status to mark task as terminated
-    task.status = 'error'
-    task.error = 'Shutdown: task interrupted'
-    task.completedAt = new Date()
+    // Shutdown sets idle status to mark task as stopped
+    task.status = 'idle'
   }
 
-  // 4. Wait for all tasks to reach terminal state (max 5 seconds)
+  // 4. Wait for all tasks to reach inactive state (max 5 seconds)
   const start = Date.now()
   while (Date.now() - start < 5000) {
     const hasRunning = Array.from(tasks.values()).some(

@@ -141,6 +141,17 @@ export function hasAssistantTextContent(messages: SessionMessage[]): boolean {
   return false
 }
 
+export function hasAssistantExecutionPart(messages: SessionMessage[]): boolean {
+  for (const message of messages) {
+    if (message.info?.role !== "assistant") continue
+
+    for (const part of message.parts ?? []) {
+      if (!part.synthetic) return true
+    }
+  }
+  return false
+}
+
 /**
  * Extract text content from an assistant message.
  * Excludes reasoning parts and synthetic text parts.

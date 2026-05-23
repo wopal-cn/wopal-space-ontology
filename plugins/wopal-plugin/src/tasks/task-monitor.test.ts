@@ -1,9 +1,7 @@
 import { describe, it, expect, vi } from "vitest"
 import {
-  checkStuckTasks,
-  clearStuckState,
-  DEFAULT_STUCK_TIMEOUT_MS,
   checkProgressNotifications,
+  formatTaskTickLines,
   logTickStatus,
   PROGRESS_NOTIFY_TIME_THRESHOLD_MS,
   CONTEXT_WARN_THRESHOLD,
@@ -39,191 +37,6 @@ function createTask(overrides: Partial<WopalTask> = {}): WopalTask {
     ...overrides,
   } as WopalTask
 }
-
-describe("checkStuckTasks", () => {
-  it("should detect task stuck with no meaningful activity", () => {
-    const tasks = [
-      createTask({
-        id: "stuck-1",
-        progress: {
-          toolCalls: 0,
-          lastUpdate: new Date(),
-          lastMeaningfulActivity: new Date(Date.now() - DEFAULT_STUCK_TIMEOUT_MS - 10_000),
-        },
-      }),
-    ]
-
-    const results = checkStuckTasks({ tasks, config: { stuckTimeoutMs: DEFAULT_STUCK_TIMEOUT_MS } })
-
-    expect(results).toHaveLength(1)
-    expect(results[0].task.id).toBe("stuck-1")
-    expect(results[0].durationMs).toBeGreaterThan(DEFAULT_STUCK_TIMEOUT_MS)
-  })
-
-  it("should not detect task with recent meaningful activity", () => {
-    const tasks = [
-      createTask({
-        id: "active-1",
-        progress: {
-          toolCalls: 5,
-          lastUpdate: new Date(),
-          lastMeaningfulActivity: new Date(Date.now() - 30_000),
-        },
-      }),
-    ]
-
-    const results = checkStuckTasks({ tasks, config: { stuckTimeoutMs: DEFAULT_STUCK_TIMEOUT_MS } })
-
-    expect(results).toHaveLength(0)
-  })
-
-  it("should not detect task that is not running", () => {
-    const tasks = [
-      createTask({
-        id: "completed-1",
-        status: "completed",
-        progress: {
-          toolCalls: 0,
-          lastUpdate: new Date(Date.now() - 300_000),
-          lastMeaningfulActivity: new Date(Date.now() - 300_000),
-        },
-      }),
-    ]
-
-    const results = checkStuckTasks({ tasks, config: { stuckTimeoutMs: DEFAULT_STUCK_TIMEOUT_MS } })
-
-    expect(results).toHaveLength(0)
-  })
-
-  it("should skip task that already has stuckNotified", () => {
-    const tasks = [
-      createTask({
-        id: "already-notified-1",
-        stuckNotified: true,
-        progress: {
-          toolCalls: 0,
-          lastUpdate: new Date(),
-          lastMeaningfulActivity: new Date(Date.now() - 300_000),
-        },
-      }),
-    ]
-
-    const results = checkStuckTasks({ tasks, config: { stuckTimeoutMs: DEFAULT_STUCK_TIMEOUT_MS } })
-
-    expect(results).toHaveLength(0)
-  })
-
-  it("should use startedAt as fallback when no lastMeaningfulActivity", () => {
-    const tasks = [
-      createTask({
-        id: "no-progress-1",
-        startedAt: new Date(Date.now() - DEFAULT_STUCK_TIMEOUT_MS - 10_000),
-        progress: { toolCalls: 0, lastUpdate: new Date() },
-      }),
-    ]
-
-    const results = checkStuckTasks({ tasks, config: { stuckTimeoutMs: DEFAULT_STUCK_TIMEOUT_MS } })
-
-    expect(results).toHaveLength(1)
-    expect(results[0].task.id).toBe("no-progress-1")
-  })
-
-  it("should handle empty task list", () => {
-    const results = checkStuckTasks({ tasks: [], config: { stuckTimeoutMs: DEFAULT_STUCK_TIMEOUT_MS } })
-    expect(results).toHaveLength(0)
-  })
-
-  it("should handle task without sessionID", () => {
-    const tasks = [
-      createTask({
-        id: "no-session-1",
-        sessionID: undefined,
-        progress: {
-          toolCalls: 0,
-          lastUpdate: new Date(),
-          lastMeaningfulActivity: new Date(Date.now() - 300_000),
-        },
-      }),
-    ]
-
-    const results = checkStuckTasks({ tasks, config: { stuckTimeoutMs: DEFAULT_STUCK_TIMEOUT_MS } })
-    expect(results).toHaveLength(0)
-  })
-})
-
-describe("clearStuckState", () => {
-  it("should clear stuckNotified when task resumes activity", () => {
-    const task = createTask({
-      id: "resumed-1",
-      stuckNotified: true,
-      stuckNotifiedAt: new Date(Date.now() - 60_000),
-      progress: {
-        toolCalls: 5,
-        lastUpdate: new Date(),
-        lastMeaningfulActivity: new Date(Date.now() - 10_000),
-      },
-    })
-
-    clearStuckState([task])
-
-    expect(task.stuckNotified).toBe(false)
-  })
-
-  it("should not clear stuckNotified when activity is still old", () => {
-    const task = createTask({
-      id: "still-stuck-1",
-      stuckNotified: true,
-      stuckNotifiedAt: new Date(Date.now() - 60_000),
-      progress: {
-        toolCalls: 0,
-        lastUpdate: new Date(),
-        lastMeaningfulActivity: new Date(Date.now() - 300_000),
-      },
-    })
-
-    clearStuckState([task])
-
-    expect(task.stuckNotified).toBe(true)
-  })
-
-  it("should skip non-running tasks", () => {
-    const task = createTask({
-      id: "completed-1",
-      status: "completed",
-      stuckNotified: true,
-      stuckNotifiedAt: new Date(Date.now() - 60_000),
-      progress: {
-        toolCalls: 0,
-        lastUpdate: new Date(),
-        lastMeaningfulActivity: new Date(Date.now() - 10_000),
-      },
-    })
-
-    clearStuckState([task])
-
-    expect(task.stuckNotified).toBe(true)
-  })
-
-  it("should skip task without stuckNotifiedAt", () => {
-    const task = createTask({
-      id: "never-notified-1",
-      stuckNotified: true,
-      progress: {
-        toolCalls: 0,
-        lastUpdate: new Date(),
-        lastMeaningfulActivity: new Date(Date.now() - 10_000),
-      },
-    })
-
-    clearStuckState([task])
-
-    expect(task.stuckNotified).toBe(true)
-  })
-
-  it("should handle empty list", () => {
-    expect(() => clearStuckState([])).not.toThrow()
-  })
-})
 
 describe("getContextMilestone", () => {
   it("returns null below 40%", () => {
@@ -270,7 +83,6 @@ describe("checkProgressNotifications", () => {
       client: { session: { messages: mockMessages } },
       debugLog: createMockLogger(),
       directory: "/test",
-      notifyParentStuckFn: vi.fn(),
       sendProgressNotificationFn: sendNotification,
     }
 
@@ -302,7 +114,6 @@ describe("checkProgressNotifications", () => {
       client: { session: { messages: mockMessages } },
       debugLog: createMockLogger(),
       directory: "/test",
-      notifyParentStuckFn: vi.fn(),
       sendProgressNotificationFn: sendNotification,
     }
 
@@ -343,7 +154,6 @@ describe("checkProgressNotifications", () => {
       client: { session: { messages: mockMessages }, config: { providers: mockConfig } },
       debugLog: createMockLogger(),
       directory: "/test",
-      notifyParentStuckFn: vi.fn(),
       sendProgressNotificationFn: sendNotification,
     }
 
@@ -386,7 +196,6 @@ describe("checkProgressNotifications", () => {
       client: { session: { messages: mockMessages }, config: { providers: mockConfig } },
       debugLog: createMockLogger(),
       directory: "/test",
-      notifyParentStuckFn: vi.fn(),
       sendProgressNotificationFn: sendNotification,
     }
 
@@ -428,7 +237,6 @@ describe("checkProgressNotifications", () => {
       client: { session: { messages: mockMessages }, config: { providers: mockConfig } },
       debugLog: createMockLogger(),
       directory: "/test",
-      notifyParentStuckFn: vi.fn(),
       sendProgressNotificationFn: sendNotification,
     }
 
@@ -470,7 +278,6 @@ describe("checkProgressNotifications", () => {
       client: { session: { messages: mockMessages }, config: { providers: mockConfig } },
       debugLog: createMockLogger(),
       directory: "/test",
-      notifyParentStuckFn: vi.fn(),
       sendProgressNotificationFn: sendNotification,
     }
 
@@ -509,7 +316,6 @@ describe("checkProgressNotifications", () => {
       client: { session: { messages: mockMessages }, config: { providers: mockConfig } },
       debugLog: createMockLogger(),
       directory: "/test",
-      notifyParentStuckFn: vi.fn(),
       sendProgressNotificationFn: sendNotification,
     }
 
@@ -522,8 +328,7 @@ describe("checkProgressNotifications", () => {
   it("should not notify for idle tasks", async () => {
     const task = createTask({
       id: "task-idle",
-      status: "running",
-      idleNotified: true,
+      status: "idle",
       sessionID: "session-idle",
     })
     const tasks = new Map([["task-idle", task]])
@@ -537,7 +342,6 @@ describe("checkProgressNotifications", () => {
       client: { session: { messages: mockMessages } },
       debugLog: createMockLogger(),
       directory: "/test",
-      notifyParentStuckFn: vi.fn(),
       sendProgressNotificationFn: sendNotification,
     }
 
@@ -568,7 +372,6 @@ describe("checkProgressNotifications", () => {
       client: { session: { messages: mockMessages } },
       debugLog: createMockLogger(),
       directory: "/test",
-      notifyParentStuckFn: vi.fn(),
       sendProgressNotificationFn: sendNotification,
     }
 
@@ -601,7 +404,6 @@ describe("checkProgressNotifications", () => {
       client: { session: { messages: mockMessages } },
       debugLog: createMockLogger(),
       directory: "/test",
-      notifyParentStuckFn: vi.fn(),
       sendProgressNotificationFn: sendNotification,
     }
 
@@ -638,7 +440,7 @@ describe("logTickStatus", () => {
   })
 
   it("should log tasks regardless of status", () => {
-    const task = createTask({ status: "completed" })
+    const task = createTask({ status: "idle" })
     const tasks = new Map([["task-1", task]])
     const debugLog = createMockLogger()
 
@@ -646,7 +448,28 @@ describe("logTickStatus", () => {
 
     expect(debugLog.debug).toHaveBeenCalledTimes(1)
     expect(debugLog.debug).toHaveBeenCalledWith(expect.stringContaining("[tick] 1 tasks:"))
-    expect(debugLog.debug).toHaveBeenCalledWith(expect.stringContaining("[completed]"))
+    expect(debugLog.debug).toHaveBeenCalledWith(expect.stringContaining("[idle]"))
+  })
+
+  it("should show cached context usage for idle tasks", () => {
+    const task = createTask({ status: "idle", sessionID: "session-idle" })
+    const tasks = new Map([["task-1", task]])
+    const sessionStore = new SessionStore({ max: 10 })
+
+    sessionStore.upsert("session-idle", (state) => {
+      state.contextLimit = 100_000
+      state.lastTokens = {
+        input: 33_000,
+        output: 100,
+        cache: { read: 10_000 },
+        updatedAt: Date.now(),
+      }
+    })
+
+    const lines = formatTaskTickLines(tasks, [], sessionStore)
+
+    expect(lines[0]).toContain("[idle]")
+    expect(lines[0]).toContain("ctx:43%")
   })
 
   it("should not log when tasks map is empty", () => {
@@ -658,23 +481,12 @@ describe("logTickStatus", () => {
     expect(debugLog.debug).not.toHaveBeenCalled()
   })
 
-  it("should include pending tasks in tick logs", () => {
-    const task = createTask({ status: "pending" })
-    const tasks = new Map([["task-1", task]])
-    const debugLog = createMockLogger()
-
-    logTickStatus(tasks, [], debugLog)
-
-    expect(debugLog.debug).toHaveBeenCalledTimes(1)
-    expect(debugLog.debug).toHaveBeenCalledWith(expect.stringContaining("[pending]"))
-  })
-
   it("should use createdAt when pending task has no startedAt", () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-05-23T00:00:20.000Z"))
 
     const task = createTask({
-      status: "pending",
+      status: "idle",
       startedAt: undefined,
       createdAt: new Date("2026-05-23T00:00:00.000Z"),
     })

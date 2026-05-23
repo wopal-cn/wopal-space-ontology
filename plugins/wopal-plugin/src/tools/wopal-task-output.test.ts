@@ -84,9 +84,9 @@ describe("wopal_task_output", () => {
     }
   }
 
-  it("shows idle status when task.idleNotified is true", async () => {
+  it("shows idle status when task.status is idle", async () => {
     const mockClient = createMockClient()
-    const idleTask = createRunningTask({ idleNotified: true })
+    const idleTask = createRunningTask({ status: "idle" })
     const mockManager = createMockTaskManager(idleTask, mockClient)
     const execute = getExecute(createWopalOutputTool(mockManager as never))
 
@@ -100,9 +100,9 @@ describe("wopal_task_output", () => {
     expect(result).toContain("wopal_task_reply")
   })
 
-  it("does not show idle status when idleNotified is false or undefined", async () => {
+  it("does not show idle status for running tasks", async () => {
     const mockClient = createMockClient()
-    const runningTask = createRunningTask({ idleNotified: false })
+    const runningTask = createRunningTask()
     const mockManager = createMockTaskManager(runningTask, mockClient)
     const execute = getExecute(createWopalOutputTool(mockManager as never))
 
@@ -115,9 +115,9 @@ describe("wopal_task_output", () => {
     expect(result).not.toContain("This task is idle")
   })
 
-  it("shows idle status for idle task without idleNotified undefined", async () => {
+  it("shows idle status for idle task (status=idle)", async () => {
     const mockClient = createMockClient()
-    const idleTask = createRunningTask() // idleNotified undefined
+    const idleTask = createRunningTask({ status: "idle" })
     const mockManager = createMockTaskManager(idleTask, mockClient)
     const execute = getExecute(createWopalOutputTool(mockManager as never))
 
@@ -126,7 +126,7 @@ describe("wopal_task_output", () => {
       { sessionID: parentSessionID },
     )
 
-    expect(result).not.toContain("**Idle:**")
+    expect(result).toContain("**Idle:**")
   })
 
   it("returns error when task not found", async () => {
@@ -150,9 +150,9 @@ describe("wopal_task_output", () => {
     expect(result).toBe("Current session ID is unavailable; cannot read task status.")
   })
 
-  it("shows 'idle' status text when task.idleNotified is true", async () => {
+  it("shows 'idle' status text when task.status is idle", async () => {
     const mockClient = createMockClient()
-    const idleTask = createRunningTask({ idleNotified: true })
+    const idleTask = createRunningTask({ status: "idle" })
     const mockManager = createMockTaskManager(idleTask, mockClient)
     const execute = getExecute(createWopalOutputTool(mockManager as never))
 
@@ -244,7 +244,7 @@ describe("wopal_task_output", () => {
 
     it("returns todo summary for waiting tasks", async () => {
       const mockClient = createMockClientWithTodos()
-      const waitingTask = createRunningTask({ status: "waiting", waitingReason: "User confirmation needed" })
+      const waitingTask = createRunningTask({ status: "waiting" })
       const mockManager = createMockTaskManager(waitingTask, mockClient)
       const execute = getExecute(createWopalOutputTool(mockManager as never))
 
@@ -257,7 +257,6 @@ describe("wopal_task_output", () => {
       expect(result).toContain("✓1")
       expect(result).toContain("⏳1")
       expect(result).toContain("1/4")
-      expect(result).toContain("User confirmation needed")
       expect(result).not.toContain("Implement feature X")
     })
 

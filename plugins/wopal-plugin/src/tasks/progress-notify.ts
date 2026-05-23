@@ -66,7 +66,7 @@ export async function checkProgressNotifications(
 ): Promise<ProgressTaskInfo[]> {
   const { tasks, sessionStore, client, debugLog, directory, taskManager, sendProgressNotificationFn } = deps
   const taskInfos: ProgressTaskInfo[] = []
-  const runningTasks = Array.from(tasks.values()).filter(t => t.status === 'running' && !t.idleNotified)
+  const runningTasks = Array.from(tasks.values()).filter(t => t.status === 'running')
 
   for (const task of runningTasks) {
     if (!task.sessionID) continue

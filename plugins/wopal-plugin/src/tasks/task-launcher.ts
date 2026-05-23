@@ -2,12 +2,14 @@ import type {
   LaunchInput,
   LaunchOutput,
   WopalTask,
+  OpenCodeClient,
 } from "../types.js"
 import type { LoggerInstance } from "../logger.js"
 import { formatSessionID } from "../logger.js"
 import type { ConcurrencyManager } from "./concurrency-manager.js"
 import { toErrorMessage, isPromiseLike } from "./utils.js"
 import { sessionIDToTaskID } from "../session-ref.js"
+import { classifyTaskStop } from "./task-stop-classifier.js"
 
 export const DEFAULT_CONCURRENCY_LIMIT = 5
 
@@ -15,7 +17,7 @@ export { sessionIDToTaskID } from "../session-ref.js"
 
 export interface TaskLauncherDeps {
   tasks: Map<string, WopalTask>
-  client: {
+  client: OpenCodeClient & {
     session?: {
       create?: (args: { body: { parentID: string; title: string } }) => Promise<{
         data?: { id?: string }
@@ -39,7 +41,6 @@ export interface TaskLauncherDeps {
   taskManager: {
     registerTaskSession: (sessionID: string) => void
   }
-  failTask: (task: WopalTask, error: string) => boolean
   abortSession: (sessionID: string | undefined) => Promise<void>
 }
 
@@ -49,18 +50,18 @@ export async function launchTask(
   deps: TaskLauncherDeps,
   input: LaunchInput,
 ): Promise<LaunchOutput> {
-  const { tasks, client, debugLog, concurrency, concurrencyKey, taskManager, failTask, abortSession } = deps
+  const { tasks, client, debugLog, concurrency, concurrencyKey, taskManager, abortSession } = deps
 
   const releaseAndReturnError = (error: string): LaunchOutput => {
     concurrency.release(concurrencyKey)
-    return { ok: false, status: 'error', error }
+    return { ok: false, status: 'failed', error }
   }
 
   debugLog.trace(`[launch] starting: description="${input.description}" agent="${input.agent}" parent_id=${formatSessionID(input.parentSessionID, false)}`)
 
   if (!concurrency.tryAcquire(concurrencyKey, DEFAULT_CONCURRENCY_LIMIT)) {
     debugLog.debug(`[launch] concurrency limit reached (${DEFAULT_CONCURRENCY_LIMIT}/${DEFAULT_CONCURRENCY_LIMIT})`)
-    return { ok: false, status: 'error', error: `Concurrency limit reached (${DEFAULT_CONCURRENCY_LIMIT}/${DEFAULT_CONCURRENCY_LIMIT}). Wait for running tasks to finish.` }
+    return { ok: false, status: 'failed', error: `Concurrency limit reached (${DEFAULT_CONCURRENCY_LIMIT}/${DEFAULT_CONCURRENCY_LIMIT}). Wait for running tasks to finish.` }
   }
 
   if (!input.parentSessionID) {
@@ -93,33 +94,19 @@ export async function launchTask(
       return releaseAndReturnError(error)
     }
   } catch (err) {
-    debugLog.debug(`[launch] session.create error: ${err}`)
+    debugLog.debug({ err }, "[launch] session.create failed")
     const error = `Background task launch failed: ${toErrorMessage(err)}`
     return releaseAndReturnError(error)
   }
 
   const taskId = sessionIDToTaskID(sessionID)
 
-  const task: WopalTask = {
-    id: taskId,
-    sessionID,
-    status: 'pending',
-    description: input.description,
-    agent: input.agent,
-    prompt: input.prompt,
-    parentSessionID: input.parentSessionID,
-    createdAt: new Date(),
-    concurrencyKey,
-  }
-  tasks.set(taskId, task)
-  taskManager.registerTaskSession(sessionID)
-
   if (typeof client.session?.promptAsync !== "function") {
     const error = "Background task launch failed: session.promptAsync is unavailable"
     debugLog.debug(`[launch] failed: session.promptAsync is unavailable`)
-    await abortSession(task.sessionID)
-    failTask(task, error)
-    return { ok: false, taskId, status: 'error', error }
+    await abortSession(sessionID)
+    // launch failed, no task retained
+    return { ok: false, status: 'failed', error }
   }
 
   const promptResult = client.session.promptAsync({
@@ -136,38 +123,60 @@ export async function launchTask(
   if (!isPromiseLike(promptResult)) {
     const error = "Background task launch failed: session.promptAsync did not return a promise"
     debugLog.debug(`[launch] failed: promptAsync did not return a promise`)
-    await abortSession(task.sessionID)
-    failTask(task, error)
-    return { ok: false, taskId, status: 'error', error }
+    await abortSession(sessionID)
+    // launch failed, no task retained
+    return { ok: false, status: 'failed', error }
   }
 
-  task.status = 'running'
-  task.startedAt = new Date()
-  task.progress = { toolCalls: 0, lastUpdate: new Date() }
+  // Success: create running task
+  const task: WopalTask = {
+    id: taskId,
+    sessionID,
+    status: 'running',
+    description: input.description,
+    agent: input.agent,
+    prompt: input.prompt,
+    parentSessionID: input.parentSessionID,
+    createdAt: new Date(),
+    startedAt: new Date(),
+    progress: { toolCalls: 0, lastUpdate: new Date() },
+    concurrencyKey,
+  }
+  tasks.set(taskId, task)
+  taskManager.registerTaskSession(sessionID)
 
   debugLog.info(
     {
-      task_id: formatSessionID(task.sessionID, true),
       description: input.description,
       agent: input.agent,
-      parent_id: formatSessionID(input.parentSessionID, false),
     },
     "Task launched",
   )
 
-  void Promise.resolve(promptResult).catch(async (err: unknown) => {
-    const error = `Background task execution failed: ${toErrorMessage(err)}`
-    debugLog.debug(`[launch] promptAsync error for ${formatSessionID(task.sessionID, true)}: idleNotified=${task.idleNotified} status=${task.status}`)
+  void Promise.resolve(promptResult).catch(async (_err: unknown) => {
+    debugLog.debug(`[launch] promptAsync error for ${formatSessionID(task.sessionID, true)}: status=${task.status}`)
 
-    // If task was already idle (interrupted by user), don't override state
-    if (task.idleNotified) {
-      debugLog.debug(`[launch] skipping failTask: ${formatSessionID(task.sessionID, true)} was idle, promptAsync rejection is expected after abort`)
+    // Only classify if task is still running or waiting
+    if (task.status !== 'running' && task.status !== 'waiting') {
+      debugLog.debug(`[launch] skipping cleanup: ${formatSessionID(task.sessionID, true)} status changed to ${task.status}`)
       return
     }
 
-    if (failTask(task, error)) {
-      await abortSession(task.sessionID)
-    }
+    // Release concurrency slot
+    concurrency.release(concurrencyKey)
+    task.concurrencyKey = undefined
+
+    await classifyTaskStop({
+      task,
+      client: client,
+      debugLog,
+      errorText: toErrorMessage(_err),
+    })
+
+    // Abort the session
+    await abortSession(task.sessionID)
+
+    debugLog.debug(`[launch] promptAsync error classified: ${formatSessionID(task.sessionID, true)} status=${task.status}`)
   })
 
   return { ok: true, taskId, status: 'running' }
