@@ -135,14 +135,14 @@ export async function notifyParent(
 
   const { client, debugLog } = deps
 
-  const statusText = task.idleNotified ? 'IDLE' : task.status.toUpperCase()
+  const statusText = task.status.toUpperCase()
 
-  // Error notifications remain concise (no enrichment)
+  // Stuck notifications: concise, no enrichment
   const errorLine = task.error ? `\n**Error:** ${task.error}` : ''
 
   // For IDLE notifications, return full assistant output to avoid re-query
   let resultBlock = ''
-  if (task.idleNotified && !task.error) {
+  if (task.status === 'idle' && !task.error) {
     let messages: SessionMessage[] = []
     try {
       if (client.session?.messages) {
@@ -174,9 +174,14 @@ export async function notifyParent(
     resultBlock = `${toolLine}${todoLine}${outputLine}`
   }
 
-  const footerLine = task.idleNotified && !task.error && !resultBlock.includes("wopal_task_output")
-    ? ''
-    : `\n\nUse \`wopal_task_output(task_id="${task.id}")\` to retrieve the result.`
+  let footerLine = ''
+  if (task.status === 'stuck') {
+    footerLine = `\n\nTask stopped but no new assistant text was produced this round. Use \`wopal_task_output(task_id="${task.id}")\` to check content, \`wopal_task_reply(task_id="${task.id}")\` to continue, or \`wopal_task_finish(task_id="${task.id}")\` to clean up.`
+  } else if (task.status === 'idle' && !task.error && !resultBlock.includes("wopal_task_output")) {
+    footerLine = ''
+  } else {
+    footerLine = `\n\nUse \`wopal_task_output(task_id="${task.id}")\` to retrieve the result.`
+  }
 
   const notification = `<system-reminder>
 [WOPAL TASK ${statusText}]
@@ -188,30 +193,7 @@ export async function notifyParent(
   const success = await sendNotification(deps, task.parentSessionID, notification)
 
   // Mirror to debug log
-  const status = task.idleNotified ? 'IDLE' : task.status
+  const status = task.status
   const debugSummary = `task_id=${formatSessionID(task.sessionID, true)} status=${status}`
   debugLog.debug(`[notifyParent] ${success ? 'sent' : 'failed'}: ${debugSummary}`)
-}
-
-export async function notifyParentStuck(
-  deps: TaskNotifierDeps,
-  task: WopalTask,
-  durationText: string,
-): Promise<void> {
-  if (!task.sessionID) return
-
-  const { debugLog } = deps
-
-  const notification = `<system-reminder>
-[WOPAL TASK STUCK]
-**ID:** \`${task.id}\`
-**Agent:** ${task.agent}
-**Description:** ${task.description}
-**Duration:** No meaningful output for ${durationText}
-
-The background task may be stuck in a reasoning loop. Use \`wopal_task_output(task_id="${task.id}", section="reasoning")\` to check its thinking content. If it's truly stuck, use \`wopal_task_reply(task_id="${task.id}", interrupt=true, message="Stop current attempt and report status")\` to interrupt it.
-</system-reminder>`
-
-  const success = await sendNotification(deps, task.parentSessionID, notification)
-  debugLog.debug(`[notifyParentStuck] ${success ? 'sent' : 'failed'}: task_id=${formatSessionID(task.sessionID, true)} duration=${durationText}`)
 }

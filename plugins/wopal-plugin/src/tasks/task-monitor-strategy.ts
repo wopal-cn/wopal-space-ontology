@@ -2,7 +2,7 @@
  * Task Monitor Strategy
  *
  * Wraps existing task monitor tick body into a MonitorStrategy.
- * Execution order preserved: checkProgressNotifications → clearStuckState → checkStuckTasksAndNotify → logTickStatus
+ * Execution order preserved: checkProgressNotifications → logTickStatus
  */
 
 import type { MonitorStrategy, TickResult } from "../monitor/monitor-engine.js"
@@ -13,8 +13,6 @@ import type { TaskSessionInspector } from "../session-runtime-info.js"
 import type { ProgressNotifyTrigger, ProgressTaskInfo } from "./progress-notify.js"
 import {
   checkProgressNotifications,
-  clearStuckState,
-  checkStuckTasksAndNotify,
   formatTaskTickLines,
 } from "./task-monitor.js"
 
@@ -25,7 +23,6 @@ export interface TaskMonitorRuntimeDeps {
   debugLog: LoggerInstance
   directory: string
   taskManager?: TaskSessionInspector
-  notifyParentStuckFn: (task: WopalTask, durationText: string) => Promise<void>
   sendProgressNotificationFn: (task: WopalTask, messageCount: number, contextUsage: number | null, trigger?: ProgressNotifyTrigger) => Promise<void>
 }
 
@@ -38,17 +35,7 @@ export async function runTaskMonitorTick(deps: TaskMonitorRuntimeDeps): Promise<
   // Step 1: Check progress notifications (returns ProgressTaskInfo[])
   const taskInfos: ProgressTaskInfo[] = await checkProgressNotifications(deps)
 
-  // Step 2: Clear stuck state for tasks that have resumed activity
-  clearStuckState(deps.tasks.values())
-
-  // Step 3: Check stuck tasks and notify parent
-  await checkStuckTasksAndNotify({
-    tasks: deps.tasks,
-    debugLog: deps.debugLog,
-    notifyParentStuckFn: deps.notifyParentStuckFn,
-  })
-
-  // Step 4: Format task tick lines and wrap as task sessions
+  // Step 2: Format task tick lines and wrap as task sessions
   const lines = formatTaskTickLines(deps.tasks, taskInfos)
   return {
     sessions: lines.map((text) => ({ kind: "task" as const, text })),

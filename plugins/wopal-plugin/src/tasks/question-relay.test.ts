@@ -49,7 +49,6 @@ describe("handleQuestionAsked", () => {
     await handleQuestionAsked(event, mockManager)
 
     expect(mockTask.status).toBe("waiting")
-    expect(mockTask.waitingReason).toBe("question_tool")
     expect(mockTask.pendingQuestionID).toBe("question-req-001")
   })
 

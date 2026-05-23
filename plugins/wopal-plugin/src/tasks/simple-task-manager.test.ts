@@ -144,7 +144,7 @@ describe("SimpleTaskManager", () => {
 
       expect(result).toEqual({
         ok: false,
-        status: "error",
+        status: "failed",
         error: "Background task launch failed: parent session ID is required",
       })
     })
@@ -162,7 +162,7 @@ describe("SimpleTaskManager", () => {
 
       expect(result).toEqual({
         ok: false,
-        status: "error",
+        status: "failed",
         error: "Background task launch failed: session.create is unavailable",
       })
     })
@@ -179,7 +179,7 @@ describe("SimpleTaskManager", () => {
 
       expect(result).toMatchObject({
         ok: false,
-        status: "error",
+        status: "failed",
         error: "Background task launch failed: Create failed",
       })
       // No taskId when session.create fails
@@ -198,7 +198,7 @@ describe("SimpleTaskManager", () => {
 
       expect(result).toMatchObject({
         ok: false,
-        status: "error",
+        status: "failed",
         error: "Background task launch failed: child session did not provide an ID",
       })
     })
@@ -221,12 +221,14 @@ describe("SimpleTaskManager", () => {
 
       expect(result).toMatchObject({
         ok: false,
-        status: "error",
+        status: "failed",
         error: "Background task launch failed: session.promptAsync is unavailable",
       })
       expect(client.session.abort).toHaveBeenCalledWith({
         path: { id: "ses_child-session-1" },
       })
+      // launch 失败时 task 不保留
+      expect(manager.getTask("wopal-task-child-session-1")).toBeUndefined()
     })
 
     it("fails when session.promptAsync does not return a promise", async () => {
@@ -241,16 +243,18 @@ describe("SimpleTaskManager", () => {
 
       expect(result).toMatchObject({
         ok: false,
-        status: "error",
+        status: "failed",
         error:
           "Background task launch failed: session.promptAsync did not return a promise",
       })
       expect(mockClient.session.abort).toHaveBeenCalledWith({
         path: { id: "ses_child-session-1" },
       })
+      // launch 失败时 task 不保留
+      expect(manager.getTask("wopal-task-child-session-1")).toBeUndefined()
     })
 
-    it("marks task as error when promptAsync later rejects", async () => {
+    it("releases concurrency when promptAsync later rejects", async () => {
       const deferred = createDeferred<void>()
       mockClient.session.promptAsync.mockReturnValueOnce(deferred.promise)
 
@@ -265,12 +269,16 @@ describe("SimpleTaskManager", () => {
         throw new Error("expected successful launch")
       }
 
+      // Concurrency should be held before rejection
+      expect(manager.getConcurrencyStatus().used).toBe(1)
+
       deferred.reject(new Error("Prompt failed"))
       await flushAsyncWork()
 
+      // Task is classified as stuck by stop classifier (no messages), concurrency is released
       const task = manager.getTask(result.taskId)
-      expect(task?.status).toBe("error")
-      expect(task?.error).toBe("Background task execution failed: Prompt failed")
+      expect(task?.status).toBe("stuck")
+      expect(manager.getConcurrencyStatus().used).toBe(0)
 
       expect(mockClient.session.abort).toHaveBeenCalledWith({
         path: { id: "ses_child-session-1" },
@@ -297,7 +305,7 @@ describe("SimpleTaskManager", () => {
   })
 
   describe("recovery", () => {
-    it("restores child sessions as idle running tasks", async () => {
+    it("restores child sessions as idle tasks", async () => {
       mockClient.session.children.mockResolvedValueOnce({
         data: [{
           id: "ses_recovered-old",
@@ -312,8 +320,8 @@ describe("SimpleTaskManager", () => {
       const taskId = sessionIDToTaskID("ses_recovered-old")
       const task = manager.getTaskForParent(taskId, "parent-1")
 
-      expect(task?.status).toBe("running")
-      expect(task?.idleNotified).toBe(true)
+      // recovered tasks default to idle (not current active run)
+      expect(task?.status).toBe("idle")
       expect(task?.startedAt?.getTime()).toBeGreaterThan(Date.now() - 5_000)
       expect(task?.progress).toMatchObject({ toolCalls: 0 })
     })
@@ -331,6 +339,10 @@ describe("SimpleTaskManager", () => {
       await manager.recoverFromSession("parent-1")
 
       const taskId = sessionIDToTaskID("ses_recovered-delete")
+      const task = manager.getTask(taskId)
+      // recovered task is idle, can be deleted
+      expect(task?.status).toBe("idle")
+
       const result = await manager.finishTask(taskId, "parent-1")
 
       expect(result).toEqual({
@@ -359,12 +371,13 @@ describe("SimpleTaskManager", () => {
       expect(manager.getTask(sessionIDToTaskID("ses_recovered-retry"))).toBeUndefined()
 
       await manager.recoverFromSession("parent-1")
-      expect(manager.getTask(sessionIDToTaskID("ses_recovered-retry"))?.idleNotified).toBe(true)
+      const recoveredTask = manager.getTask(sessionIDToTaskID("ses_recovered-retry"))
+      expect(recoveredTask?.status).toBe("idle")
     })
   })
 
   describe("interrupt", () => {
-    it("aborts session but keeps status as running", async () => {
+    it("aborts session and sets task to idle", async () => {
       const result = await manager.launch({
         description: "Test task",
         prompt: "Do something",
@@ -382,8 +395,8 @@ describe("SimpleTaskManager", () => {
       expect(mockClient.session.abort).toHaveBeenCalledWith({
         path: { id: "ses_child-session-1" },
       })
-      // interrupt only aborts, status remains running
-      expect(manager.getTask(result.taskId)?.status).toBe("running")
+      // interrupt sets status to idle
+      expect(manager.getTask(result.taskId)?.status).toBe("idle")
     })
 
     it("still returns interrupted even when session.abort rejects", async () => {
@@ -403,8 +416,8 @@ describe("SimpleTaskManager", () => {
       const interrupted = await manager.interrupt(result.taskId, "parent-1")
 
       expect(interrupted).toBe("interrupted")
-      // status still running after interrupt
-      expect(manager.getTask(result.taskId)?.status).toBe("running")
+      // status becomes idle even if abort fails
+      expect(manager.getTask(result.taskId)?.status).toBe("idle")
     })
 
     it("rejects interruption from a different parent session", async () => {
@@ -423,7 +436,7 @@ describe("SimpleTaskManager", () => {
       expect(mockClient.session.abort).not.toHaveBeenCalled()
     })
 
-    it("interrupt aborts session, task remains running", async () => {
+    it("interrupt aborts session, task becomes idle", async () => {
       const abortDeferred = createDeferred<void>()
       mockClient.session.abort.mockReturnValueOnce(abortDeferred.promise)
 
@@ -442,8 +455,8 @@ describe("SimpleTaskManager", () => {
       abortDeferred.resolve(undefined)
 
       await expect(interruptPromise).resolves.toBe("interrupted")
-      // interrupt keeps status as running
-      expect(manager.getTask(result.taskId)?.status).toBe("running")
+      // interrupt sets status to idle
+      expect(manager.getTask(result.taskId)?.status).toBe("idle")
     })
 
     it("interrupt does not block idle notification", async () => {
@@ -465,8 +478,8 @@ describe("SimpleTaskManager", () => {
       abortDeferred.resolve(undefined)
 
       await expect(interruptPromise).resolves.toBe("interrupted")
-      // interrupt keeps status as running
-      expect(manager.getTask(result.taskId)?.status).toBe("running")
+      // interrupt sets status to idle
+      expect(manager.getTask(result.taskId)?.status).toBe("idle")
     })
   })
 
@@ -539,7 +552,7 @@ describe("SimpleTaskManager", () => {
   })
 
   describe("finishTask (real implementation)", () => {
-    it("rejects actively running task (running without idleNotified)", async () => {
+    it("rejects actively running task", async () => {
       const result = await manager.launch({
         description: "Test task",
         prompt: "Do something",
@@ -549,7 +562,7 @@ describe("SimpleTaskManager", () => {
 
       if (!result.ok) throw new Error("expected successful launch")
 
-      // Task is actively running (no idleNotified)
+      // Task is actively running
       const finishResult = await manager.finishTask(result.taskId, "parent-1")
 
       expect(finishResult.ok).toBe(false)
@@ -557,7 +570,7 @@ describe("SimpleTaskManager", () => {
       expect(finishResult.message).toContain("wopal_task_abort")
     })
 
-    it("accepts idle task (running + idleNotified)", async () => {
+    it("accepts idle task", async () => {
       const result = await manager.launch({
         description: "Test task",
         prompt: "Do something",
@@ -570,8 +583,8 @@ describe("SimpleTaskManager", () => {
       const task = manager.getTask(result.taskId)
       if (!task) throw new Error("expected task")
 
-      // Mark as idle phase
-      task.idleNotified = true
+      // Mark as idle (simulating abort or interrupt)
+      task.status = "idle"
 
       const finishResult = await manager.finishTask(result.taskId, "parent-1")
 
@@ -596,7 +609,6 @@ describe("SimpleTaskManager", () => {
 
       // Mark as waiting
       task.status = "waiting"
-      task.waitingReason = "question_detected"
 
       const finishResult = await manager.finishTask(result.taskId, "parent-1")
 
@@ -604,7 +616,7 @@ describe("SimpleTaskManager", () => {
       expect(mockClient.session.delete).toHaveBeenCalled()
     })
 
-    it("accepts error task", async () => {
+    it("accepts stuck task", async () => {
       const result = await manager.launch({
         description: "Test task",
         prompt: "Do something",
@@ -617,42 +629,13 @@ describe("SimpleTaskManager", () => {
       const task = manager.getTask(result.taskId)
       if (!task) throw new Error("expected task")
 
-      // Mark as error
-      task.status = "error"
-      task.error = "Something failed"
+      // Mark as stuck
+      task.status = "stuck"
 
       const finishResult = await manager.finishTask(result.taskId, "parent-1")
 
       expect(finishResult.ok).toBe(true)
       expect(mockClient.session.delete).toHaveBeenCalled()
-    })
-
-    it("accepts pending task (no session)", async () => {
-      // Create a pending task manually (not launched via session.create)
-      const pendingTaskId = "wopal-task-pending-1"
-      const pendingTask = {
-        id: pendingTaskId,
-        sessionID: undefined,
-        status: "pending",
-        description: "Pending task",
-        agent: "fae",
-        prompt: "Queued",
-        parentSessionID: "parent-1",
-        createdAt: new Date(),
-        concurrencyKey: undefined,
-      }
-
-      // Access internal tasks map to add pending task
-      // (pending tasks are created before session.create succeeds)
-      const internalTasks = (manager as unknown as { tasks: Map<string, unknown> }).tasks
-      internalTasks.set(pendingTaskId, pendingTask)
-
-      const finishResult = await manager.finishTask(pendingTaskId, "parent-1")
-
-      expect(finishResult.ok).toBe(true)
-      expect(finishResult.message).toContain("finished successfully")
-      // session.delete should NOT be called (pending has no sessionID)
-      expect(mockClient.session.delete).not.toHaveBeenCalled()
     })
 
     it("rejects wrong parent session", async () => {
@@ -750,9 +733,8 @@ describe("SimpleTaskManager", () => {
       const task = manager.getTask(result.taskId)
       if (!task) throw new Error("expected task")
 
-      // Simulate idle phase: task already has concurrencyKey from launch
-      // Set idleNotified + waitingConcurrencyKey
-      task.idleNotified = true
+      // Simulate idle state: task was aborted/interrupted
+      task.status = "idle"
       task.waitingConcurrencyKey = task.concurrencyKey
       task.concurrencyKey = undefined
 
@@ -798,8 +780,8 @@ describe("SimpleTaskManager", () => {
       expect(manager.getConcurrencyStatus().used).toBe(5)
       expect(manager.getConcurrencyStatus().available).toBe(0)
 
-      // Set idle phase state
-      task.idleNotified = true
+      // Set idle state
+      task.status = "idle"
       task.waitingConcurrencyKey = task.concurrencyKey
       task.concurrencyKey = undefined
 
@@ -810,9 +792,6 @@ describe("SimpleTaskManager", () => {
       // waitingConcurrencyKey preserved for retry
       expect(task.concurrencyKey).toBeUndefined()
       expect(task.waitingConcurrencyKey).toBe("default")
-      
-      // Task remains resumable (waitingConcurrencyKey preserved)
-      expect(task.idleNotified).toBe(true)
     })
 
     it("non-resumable task: reacquireSlotOnWakeUp does nothing", async () => {
@@ -828,10 +807,8 @@ describe("SimpleTaskManager", () => {
       const task = manager.getTask(result.taskId)
       if (!task) throw new Error("expected task")
 
-      // Task is actively running (not idle phase)
-      // Should NOT be resumable
+      // Task is actively running (not idle)
       expect(task.status).toBe("running")
-      expect(task.idleNotified).toBeUndefined()
 
       // Call reacquireSlotOnWakeUp - should do nothing
       manager.reacquireSlotOnWakeUp(task)

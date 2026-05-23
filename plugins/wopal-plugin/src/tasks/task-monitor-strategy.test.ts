@@ -6,7 +6,7 @@ import {
 } from "./task-monitor-strategy.js"
 import type { WopalTask } from "../types.js"
 import type { ProgressTaskInfo } from "./task-monitor.js"
-import { PROGRESS_NOTIFY_TIME_THRESHOLD_MS, CONTEXT_WARN_THRESHOLD, DEFAULT_STUCK_TIMEOUT_MS } from "./task-monitor.js"
+import { PROGRESS_NOTIFY_TIME_THRESHOLD_MS, CONTEXT_WARN_THRESHOLD } from "./task-monitor.js"
 
 // --- Call-order tracking via vi.mock (hoisted) ---
 const callOrder: string[] = []
@@ -14,8 +14,6 @@ let formatTickReceivedInfos: ProgressTaskInfo[] | undefined
 
 // Module-level references to mock functions for per-test override (var for hoisting compatibility)
 var checkProgressNotificationsMock: ReturnType<typeof vi.fn>
-var clearStuckStateMock: ReturnType<typeof vi.fn>
-var checkStuckTasksAndNotifyMock: ReturnType<typeof vi.fn>
 var formatTaskTickLinesMock: ReturnType<typeof vi.fn>
 
 vi.mock("./task-monitor.js", async (importOriginal) => {
@@ -23,14 +21,6 @@ vi.mock("./task-monitor.js", async (importOriginal) => {
   checkProgressNotificationsMock = vi.fn(async (deps: any) => {
     callOrder.push("checkProgressNotifications")
     return actual.checkProgressNotifications(deps)
-  })
-  clearStuckStateMock = vi.fn((...args: any[]) => {
-    callOrder.push("clearStuckState")
-    return actual.clearStuckState(...args)
-  })
-  checkStuckTasksAndNotifyMock = vi.fn(async (...args: any[]) => {
-    callOrder.push("checkStuckTasksAndNotify")
-    return actual.checkStuckTasksAndNotify(...args)
   })
   formatTaskTickLinesMock = vi.fn((tasks: any, infos: any) => {
     callOrder.push("formatTaskTickLines")
@@ -40,8 +30,6 @@ vi.mock("./task-monitor.js", async (importOriginal) => {
   return {
     ...actual,
     checkProgressNotifications: checkProgressNotificationsMock,
-    clearStuckState: clearStuckStateMock,
-    checkStuckTasksAndNotify: checkStuckTasksAndNotifyMock,
     formatTaskTickLines: formatTaskTickLinesMock,
   }
 })
@@ -73,7 +61,6 @@ function createMockDeps(overrides?: Partial<TaskMonitorRuntimeDeps>): TaskMonito
     },
     directory: "/test",
     taskManager: { isTaskSession: vi.fn().mockReturnValue(false) },
-    notifyParentStuckFn: vi.fn().mockResolvedValue(undefined),
     sendProgressNotificationFn: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   }
@@ -102,7 +89,7 @@ describe("task-monitor-strategy", () => {
   })
 
   describe("runTaskMonitorTick", () => {
-    it("executes in strict order: checkProgressNotifications → clearStuckState → checkStuckTasksAndNotify → formatTaskTickLines", async () => {
+    it("executes in strict order: checkProgressNotifications → formatTaskTickLines", async () => {
       const task = createRunningTask()
       const tasks = new Map<string, WopalTask>()
       tasks.set(task.id, task)
@@ -112,8 +99,6 @@ describe("task-monitor-strategy", () => {
 
       expect(callOrder).toEqual([
         "checkProgressNotifications",
-        "clearStuckState",
-        "checkStuckTasksAndNotify",
         "formatTaskTickLines",
       ])
     })
@@ -170,21 +155,6 @@ describe("task-monitor-strategy", () => {
       expect(callCount).toBe(2)
     })
 
-    it("preserves notifyParentStuckFn from getMonitorDeps", async () => {
-      const notifyParentStuckFn = vi.fn().mockResolvedValue(undefined)
-      const deps = createMockDeps({ notifyParentStuckFn })
-      const strategy = createTaskMonitorStrategy({ getDeps: () => deps })
-
-      // Make a stuck task so the function is called
-      const task = createRunningTask()
-      task.progress!.lastMeaningfulActivity = new Date(Date.now() - DEFAULT_STUCK_TIMEOUT_MS - 10_000)
-      deps.tasks.set(task.id, task)
-
-      await strategy.tick()
-
-      expect(notifyParentStuckFn).toHaveBeenCalledWith(task, expect.any(String))
-    })
-
     it("preserves sendProgressNotificationFn from getMonitorDeps", async () => {
       const sendProgressNotificationFn = vi.fn().mockResolvedValue(undefined)
       const task = createRunningTask()
@@ -195,7 +165,7 @@ describe("task-monitor-strategy", () => {
       // Make the task trigger time-based notification (started 4 min ago)
       task.startedAt = new Date(Date.now() - PROGRESS_NOTIFY_TIME_THRESHOLD_MS - 60_000)
       // Provide messages
-      ;(deps.client.session.messages as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ;(deps.client.session!.messages as ReturnType<typeof vi.fn>).mockResolvedValue({
         data: [{ id: "msg-1" }, { id: "msg-2" }, { id: "msg-3" }],
       })
 
@@ -213,10 +183,6 @@ describe("task-monitor-strategy", () => {
 
     it("CONTEXT_WARN_THRESHOLD is 45", () => {
       expect(CONTEXT_WARN_THRESHOLD).toBe(45)
-    })
-
-    it("DEFAULT_STUCK_TIMEOUT_MS is 120_000", () => {
-      expect(DEFAULT_STUCK_TIMEOUT_MS).toBe(120_000)
     })
   })
 })

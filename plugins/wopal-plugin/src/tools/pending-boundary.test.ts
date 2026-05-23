@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 import { createWopalTaskAbortTool } from "./wopal-task-abort.js"
 import { createWopalReplyTool } from "./wopal-task-reply.js"
 import { createWopalTaskFinishTool } from "./wopal-task-finish.js"
-import { canDeleteTask, isResumableTask } from "../tasks/task-phase.js"
+import { canDeleteTask, isResumableTask, isTaskActive } from "../tasks/task-phase.js"
 import type { WopalTask } from "../types.js"
 
 function getExecute(toolDefinition: unknown) {
@@ -37,8 +37,8 @@ function createMockTaskManager(
         return { ok: false, message: "Task not found or not owned by this session" }
       }
       
-      // pending can be finished
-      if (t.status === "running" && !t.idleNotified) {
+      // running cannot be finished (active state)
+      if (t.status === "running") {
         return { ok: false, message: "Task is actively running. Use wopal_task_abort or wopal_task_reply(interrupt=true) to stop first, then finish." }
       }
       
@@ -58,17 +58,18 @@ function createMockTaskManager(
   }
 }
 
-describe("pending task boundary tests", () => {
+describe("four-state task boundary tests", () => {
   const parentSessionID = "parent-session-123"
 
-  function createPendingTask(overrides?: Partial<WopalTask>): WopalTask {
+  // Helper to create tasks with specific status
+  function createTaskWithStatus(status: WopalTask["status"], overrides?: Partial<WopalTask>): WopalTask {
     return {
-      id: "wopal-task-pending",
-      sessionID: undefined,
-      status: "pending",
-      description: "Pending task",
+      id: `wopal-task-${status}`,
+      sessionID: `session-${status}`,
+      status,
+      description: `${status} task`,
       agent: "fae",
-      prompt: "Queued task",
+      prompt: "Test task",
       parentSessionID,
       createdAt: new Date(),
       concurrencyKey: undefined,
@@ -77,291 +78,307 @@ describe("pending task boundary tests", () => {
   }
 
   describe("wopal_task_abort", () => {
-    it("rejects pending task (abort only works on running)", async () => {
-      const pendingTask = createPendingTask()
-      const mockManager = createMockTaskManager(pendingTask)
+    it("succeeds on running task (abort stops active execution)", async () => {
+      const runningTask = createTaskWithStatus("running")
+      const mockManager = createMockTaskManager(runningTask)
       const execute = getExecute(createWopalTaskAbortTool(mockManager as never))
 
       const result = await execute(
-        { task_id: pendingTask.id },
+        { task_id: runningTask.id },
         { sessionID: parentSessionID },
       )
 
-      expect(result).toContain("Failed to abort task: task is pending")
+      // abort should succeed on running task
+      expect(result).toContain("aborted")
+      expect(result).not.toContain("Failed to abort")
+    })
+
+    it("rejects idle task (abort only works on running)", async () => {
+      const idleTask = createTaskWithStatus("idle")
+      const mockManager = createMockTaskManager(idleTask)
+      const execute = getExecute(createWopalTaskAbortTool(mockManager as never))
+
+      const result = await execute(
+        { task_id: idleTask.id },
+        { sessionID: parentSessionID },
+      )
+
+      expect(result).toContain("Failed to abort task")
       expect(result).toContain("abort only works on running tasks")
-      expect(result).toContain("wopal_task_finish")
+    })
+
+    it("rejects waiting task (abort only works on running)", async () => {
+      const waitingTask = createTaskWithStatus("waiting")
+      const mockManager = createMockTaskManager(waitingTask)
+      const execute = getExecute(createWopalTaskAbortTool(mockManager as never))
+
+      const result = await execute(
+        { task_id: waitingTask.id },
+        { sessionID: parentSessionID },
+      )
+
+      expect(result).toContain("Failed to abort task")
+      expect(result).toContain("abort only works on running tasks")
+    })
+
+    it("rejects stuck task (abort only works on running)", async () => {
+      const stuckTask = createTaskWithStatus("stuck")
+      const mockManager = createMockTaskManager(stuckTask)
+      const execute = getExecute(createWopalTaskAbortTool(mockManager as never))
+
+      const result = await execute(
+        { task_id: stuckTask.id },
+        { sessionID: parentSessionID },
+      )
+
+      expect(result).toContain("Failed to abort task")
+      expect(result).toContain("abort only works on running tasks")
     })
   })
 
   describe("wopal_task_reply", () => {
-    it("rejects pending task for normal reply (pending is not resumable)", async () => {
-      const pendingTask = createPendingTask()
-      const mockManager = createMockTaskManager(pendingTask)
+    it("rejects running task for normal reply (running is not resumable)", async () => {
+      const runningTask = createTaskWithStatus("running")
+      const mockManager = createMockTaskManager(runningTask)
       const execute = getExecute(createWopalReplyTool(mockManager as never))
 
       const result = await execute(
-        { task_id: pendingTask.id, message: "continue" },
+        { task_id: runningTask.id, message: "continue" },
         { sessionID: parentSessionID },
       )
 
-      // reply without interrupt rejects pending task because isResumableTask returns false
-      // (pending is not waiting/error/idle)
+      // reply without interrupt rejects running task because running is active (not resumable)
       expect(result).toContain("Error")
       expect(result).toContain("Task is actively running")
     })
 
-    it("rejects pending task for interrupt reply (pending is not running)", async () => {
-      const pendingTask = createPendingTask()
-      const mockManager = createMockTaskManager(pendingTask)
+    it("succeeds on idle task (idle is resumable)", async () => {
+      const idleTask = createTaskWithStatus("idle")
+      const mockManager = createMockTaskManager(idleTask)
       const execute = getExecute(createWopalReplyTool(mockManager as never))
 
       const result = await execute(
-        { task_id: pendingTask.id, message: "change direction", interrupt: true },
+        { task_id: idleTask.id, message: "continue" },
         { sessionID: parentSessionID },
       )
 
-      // interrupt reply requires status === "running", pending is not running
+      // reply should succeed on idle task
+      expect(result).toContain("Reply sent to task")
+    })
+
+    it("succeeds on waiting task (waiting is resumable)", async () => {
+      const waitingTask = createTaskWithStatus("waiting")
+      const mockManager = createMockTaskManager(waitingTask)
+      const execute = getExecute(createWopalReplyTool(mockManager as never))
+
+      const result = await execute(
+        { task_id: waitingTask.id, message: "continue" },
+        { sessionID: parentSessionID },
+      )
+
+      // reply should succeed on waiting task
+      expect(result).toContain("Reply sent to task")
+    })
+
+    it("succeeds on stuck task (stuck is resumable)", async () => {
+      const stuckTask = createTaskWithStatus("stuck")
+      const mockManager = createMockTaskManager(stuckTask)
+      const execute = getExecute(createWopalReplyTool(mockManager as never))
+
+      const result = await execute(
+        { task_id: stuckTask.id, message: "continue" },
+        { sessionID: parentSessionID },
+      )
+
+      // reply should succeed on stuck task
+      expect(result).toContain("Reply sent to task")
+    })
+
+    it("succeeds on running task with interrupt flag", async () => {
+      const runningTask = createTaskWithStatus("running")
+      const mockManager = createMockTaskManager(runningTask)
+      const execute = getExecute(createWopalReplyTool(mockManager as never))
+
+      const result = await execute(
+        { task_id: runningTask.id, message: "change direction", interrupt: true },
+        { sessionID: parentSessionID },
+      )
+
+      // interrupt reply should succeed on running task
+      expect(result).toContain("Interrupt sent")
+      expect(result).not.toContain("Error")
+    })
+
+    it("rejects idle task with interrupt (interrupt requires running)", async () => {
+      const idleTask = createTaskWithStatus("idle")
+      const mockManager = createMockTaskManager(idleTask)
+      const execute = getExecute(createWopalReplyTool(mockManager as never))
+
+      const result = await execute(
+        { task_id: idleTask.id, message: "change direction", interrupt: true },
+        { sessionID: parentSessionID },
+      )
+
       expect(result).toContain("Error")
       expect(result).toContain("interrupt only works on running tasks")
-      expect(result).toContain("Task is pending")
     })
   })
 
   describe("wopal_task_finish", () => {
-    it("succeeds on pending task", async () => {
-      const pendingTask = createPendingTask()
-      const mockManager = createMockTaskManager(pendingTask)
+    it("rejects running task (running is active, cannot finish)", async () => {
+      const runningTask = createTaskWithStatus("running")
+      const mockManager = createMockTaskManager(runningTask)
       const execute = getExecute(createWopalTaskFinishTool(mockManager as never))
 
       const result = await execute(
-        { task_id: pendingTask.id },
+        { task_id: runningTask.id },
+        { sessionID: parentSessionID },
+      )
+
+      expect(result).toContain("Task is actively running")
+      expect(result).toContain("Use wopal_task_abort")
+    })
+
+    it("succeeds on idle task (idle is deletable)", async () => {
+      const idleTask = createTaskWithStatus("idle")
+      const mockManager = createMockTaskManager(idleTask)
+      const execute = getExecute(createWopalTaskFinishTool(mockManager as never))
+
+      const result = await execute(
+        { task_id: idleTask.id },
         { sessionID: parentSessionID },
       )
 
       expect(result).toBe("Task finished successfully. Session deleted from OpenCode.")
     })
 
-    it("pending task without sessionID: finish succeeds without calling session.delete", async () => {
-      const mockClient = createMockClient()
-      const pendingTask = createPendingTask({ sessionID: undefined })
-      const mockManager = createMockTaskManager(pendingTask, mockClient)
+    it("succeeds on waiting task (waiting is deletable)", async () => {
+      const waitingTask = createTaskWithStatus("waiting")
+      const mockManager = createMockTaskManager(waitingTask)
       const execute = getExecute(createWopalTaskFinishTool(mockManager as never))
 
       const result = await execute(
-        { task_id: pendingTask.id },
+        { task_id: waitingTask.id },
         { sessionID: parentSessionID },
       )
 
       expect(result).toBe("Task finished successfully. Session deleted from OpenCode.")
-      // session.delete should NOT be called because pending task has no sessionID
-      expect(mockClient.session.delete).not.toHaveBeenCalled()
     })
-  })
 
-  describe("pending state semantics", () => {
-    it("pending is deletable (canDeleteTask returns true)", async () => {
-      const pendingTask = createPendingTask()
-      // pending status is not "running" with idleNotified=false, so canDeleteTask returns true
-      expect(pendingTask.status).toBe("pending")
-      expect(pendingTask.idleNotified).toBeUndefined()
-      
-      // Verify canDeleteTask function directly
-      expect(canDeleteTask(pendingTask)).toBe(true)
-      
-      // finish should succeed
-      const mockManager = createMockTaskManager(pendingTask)
+    it("succeeds on stuck task (stuck is deletable)", async () => {
+      const stuckTask = createTaskWithStatus("stuck")
+      const mockManager = createMockTaskManager(stuckTask)
       const execute = getExecute(createWopalTaskFinishTool(mockManager as never))
-      const result = await execute(
-        { task_id: pendingTask.id },
-        { sessionID: parentSessionID },
-      )
-      expect(result).toContain("finished successfully")
-    })
 
-    it("pending is not abortable (abort requires running status)", async () => {
-      const pendingTask = createPendingTask()
-      const mockManager = createMockTaskManager(pendingTask)
-      const execute = getExecute(createWopalTaskAbortTool(mockManager as never))
-      
       const result = await execute(
-        { task_id: pendingTask.id },
+        { task_id: stuckTask.id },
         { sessionID: parentSessionID },
       )
-      
-      // abort should reject because status is not "running"
-      expect(result).toContain("Failed to abort")
-      expect(result).toContain("task is pending")
-    })
 
-    it("pending is not resumable (reply requires resumable state)", async () => {
-      const pendingTask = createPendingTask()
-      
-      // Verify isResumableTask function directly
-      expect(isResumableTask(pendingTask)).toBe(false)
-      
-      const mockManager = createMockTaskManager(pendingTask)
-      const execute = getExecute(createWopalReplyTool(mockManager as never))
-      
-      const result = await execute(
-        { task_id: pendingTask.id, message: "test" },
-        { sessionID: parentSessionID },
-      )
-      
-      // reply rejects pending task because pending is not a resumable state
-      // resumable states: waiting, error, or idle phase (running + idleNotified)
-      expect(result).toContain("Error")
-      expect(result).toContain("actively running")
+      expect(result).toBe("Task finished successfully. Session deleted from OpenCode.")
     })
   })
 
-  describe("canDeleteTask function coverage", () => {
-    it("rejects actively running (running without idleNotified)", () => {
-      const activeTask: WopalTask = {
-        id: "task-active",
-        status: "running",
-        sessionID: "ses-123",
-        description: "",
-        agent: "fae",
-        prompt: "",
-        parentSessionID: "parent-1",
-        createdAt: new Date(),
-        concurrencyKey: "default",
-      }
-      expect(canDeleteTask(activeTask)).toBe(false)
+  describe("isTaskActive function (running is the only active state)", () => {
+    it("returns true for running", () => {
+      const task = createTaskWithStatus("running")
+      expect(isTaskActive(task)).toBe(true)
     })
 
-    it("accepts idle phase (running + idleNotified)", () => {
-      const idleTask: WopalTask = {
-        id: "task-idle",
-        status: "running",
-        idleNotified: true,
-        sessionID: "ses-123",
-        description: "",
-        agent: "fae",
-        prompt: "",
-        parentSessionID: "parent-1",
-        createdAt: new Date(),
-        concurrencyKey: undefined,
-        waitingConcurrencyKey: "default",
-      }
-      expect(canDeleteTask(idleTask)).toBe(true)
+    it("returns false for idle", () => {
+      const task = createTaskWithStatus("idle")
+      expect(isTaskActive(task)).toBe(false)
     })
 
-    it("accepts waiting status", () => {
-      const waitingTask: WopalTask = {
-        id: "task-waiting",
-        status: "waiting",
-        waitingReason: "question_detected",
-        sessionID: "ses-123",
-        description: "",
-        agent: "fae",
-        prompt: "",
-        parentSessionID: "parent-1",
-        createdAt: new Date(),
-      }
-      expect(canDeleteTask(waitingTask)).toBe(true)
+    it("returns false for waiting", () => {
+      const task = createTaskWithStatus("waiting")
+      expect(isTaskActive(task)).toBe(false)
     })
 
-    it("accepts error status", () => {
-      const errorTask: WopalTask = {
-        id: "task-error",
-        status: "error",
-        error: "Something failed",
-        sessionID: "ses-123",
-        description: "",
-        agent: "fae",
-        prompt: "",
-        parentSessionID: "parent-1",
-        createdAt: new Date(),
-      }
-      expect(canDeleteTask(errorTask)).toBe(true)
-    })
-
-    it("accepts pending status", () => {
-      const pendingTask: WopalTask = {
-        id: "task-pending",
-        status: "pending",
-        sessionID: undefined,
-        description: "",
-        agent: "fae",
-        prompt: "",
-        parentSessionID: "parent-1",
-        createdAt: new Date(),
-      }
-      expect(canDeleteTask(pendingTask)).toBe(true)
+    it("returns false for stuck", () => {
+      const task = createTaskWithStatus("stuck")
+      expect(isTaskActive(task)).toBe(false)
     })
   })
 
-  describe("isResumableTask function coverage", () => {
-    it("accepts waiting status", () => {
-      const waitingTask: WopalTask = {
-        id: "task-waiting",
-        status: "waiting",
-        sessionID: "ses-123",
-        description: "",
-        agent: "fae",
-        prompt: "",
-        parentSessionID: "parent-1",
-        createdAt: new Date(),
-      }
-      expect(isResumableTask(waitingTask)).toBe(true)
+  describe("isResumableTask function (idle/waiting/stuck are resumable)", () => {
+    it("returns false for running (active, not resumable)", () => {
+      const task = createTaskWithStatus("running")
+      expect(isResumableTask(task)).toBe(false)
     })
 
-    it("accepts error status", () => {
-      const errorTask: WopalTask = {
-        id: "task-error",
-        status: "error",
-        sessionID: "ses-123",
-        description: "",
-        agent: "fae",
-        prompt: "",
-        parentSessionID: "parent-1",
-        createdAt: new Date(),
-      }
-      expect(isResumableTask(errorTask)).toBe(true)
+    it("returns true for idle", () => {
+      const task = createTaskWithStatus("idle")
+      expect(isResumableTask(task)).toBe(true)
     })
 
-    it("accepts idle phase (running + idleNotified)", () => {
-      const idleTask: WopalTask = {
-        id: "task-idle",
-        status: "running",
-        idleNotified: true,
-        sessionID: "ses-123",
-        description: "",
-        agent: "fae",
-        prompt: "",
-        parentSessionID: "parent-1",
-        createdAt: new Date(),
-      }
-      expect(isResumableTask(idleTask)).toBe(true)
+    it("returns true for waiting", () => {
+      const task = createTaskWithStatus("waiting")
+      expect(isResumableTask(task)).toBe(true)
     })
 
-    it("rejects actively running (running without idleNotified)", () => {
-      const activeTask: WopalTask = {
-        id: "task-active",
-        status: "running",
-        sessionID: "ses-123",
-        description: "",
-        agent: "fae",
-        prompt: "",
-        parentSessionID: "parent-1",
-        createdAt: new Date(),
-      }
-      expect(isResumableTask(activeTask)).toBe(false)
+    it("returns true for stuck", () => {
+      const task = createTaskWithStatus("stuck")
+      expect(isResumableTask(task)).toBe(true)
+    })
+  })
+
+  describe("canDeleteTask function (idle/waiting/stuck are deletable)", () => {
+    it("returns false for running (active, cannot delete)", () => {
+      const task = createTaskWithStatus("running")
+      expect(canDeleteTask(task)).toBe(false)
     })
 
-    it("rejects pending status", () => {
-      const pendingTask: WopalTask = {
-        id: "task-pending",
-        status: "pending",
-        sessionID: undefined,
-        description: "",
-        agent: "fae",
-        prompt: "",
-        parentSessionID: "parent-1",
-        createdAt: new Date(),
-      }
-      expect(isResumableTask(pendingTask)).toBe(false)
+    it("returns true for idle", () => {
+      const task = createTaskWithStatus("idle")
+      expect(canDeleteTask(task)).toBe(true)
+    })
+
+    it("returns true for waiting", () => {
+      const task = createTaskWithStatus("waiting")
+      expect(canDeleteTask(task)).toBe(true)
+    })
+
+    it("returns true for stuck", () => {
+      const task = createTaskWithStatus("stuck")
+      expect(canDeleteTask(task)).toBe(true)
+    })
+  })
+
+  describe("state transition matrix", () => {
+    // Verify that all non-active states behave consistently
+    const nonActiveStates: WopalTask["status"][] = ["idle", "waiting", "stuck"]
+
+    for (const status of nonActiveStates) {
+      it(`${status}: isTaskActive returns false`, () => {
+        const task = createTaskWithStatus(status)
+        expect(isTaskActive(task)).toBe(false)
+      })
+
+      it(`${status}: isResumableTask returns true`, () => {
+        const task = createTaskWithStatus(status)
+        expect(isResumableTask(task)).toBe(true)
+      })
+
+      it(`${status}: canDeleteTask returns true`, () => {
+        const task = createTaskWithStatus(status)
+        expect(canDeleteTask(task)).toBe(true)
+      })
+    }
+
+    it("running: isTaskActive returns true (the only active state)", () => {
+      const task = createTaskWithStatus("running")
+      expect(isTaskActive(task)).toBe(true)
+    })
+
+    it("running: isResumableTask returns false (active states are not resumable)", () => {
+      const task = createTaskWithStatus("running")
+      expect(isResumableTask(task)).toBe(false)
+    })
+
+    it("running: canDeleteTask returns false (active states cannot be deleted)", () => {
+      const task = createTaskWithStatus("running")
+      expect(canDeleteTask(task)).toBe(false)
     })
   })
 })

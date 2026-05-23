@@ -2,7 +2,7 @@
  * Task Monitor - Assembly Layer
  *
  * Monitors task health and progress.
- * Delegates to specialized handler modules for stuck detection and progress notification.
+ * Delegates to specialized handler modules for progress notification.
  */
 
 import type { WopalTask } from "../types.js"
@@ -25,92 +25,6 @@ import { CONTEXT_WARN_THRESHOLD } from "./progress-notify.js"
 
 // Re-export ContextUsageInfo from session-runtime-info
 export type { ContextUsageInfo } from "../session-runtime-info.js"
-
-// --- stuck detection (inline for now, could be extracted later) ---
-
-export const DEFAULT_STUCK_TIMEOUT_MS = 120_000 // 2 minutes
-
-export interface StuckCheckConfig {
-  stuckTimeoutMs: number
-}
-
-export interface StuckResult {
-  task: WopalTask
-  durationMs: number
-}
-
-export function checkStuckTasks(args: {
-  tasks: Iterable<WopalTask>
-  config: StuckCheckConfig
-}): StuckResult[] {
-  const { tasks, config } = args
-  const now = Date.now()
-  const results: StuckResult[] = []
-
-  for (const task of tasks) {
-    if (task.status !== "running" && task.status !== "waiting") continue
-    if (!task.startedAt || !task.sessionID) continue
-    if (task.stuckNotified) continue
-    if (task.idleNotified) continue
-
-    const meaningfulActivity = task.progress?.lastMeaningfulActivity ?? task.startedAt
-    const elapsed = now - meaningfulActivity.getTime()
-
-    if (elapsed > config.stuckTimeoutMs) {
-      results.push({ task, durationMs: elapsed })
-    }
-  }
-
-  return results
-}
-
-export function clearStuckState(tasks: Iterable<WopalTask>): void {
-  for (const task of tasks) {
-    if (task.status !== "running") continue
-    if (!task.stuckNotified || !task.stuckNotifiedAt) continue
-
-    const meaningfulActivity = task.progress?.lastMeaningfulActivity
-    if (meaningfulActivity && meaningfulActivity > task.stuckNotifiedAt) {
-      task.stuckNotified = false
-      delete task.stuckNotifiedAt
-    }
-  }
-}
-
-// --- monitor dependencies interface ---
-
-// --- monitor dependencies interface (used by simple-task-manager) ---
-
-export interface TaskMonitorDeps {
-  tasks: Map<string, WopalTask>
-  debugLog: LoggerInstance
-  notifyParentStuckFn: (task: WopalTask, durationText: string) => Promise<void>
-}
-
-export async function checkStuckTasksAndNotify(
-  deps: Pick<TaskMonitorDeps, "tasks" | "debugLog" | "notifyParentStuckFn">,
-): Promise<void> {
-  const { tasks, debugLog, notifyParentStuckFn } = deps
-
-  const results = checkStuckTasks({
-    tasks: tasks.values(),
-    config: { stuckTimeoutMs: DEFAULT_STUCK_TIMEOUT_MS },
-  })
-
-  for (const { task, durationMs } of results) {
-    const durationSeconds = Math.floor(durationMs / 1000)
-    const durationMinutes = Math.floor(durationSeconds / 60)
-    const durationText = durationMinutes >= 1
-      ? `${durationMinutes}min ${durationSeconds % 60}s`
-      : `${durationSeconds}s`
-
-    task.stuckNotified = true
-    task.stuckNotifiedAt = new Date()
-
-    debugLog.debug(`[stuck] detected: task_id=${formatSessionID(task.sessionID, true)} duration=${durationText}`)
-    await notifyParentStuckFn(task, durationText)
-  }
-}
 
 export function formatTaskTickLines(
   tasks: Map<string, WopalTask>,

@@ -95,7 +95,7 @@ describe("wopal_task_abort", () => {
     expect(result).toBe("Failed to abort task: task has no active session.")
   })
 
-  it("successfully aborts running task, sets idle phase", async () => {
+  it("successfully aborts running task and sets status to idle", async () => {
     const mockClient = createMockClient()
     const runningTask = createRunningTask()
     const mockManager = createMockTaskManager(runningTask, mockClient)
@@ -108,7 +108,7 @@ describe("wopal_task_abort", () => {
 
     expect(result).toContain(`Task ${runningTask.id} aborted`)
     expect(result).toContain("Execution stopped")
-    expect(result).toContain("idle phase")
+    expect(result).toContain("now idle")
     expect(result).toContain("wopal_task_finish")
     expect(result).toContain("wopal_task_reply")
     
@@ -117,8 +117,8 @@ describe("wopal_task_abort", () => {
       path: { id: runningTask.sessionID },
     })
 
-    // Verify task state changes
-    expect(runningTask.idleNotified).toBe(true)
+    // Verify task state changes - status becomes idle
+    expect(runningTask.status).toBe("idle")
     expect(runningTask.waitingConcurrencyKey).toBe("default")
     expect(mockManager.releaseConcurrencySlot).toHaveBeenCalledWith(runningTask)
   })
@@ -137,7 +137,7 @@ describe("wopal_task_abort", () => {
 
     // Should still succeed even if abort fails
     expect(result).toContain(`Task ${runningTask.id} aborted`)
-    expect(runningTask.idleNotified).toBe(true)
+    expect(runningTask.status).toBe("idle")
   })
 
   it("abort without concurrencyKey does not set waitingConcurrencyKey", async () => {
@@ -152,28 +152,28 @@ describe("wopal_task_abort", () => {
     )
 
     expect(result).toContain(`Task ${runningTask.id} aborted`)
-    expect(runningTask.idleNotified).toBe(true)
+    expect(runningTask.status).toBe("idle")
     expect(runningTask.waitingConcurrencyKey).toBeUndefined()
     // releaseConcurrencySlot is called even when concurrencyKey is undefined (no-op in implementation)
     expect(mockManager.releaseConcurrencySlot).toHaveBeenCalledWith(runningTask)
   })
 
-  it("error task cannot be aborted", async () => {
-    const errorTask = createRunningTask({ status: "error", error: "Previous error" })
-    const mockManager = createMockTaskManager(errorTask)
+  it("stuck task cannot be aborted", async () => {
+    const stuckTask = createRunningTask({ status: "stuck" })
+    const mockManager = createMockTaskManager(stuckTask)
     const execute = getExecute(createWopalTaskAbortTool(mockManager as never))
 
     const result = await execute(
-      { task_id: errorTask.id },
+      { task_id: stuckTask.id },
       { sessionID: parentSessionID },
     )
 
-    expect(result).toContain("Failed to abort task: task is error")
+    expect(result).toContain("Failed to abort task: task is stuck")
     expect(result).toContain("Use wopal_task_finish")
   })
 
-  it("idle task (running + idleNotified) cannot be aborted again", async () => {
-    const idleTask = createRunningTask({ idleNotified: true })
+  it("idle task cannot be aborted again", async () => {
+    const idleTask = createRunningTask({ status: "idle" })
     const mockManager = createMockTaskManager(idleTask)
     const execute = getExecute(createWopalTaskAbortTool(mockManager as never))
 
@@ -182,9 +182,8 @@ describe("wopal_task_abort", () => {
       { sessionID: parentSessionID },
     )
 
-    // idle phase task should be rejected with guidance to use finish instead
-    expect(result).toContain("Failed to abort task: task is already in idle phase")
-    expect(result).toContain("wopal_task_finish")
-    expect(result).toContain("wopal_task_reply")
+    // idle task should be rejected with guidance to use finish instead
+    expect(result).toContain("Failed to abort task: task is idle")
+    expect(result).toContain("Use wopal_task_finish")
   })
 })

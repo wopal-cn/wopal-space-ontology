@@ -25,14 +25,10 @@ export function createWopalTaskAbortTool(manager: SimpleTaskManager): ToolDefini
         return "Failed to abort task: task not found or not owned by this session."
       }
 
-      // abort only works on running status tasks that are NOT in idle phase
-      // idle phase tasks (running + idleNotified) should use finish instead
+      // abort only works on running status tasks
+      // idle/waiting/stuck tasks should use finish instead
       if (task.status !== "running") {
-        return `Failed to abort task: task is ${task.status}. abort only works on running tasks. Use wopal_task_finish for idle/error/waiting tasks.`
-      }
-
-      if (task.idleNotified) {
-        return `Failed to abort task: task is already in idle phase. Use wopal_task_finish to delete, or wopal_task_reply to wake up and redirect.`
+        return `Failed to abort task: task is ${task.status}. abort only works on running tasks. Use wopal_task_finish for idle/waiting/stuck tasks.`
       }
 
       if (!task.sessionID) {
@@ -52,9 +48,8 @@ export function createWopalTaskAbortTool(manager: SimpleTaskManager): ToolDefini
           }
         }
 
-        // Mark as idle to prevent error status change on session.error event
-        // and to prevent promptAsync wake-up (reply will clear this flag)
-        task.idleNotified = true
+        // Set task status to idle
+        task.status = 'idle'
 
         // Preserve concurrency key for potential reply resume
         if (task.concurrencyKey) {
@@ -64,9 +59,9 @@ export function createWopalTaskAbortTool(manager: SimpleTaskManager): ToolDefini
         // Release concurrency slot
         manager.releaseConcurrencySlot(task)
 
-        taskLogger.debug(`task ${task_id} aborted, now in idle phase`)
+        taskLogger.debug(`task ${task_id} aborted, now idle`)
 
-        return `Task ${task_id} aborted. Execution stopped. Task is now in idle phase awaiting your judgment: (1) wopal_task_finish to delete, or (2) TTL 30min auto cleanup. Use wopal_task_reply to wake up and redirect if needed.`
+        return `Task ${task_id} aborted. Execution stopped. Task is now idle awaiting your judgment: (1) wopal_task_finish to delete, or (2) TTL 30min auto cleanup. Use wopal_task_reply to wake up and redirect if needed.`
       } catch (err) {
         taskLogger.debug(`wopal_abort error: ${err}`)
         return `Failed to abort task: ${err instanceof Error ? err.message : String(err)}`

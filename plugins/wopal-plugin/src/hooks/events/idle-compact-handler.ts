@@ -10,7 +10,7 @@ import type { SessionStore } from "../../session-store.js"
 import type { LoggerInstance } from "../../logger.js"
 import type { SimpleTaskManager } from "../../tasks/simple-task-manager.js"
 import { formatSessionID } from "../../logger.js"
-import { isTaskActive } from "../../tasks/task-phase.js"
+import { classifyTaskStop } from "../../tasks/task-stop-classifier.js"
 
 export interface IdleCompactHandlerContext {
   client: OpenCodeClient
@@ -63,20 +63,26 @@ export async function handleSessionIdle(
     return
   }
 
-  // Child session idle: notify parent
+  // Child session idle: classify stop and notify parent
   const task = ctx.taskManager?.findBySession(sessionID)
   if (!task) return
 
-  // Mark idle only for actively running tasks
-  if (isTaskActive(task)) {
-    task.idleNotified = true
+  // Only classify running or waiting tasks
+  if (task.status === "running" || task.status === "waiting") {
+    await classifyTaskStop({
+      task,
+      client: ctx.client,
+      debugLog: ctx.taskLogger,
+    })
+
     // Release concurrency slot so new tasks can launch
     if (task.concurrencyKey && ctx.taskManager) {
       ctx.taskManager.releaseConcurrencySlot(task)
       task.waitingConcurrencyKey = task.concurrencyKey
       task.concurrencyKey = undefined
     }
-    ctx.taskLogger.debug(`task_id=${formatSessionID(task.sessionID, true)} idle`)
+
+    ctx.taskLogger.debug(`task_id=${formatSessionID(task.sessionID, true)} ${task.status}`)
     if (ctx.taskManager) {
       ctx.taskManager.notifyParent(task.id).catch((err) => {
         ctx.taskLogger.debug(`[notifyParent] error for task_id=${formatSessionID(task.sessionID, true)}: ${err instanceof Error ? err.message : String(err)}`)

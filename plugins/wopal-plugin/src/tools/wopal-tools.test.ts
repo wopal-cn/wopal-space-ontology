@@ -28,7 +28,7 @@ describe("wopal tools", () => {
         launch: vi.fn().mockResolvedValue({
           ok: false,
           taskId: "task-1",
-          status: "error",
+          status: "failed",
           error: "Background task launch failed: session.create is unavailable",
         }),
       }
@@ -119,11 +119,11 @@ describe("wopal tools", () => {
       expect(output).toContain("still running")
     })
 
-    it("describes error tasks with error message", async () => {
+    it("describes stuck tasks with diagnostic message", async () => {
       const manager = {
         getTaskForParent: vi.fn().mockReturnValue({
           id: "task-1",
-          status: "error",
+          status: "stuck",
           description: "Test task",
           agent: "general",
           error: "Something went wrong",
@@ -134,7 +134,7 @@ describe("wopal tools", () => {
       const execute = getExecute(createWopalOutputTool(manager as never))
       const output = await execute({ task_id: "task-1" }, { sessionID: "parent-1" })
 
-      expect(output).toContain("**Status:** error")
+      expect(output).toContain("**Status:** stuck")
       expect(output).toContain("Error: Something went wrong")
     })
 
@@ -145,7 +145,7 @@ describe("wopal tools", () => {
           status: "waiting",
           description: "Test task",
           agent: "general",
-          waitingReason: "question_detected",
+          pendingQuestionID: "q-123",
         }),
         getConcurrencyStatus: vi.fn().mockReturnValue({ used: 2, limit: 5, available: 3 }),
       }
@@ -154,7 +154,6 @@ describe("wopal tools", () => {
       const output = await execute({ task_id: "task-1" }, { sessionID: "parent-1" })
 
       expect(output).toContain("**Status:** waiting")
-      expect(output).toContain("**Waiting reason:** question_detected")
     })
 
     it("fails when context session id is missing", async () => {

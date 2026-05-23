@@ -7,8 +7,6 @@ import { isResumableTask } from "../tasks/task-phase.js"
 
 function resetTaskForResume(task: WopalTask): void {
   task.status = "running"
-  delete task.idleNotified
-  delete task.waitingReason
   // Note: waitingConcurrencyKey is NOT deleted here.
   // It is only cleared by reacquireSlotOnWakeUp when tryAcquire succeeds.
   // If tryAcquire failed (concurrency limit reached), waitingConcurrencyKey remains
@@ -75,10 +73,10 @@ async function replyQuestion(taskId: string, manager: SimpleTaskManager, clientA
 
 export function createWopalReplyTool(manager: SimpleTaskManager): ToolDefinition {
   return tool({
-    description: `Resume or redirect a non-running task (idle/waiting/error) by injecting a message into its session. With interrupt=true, aborts active execution first, then injects the message — use for course correction on running tasks. Re-acquires concurrency slot on wake-up.
+    description: `Resume or redirect a non-running task (idle/waiting/stuck) by injecting a message into its session. With interrupt=true, aborts active execution first, then injects the message — use for course correction on running tasks. Re-acquires concurrency slot on wake-up.
 
 Decision guide:
-- Task idle/waiting/error → reply (resume or redirect)
+- Task idle/waiting/stuck → reply (resume or redirect)
 - Task running, needs correction → reply with interrupt=true (abort + redirect)
 - Task running, just stop it → wopal_task_abort (stop without message)
 - Task done, clean up → wopal_task_finish (terminate + delete)`,
@@ -105,8 +103,8 @@ Decision guide:
         return `Error: interrupt only works on running tasks. Task is ${task.status}. Use reply without interrupt to resume.`
       }
 
-      // reply without interrupt only works on resumable tasks (waiting, idle, error)
-      // running + idleNotified is resumable, but running without idleNotified needs interrupt
+      // reply without interrupt only works on resumable tasks (idle, waiting, stuck)
+      // running needs interrupt to abort and redirect
       if (!interrupt && !isResumableTask(task)) {
         return `Error: Task is actively running. Use interrupt=true to abort and redirect, or use wopal_task_abort to stop without redirecting.`
       }
@@ -130,8 +128,7 @@ Decision guide:
         }
 
         // Phase 2: Re-acquire concurrency slot BEFORE sending message
-        // This must happen while task is still in idle phase (idleNotified=true)
-        // so reacquireSlotOnWakeUp can execute its logic
+        // This must happen while task is still idle so reacquireSlotOnWakeUp can execute its logic
         manager.reacquireSlotOnWakeUp(task)
 
         // Phase 3: Send corrective message
@@ -151,7 +148,7 @@ Decision guide:
           })
 
           // Phase 4: Reset task state AFTER successful message injection
-          // Now safe to clear idleNotified, waitingReason, waitingConcurrencyKey
+          // Now safe to reset status to running
           resetTaskForResume(task)
 
           taskLogger.debug(`task ${task_id} interrupted and resumed with new direction`)

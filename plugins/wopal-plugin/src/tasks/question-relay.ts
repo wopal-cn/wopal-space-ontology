@@ -47,11 +47,10 @@ export async function handleQuestionAsked(
   // 子会话，设置 waiting 状态（让 wopal_reply 能找到此任务）
   if (task.status === "running") {
     task.status = "waiting"
-    task.waitingReason = "question_tool"
     if (requestID) {
       task.pendingQuestionID = requestID
     }
-    log.debug(`[question] set task_id=${formatSessionID(task.sessionID, true)} to waiting (question_tool), requestID=${requestID ?? "N/A"}`)
+    log.debug(`[question] set task_id=${formatSessionID(task.sessionID, true)} to waiting, requestID=${requestID ?? "N/A"}`)
   }
 
   log.debug(`[question] child session, relaying to parent: task_id=${formatSessionID(task.sessionID, true)}`)

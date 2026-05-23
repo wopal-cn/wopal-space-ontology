@@ -112,8 +112,8 @@ export function createEventRouter(ctx: EventRouterHookContext) {
     }
 
     if (eventType === "session.error") {
-      handleSessionError(
-        { taskManager: ctx.taskManager, taskLogger: ctx.taskLogger },
+      await handleSessionError(
+        { taskManager: ctx.taskManager, client: ctx.client, taskLogger: ctx.taskLogger },
         sessionID,
         props?.error,
       )

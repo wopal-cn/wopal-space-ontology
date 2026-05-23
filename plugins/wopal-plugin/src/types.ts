@@ -1,10 +1,6 @@
-export type WopalTaskStatus = 'pending' | 'running' | 'waiting' | 'error'
-
-// Note: 'error' is the only terminal state now
-// Task is a perpetual dialog channel - no 'completed', 'cancelled', 'interrupt' states
+export type WopalTaskStatus = 'running' | 'idle' | 'waiting' | 'stuck'
 
 export type ErrorCategory = 'timeout' | 'crash' | 'network' | 'cancelled' | 'unknown'
-// Note: 'cancelled' retained for backward compatibility with existing error handling code
 
 export interface TaskProgress {
   toolCalls: number
@@ -32,7 +28,6 @@ export interface WopalTask {
   errorCategory?: ErrorCategory
   concurrencyKey?: string | undefined
   // Idle diagnostic fields
-  waitingReason?: string
   lastAssistantMessage?: string
   // Question tool pending request ID (for resolving question Deferred)
   pendingQuestionID?: string
@@ -47,8 +42,6 @@ export interface WopalTask {
   progressNotifyTimeBaseline?: Date
   // Concurrency slot key for waiting tasks
   waitingConcurrencyKey?: string
-  // Idle notification (Phase 3: judgment delegated to Wopal)
-  idleNotified?: boolean
   // Task-level model info (mirrors SessionState fields, managed by TaskManager)
   providerID?: string
   modelID?: string
@@ -120,7 +113,7 @@ export interface LaunchSuccess {
 export interface LaunchFailure {
   ok: false
   taskId?: string
-  status: 'error'
+  status: 'failed'
   error: string
 }
 

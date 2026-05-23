@@ -72,7 +72,6 @@ describe("task-launcher", () => {
 
   describe("launchTask", () => {
     let tasks: Map<string, WopalTask>
-    let failTaskSpy: ReturnType<typeof vi.fn>
     let abortSessionSpy: ReturnType<typeof vi.fn>
     let debugLogSpy: LoggerInstance
     let concurrency: ConcurrencyManager
@@ -80,7 +79,6 @@ describe("task-launcher", () => {
 
     beforeEach(() => {
       tasks = new Map()
-      failTaskSpy = vi.fn().mockReturnValue(true)
       abortSessionSpy = vi.fn().mockResolvedValue(undefined)
       debugLogSpy = createMockLogger()
       concurrency = new ConcurrencyManager()
@@ -92,7 +90,6 @@ describe("task-launcher", () => {
         concurrency,
         concurrencyKey: "test",
         taskManager: { registerTaskSession: vi.fn() },
-        failTask: failTaskSpy,
         abortSession: abortSessionSpy,
       }
     })
@@ -108,7 +105,7 @@ describe("task-launcher", () => {
       const result = await launchTask(deps, input)
 
       expect(result.ok).toBe(false)
-      expect(result.status).toBe("error")
+      expect(result.status).toBe("failed")
       expect(result.error).toContain("parent session ID is required")
       expect(concurrency.getCount("test")).toBe(0)
     })
@@ -187,11 +184,14 @@ describe("task-launcher", () => {
       const result = await launchTask(deps, input)
 
       expect(result.ok).toBe(false)
+      expect(result.status).toBe("failed")
       expect(result.error).toContain("promptAsync is unavailable")
+      // launch 失败时 session 已被 abort，但 task 不保留（已从 tasks map 删除）
       expect(abortSessionSpy).toHaveBeenCalledWith("child-123")
+      expect(tasks.has("wopal-task-child-123")).toBe(false)
     })
 
-    it("should fail when promptAsync does not return promise", async () => {
+    it("should fail when promptAsync does not return promise, abort session and not retain task", async () => {
       deps.client = {
         session: {
           create: vi.fn().mockResolvedValue({ id: "child-123" }),
@@ -208,8 +208,11 @@ describe("task-launcher", () => {
       const result = await launchTask(deps, input)
 
       expect(result.ok).toBe(false)
+      expect(result.status).toBe("failed")
       expect(result.error).toContain("did not return a promise")
       expect(abortSessionSpy).toHaveBeenCalledWith("child-123")
+      // launch 失败时 task 不保留
+      expect(tasks.has("wopal-task-child-123")).toBe(false)
     })
 
     it("should launch successfully and set task to running", async () => {
@@ -237,7 +240,7 @@ describe("task-launcher", () => {
       expect(task?.sessionID).toBe("child-123")
     })
 
-    it("should call failTask when promptAsync rejects and task is not idle", async () => {
+    it("should release concurrency when promptAsync rejects and task is still running", async () => {
       let rejectPrompt: (err: Error) => void
       const promptPromise = new Promise((_, reject) => {
         rejectPrompt = reject
@@ -259,15 +262,16 @@ describe("task-launcher", () => {
       const result = await launchTask(deps, input)
       expect(result.ok).toBe(true)
 
-      // Reject promptAsync while task is still running (not idle)
+      // Reject promptAsync while task is still running
       rejectPrompt!(new Error("prompt rejected"))
       await new Promise((r) => setTimeout(r, 10)) // flush microtask
 
-      expect(failTaskSpy).toHaveBeenCalled()
+      // concurrency should be released
+      expect(concurrency.getCount("test")).toBe(0)
       expect(abortSessionSpy).toHaveBeenCalledWith("child-123")
     })
 
-    it("should NOT call failTask when promptAsync rejects after idleNotified is set", async () => {
+    it("should skip cleanup when promptAsync rejects after task status changed from running", async () => {
       // This is the WR-01 test case: idle → abort → rejection race condition
       let rejectPrompt: (err: Error) => void
       const promptPromise = new Promise((_, reject) => {
@@ -293,17 +297,15 @@ describe("task-launcher", () => {
       const task = tasks.get(result.taskId!)
       expect(task?.status).toBe("running")
 
-      // Simulate idle notification being set (by event-router)
-      task!.idleNotified = true
+      // Simulate task status changed to idle (e.g., by abort)
+      task!.status = 'idle'
 
       // Now reject promptAsync (e.g., from abort triggered by idle)
       rejectPrompt!(new Error("aborted after idle"))
       await new Promise((r) => setTimeout(r, 10)) // flush microtask
 
-      // failTask should NOT be called because idleNotified guard skips it
-      expect(failTaskSpy).not.toHaveBeenCalled()
+      // Should not release concurrency again or abort session (already handled by abort)
       expect(abortSessionSpy).not.toHaveBeenCalled()
-      expect(task?.status).toBe("running")
     })
 
     it("should fail when concurrency limit reached", async () => {

@@ -31,8 +31,8 @@ function createMockTaskManager(
         return { ok: false, message: "Task not found or not owned by this session" }
       }
       
-      // Check if task can be deleted
-      if (t.status === "running" && !t.idleNotified) {
+      // Check if task can be deleted (not actively running)
+      if (t.status === "running") {
         return { ok: false, message: "Task is actively running. Use wopal_task_abort or wopal_task_reply(interrupt=true) to stop first, then finish." }
       }
       
@@ -67,7 +67,6 @@ describe("wopal_task_finish", () => {
       parentSessionID,
       createdAt: new Date(),
       concurrencyKey: "default",
-      idleNotified: true,
       ...overrides,
     }
   }
@@ -93,8 +92,8 @@ describe("wopal_task_finish", () => {
     expect(result).toContain("Failed to finish task: Task not found")
   })
 
-  it("rejects actively running task (without idleNotified)", async () => {
-    const runningTask = createTask({ status: "running", idleNotified: undefined })
+  it("rejects actively running task", async () => {
+    const runningTask = createTask({ status: "running" })
     const mockManager = createMockTaskManager(runningTask)
     const execute = getExecute(createWopalTaskFinishTool(mockManager as never))
 
@@ -108,21 +107,8 @@ describe("wopal_task_finish", () => {
     expect(result).toContain("wopal_task_abort")
   })
 
-  it("succeeds on pending task", async () => {
-    const pendingTask = createTask({ status: "pending", sessionID: undefined, concurrencyKey: undefined })
-    const mockManager = createMockTaskManager(pendingTask)
-    const execute = getExecute(createWopalTaskFinishTool(mockManager as never))
-
-    const result = await execute(
-      { task_id: pendingTask.id },
-      { sessionID: parentSessionID },
-    )
-
-    expect(result).toBe("Task finished successfully. Session deleted from OpenCode.")
-  })
-
-  it("succeeds on idle task (running + idleNotified)", async () => {
-    const idleTask = createTask({ status: "running", idleNotified: true })
+  it("succeeds on idle task", async () => {
+    const idleTask = createTask({ status: "idle" })
     const mockClient = createMockClient()
     const mockManager = createMockTaskManager(idleTask, mockClient)
     const execute = getExecute(createWopalTaskFinishTool(mockManager as never))
@@ -138,23 +124,8 @@ describe("wopal_task_finish", () => {
     })
   })
 
-  it("succeeds on error task", async () => {
-    const errorTask = createTask({ status: "error", error: "Something went wrong" })
-    const mockClient = createMockClient()
-    const mockManager = createMockTaskManager(errorTask, mockClient)
-    const execute = getExecute(createWopalTaskFinishTool(mockManager as never))
-
-    const result = await execute(
-      { task_id: errorTask.id },
-      { sessionID: parentSessionID },
-    )
-
-    expect(result).toBe("Task finished successfully. Session deleted from OpenCode.")
-    expect(mockClient.session.delete).toHaveBeenCalled()
-  })
-
   it("succeeds on waiting task", async () => {
-    const waitingTask = createTask({ status: "waiting", waitingReason: "question_detected" })
+    const waitingTask = createTask({ status: "waiting" })
     const mockClient = createMockClient()
     const mockManager = createMockTaskManager(waitingTask, mockClient)
     const execute = getExecute(createWopalTaskFinishTool(mockManager as never))
@@ -171,7 +142,7 @@ describe("wopal_task_finish", () => {
   it("handles session.delete returning error", async () => {
     const mockClient = createMockClient()
     mockClient.session.delete.mockResolvedValueOnce({ error: "Session not found" })
-    const idleTask = createTask({ status: "running", idleNotified: true })
+    const idleTask = createTask({ status: "idle" })
     const mockManager = createMockTaskManager(idleTask, mockClient)
     const execute = getExecute(createWopalTaskFinishTool(mockManager as never))
 
@@ -188,7 +159,7 @@ describe("wopal_task_finish", () => {
   it("handles session.delete throwing exception", async () => {
     const mockClient = createMockClient()
     mockClient.session.delete.mockRejectedValueOnce(new Error("Network error"))
-    const idleTask = createTask({ status: "running", idleNotified: true })
+    const idleTask = createTask({ status: "idle" })
     const mockManager = createMockTaskManager(idleTask, mockClient)
     const execute = getExecute(createWopalTaskFinishTool(mockManager as never))
 

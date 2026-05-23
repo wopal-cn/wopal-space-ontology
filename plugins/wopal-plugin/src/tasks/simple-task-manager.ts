@@ -17,13 +17,12 @@ import {
   launchTask,
   DEFAULT_CONCURRENCY_LIMIT,
 } from "./task-launcher.js"
-import { notifyParent, notifyParentStuck, sendProgressNotification } from "./task-notifier.js"
+import { notifyParent, sendProgressNotification } from "./task-notifier.js"
 import { createTaskMonitorStrategy } from "./task-monitor-strategy.js"
 import type { ProgressNotifyTrigger } from "./task-monitor.js"
 import {
-  failTask,
   abortSession,
-  markTaskErrorBySession,
+  markTaskIdleBySession,
   interruptTask,
   shutdownManager,
 } from "./task-lifecycle.js"
@@ -176,8 +175,8 @@ export class SimpleTaskManager {
     return task
   }
 
-  markTaskErrorBySession(sessionID: string, error: string): WopalTask | undefined {
-    return markTaskErrorBySession(this.getLifecycleDeps(), sessionID, error)
+  markTaskIdleBySession(sessionID: string): WopalTask | undefined {
+    return markTaskIdleBySession(this.getLifecycleDeps(), sessionID)
   }
 
   async interrupt(id: string, parentSessionID: string): Promise<CancelResult> {
@@ -241,7 +240,7 @@ export class SimpleTaskManager {
   }
 
   reacquireSlotOnWakeUp(task: WopalTask): void {
-    // Reacquire slot for resumable tasks (waiting, idle, error)
+    // Reacquire slot for resumable tasks (idle, waiting, stuck)
     if (isResumableTask(task)) {
       if (this.concurrency.tryAcquire(this.CONCURRENCY_KEY, DEFAULT_CONCURRENCY_LIMIT)) {
         task.concurrencyKey = this.CONCURRENCY_KEY
@@ -299,7 +298,7 @@ export class SimpleTaskManager {
         const task: WopalTask = {
           id: taskID,
           sessionID: childSessionID,
-          status: 'running',
+          status: 'idle',
           description: child.title ?? '',
           agent: child.agent ?? 'unknown',
           prompt: '',
@@ -311,7 +310,6 @@ export class SimpleTaskManager {
             lastUpdate: now,
             lastMeaningfulActivity: now,
           },
-          idleNotified: true,
         }
         this.tasks.set(taskID, task)
         this.taskSessions.add(childSessionID)
@@ -338,8 +336,6 @@ export class SimpleTaskManager {
       concurrency: this.concurrency,
       concurrencyKey: this.CONCURRENCY_KEY,
       taskManager: this,
-      failTask: (task: WopalTask, error: string) =>
-        failTask(this.getLifecycleDeps(), task, error),
       abortSession: (sessionID: string | undefined) =>
         abortSession(this.client, this.debugLog, sessionID),
     }
@@ -362,8 +358,6 @@ export class SimpleTaskManager {
       debugLog: this.debugLog,
       directory: this.directory,
       taskManager: this,
-      notifyParentStuckFn: async (task: WopalTask, durationText: string) =>
-        await notifyParentStuck({ client: this.client, debugLog: this.debugLog }, task, durationText),
       sendProgressNotificationFn: async (task: WopalTask, msgCount: number, ctx: number | null, trigger?: string) =>
         await sendProgressNotification({ client: this.client, debugLog: this.debugLog }, task, msgCount, ctx, trigger as ProgressNotifyTrigger | undefined),
     }
