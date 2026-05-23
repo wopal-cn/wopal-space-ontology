@@ -69,11 +69,13 @@ export async function handleSessionIdle(
 
   // Only classify running or waiting tasks
   if (task.status === "running" || task.status === "waiting") {
-    await classifyTaskStop({
+    const result = await classifyTaskStop({
       task,
       client: ctx.client,
       debugLog: ctx.taskLogger,
     })
+
+    if (!result.statusChanged) return
 
     // Release concurrency slot so new tasks can launch
     if (task.concurrencyKey && ctx.taskManager) {
@@ -82,10 +84,10 @@ export async function handleSessionIdle(
       task.concurrencyKey = undefined
     }
 
-    ctx.taskLogger.debug(`task_id=${formatSessionID(task.sessionID, true)} ${task.status}`)
+    ctx.taskLogger.debug(`${formatSessionID(task.sessionID, true)} ${task.status}`)
     if (ctx.taskManager) {
       ctx.taskManager.notifyParent(task.id).catch((err) => {
-        ctx.taskLogger.debug(`[notifyParent] error for task_id=${formatSessionID(task.sessionID, true)}: ${err instanceof Error ? err.message : String(err)}`)
+        ctx.taskLogger.debug(`[notifyParent] error for ${formatSessionID(task.sessionID, true)}: ${err instanceof Error ? err.message : String(err)}`)
       })
     }
   }

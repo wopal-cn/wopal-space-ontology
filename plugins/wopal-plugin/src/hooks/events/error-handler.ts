@@ -60,7 +60,7 @@ export async function handleSessionError(
 
   if (sessionID) {
     const task = ctx.taskManager?.findBySession(sessionID)
-    if (task && (task.status === "running" || task.status === "waiting")) {
+      if (task && (task.status === "running" || task.status === "waiting")) {
       // Release concurrency slot before classification
       if (task.concurrencyKey && ctx.taskManager) {
         ctx.taskManager.releaseConcurrencySlot(task)
@@ -68,16 +68,19 @@ export async function handleSessionError(
         task.concurrencyKey = undefined
       }
 
-      await classifyTaskStop({
+      const result = await classifyTaskStop({
         task,
         client: ctx.client,
         debugLog: ctx.taskLogger,
       })
 
-      ctx.taskLogger.debug(`task_id=${formatSessionID(task.sessionID, true)} error event: ${errorText}, status=${task.status}`)
-      ctx.taskManager?.notifyParent(task.id).catch((err) => {
-        ctx.taskLogger.debug(`[notifyParent] error for task_id=${formatSessionID(task.sessionID, true)}: ${err instanceof Error ? err.message : String(err)}`)
-      })
+      ctx.taskLogger.debug(`${formatSessionID(task.sessionID, true)} error event: ${errorText}, status=${task.status}`)
+
+      if (result.statusChanged && ctx.taskManager) {
+        ctx.taskManager.notifyParent(task.id).catch((err) => {
+          ctx.taskLogger.debug(`[notifyParent] error for ${formatSessionID(task.sessionID, true)}: ${err instanceof Error ? err.message : String(err)}`)
+        })
+      }
     }
   }
 }

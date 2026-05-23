@@ -22,6 +22,7 @@ export interface ClassifyTaskStopDeps {
 export interface ClassifyResult {
   status: "idle" | "stuck" | WopalTask["status"]
   lastAssistantMessage?: string | undefined
+  statusChanged: boolean
 }
 
 /**
@@ -39,12 +40,18 @@ export interface ClassifyResult {
 export async function classifyTaskStop(deps: ClassifyTaskStopDeps): Promise<ClassifyResult> {
   const { task, client, debugLog } = deps
   const taskId = formatSessionID(task.sessionID, true)
+  const originalStatus = task.status
 
   // Only classify running or waiting tasks
   if (task.status !== "running" && task.status !== "waiting") {
-    debugLog.debug(`[classifyTaskStop] skipped: task_id=${taskId} status=${task.status}`)
-    return { status: task.status, lastAssistantMessage: task.lastAssistantMessage }
+    debugLog.debug(`[classifyTaskStop] skipped: ${taskId} status=${task.status}`)
+    return { status: task.status, lastAssistantMessage: task.lastAssistantMessage, statusChanged: false }
   }
+
+  // Synchronously mark as stuck to prevent concurrent event handlers
+  // from entering classification for the same task. The final status
+  // will be determined after fetching messages below.
+  task.status = "stuck"
 
   // Fetch session messages
   let messages: SessionMessage[] = []
@@ -54,7 +61,7 @@ export async function classifyTaskStop(deps: ClassifyTaskStopDeps): Promise<Clas
       messages = extractMessages(messagesResult)
     }
   } catch (err) {
-    debugLog.debug(`[classifyTaskStop] messages fetch failed: task_id=${taskId} err=${err instanceof Error ? err.message : String(err)}`)
+    debugLog.debug(`[classifyTaskStop] messages fetch failed: ${taskId} err=${err instanceof Error ? err.message : String(err)}`)
   }
 
   // Find latest non-synthetic assistant text
@@ -73,15 +80,15 @@ export async function classifyTaskStop(deps: ClassifyTaskStopDeps): Promise<Clas
     if (task.pendingQuestionID) {
       delete task.pendingQuestionID
     }
-    debugLog.debug(`[classifyTaskStop] idle: task_id=${taskId} text_len=${latestText.length}`)
+    debugLog.debug(`[classifyTaskStop] idle: ${taskId} text_len=${latestText.length}`)
   } else {
     task.status = "stuck"
     // Clear pendingQuestionID if transitioning from waiting
     if (task.pendingQuestionID) {
       delete task.pendingQuestionID
     }
-    debugLog.debug(`[classifyTaskStop] stuck: task_id=${taskId} reason=${latestText.length === 0 ? "no_text" : "text_unchanged"}`)
+    debugLog.debug(`[classifyTaskStop] stuck: ${taskId} reason=${latestText.length === 0 ? "no_text" : "text_unchanged"}`)
   }
 
-  return { status: task.status, lastAssistantMessage: task.lastAssistantMessage }
+  return { status: task.status, lastAssistantMessage: task.lastAssistantMessage, statusChanged: task.status !== originalStatus }
 }
