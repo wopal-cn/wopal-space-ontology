@@ -46,7 +46,7 @@ export async function handleSessionIdle(
     }
 
     ctx.sessionStore.markCompacting(sessionID, Date.now(), "plugin")
-    ctx.contextLogger.debug(`${formatSessionID(sessionID, false)} idle -> starting deferred main-session compact`)
+    ctx.contextLogger.debug(`${formatSessionID(sessionID, false)} idle -> starting deferred compact`)
 
     try {
       await ctx.client.session.summarize({
@@ -113,7 +113,7 @@ export async function handleSessionCompacted(
   ctx.sessionStore.markCompacted(sessionID)
   const compactedState = ctx.sessionStore.get(sessionID)
   const isTask = !!ctx.taskManager?.isTaskSession(sessionID)
-  ctx.contextLogger.debug({ session_id: formatSessionID(sessionID, isTask) }, "Compact completed")
+  ctx.contextLogger.info({ session_id: formatSessionID(sessionID, isTask) }, "Compact completed")
 
   // Only handle Plugin-initiated compacts (skip EllaMaka auto-compact or manual /compact)
   const state = compactedState

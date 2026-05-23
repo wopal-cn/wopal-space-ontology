@@ -130,7 +130,7 @@ Actions:
           return "Failed: no session ID available for compact.";
         }
         const target = await resolveSessionTarget(rawSessionID, client as OpenCodeClient, taskManager);
-        contextLogger.debug(`[context_manage] compact ${formatSessionID(target.sessionID, target.isTask)}`);
+        contextLogger.trace(`[context_manage] compact ${formatSessionID(target.sessionID, target.isTask)}`);
         return await handleCompact(target.sessionID, target.isTask, client, activeStore, baseDir, taskManager);
       }
 

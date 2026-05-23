@@ -318,7 +318,7 @@ export async function handleCompact(
     sessionStore.upsert(sessionID, (next) => {
       next.pendingCompactTrigger = "plugin"
     })
-    contextLogger.debug(`[handleCompact] ${formatSessionID(sessionID, false)} scheduled main-session compact for next idle`)
+    contextLogger.info(`${formatSessionID(sessionID, false)} compact scheduled, will start on next idle`)
     return [
       `Compacting session ${formatSessionID(sessionID, false)}...`,
       contextInfo,

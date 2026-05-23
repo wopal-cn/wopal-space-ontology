@@ -23,7 +23,7 @@ export function createCompactionHooks(ctx: CompactionHookContext) {
 
     ctx.sessionStore.markCompacting(sessionID, ctx.now());
     const isTask = !!ctx.taskManager?.isTaskSession(sessionID);
-    ctx.contextLogger.debug(`${formatSessionID(sessionID, isTask)} marked as compacting`);
+    ctx.contextLogger.trace(`${formatSessionID(sessionID, isTask)} marked as compacting`);
   }
 
   return {
