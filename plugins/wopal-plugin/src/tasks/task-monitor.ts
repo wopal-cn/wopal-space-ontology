@@ -8,6 +8,7 @@
 import type { WopalTask } from "../types.js"
 import type { LoggerInstance } from "../logger.js"
 import { formatSessionID } from "../logger.js"
+import { getDisplayStatus } from "./task-phase.js"
 
 // Re-export from specialized modules for backward compatibility
 export {
@@ -111,23 +112,23 @@ export async function checkStuckTasksAndNotify(
   }
 }
 
-export function formatTickStatusLines(
+export function formatTaskTickLines(
   tasks: Map<string, WopalTask>,
   progressInfos: ProgressTaskInfo[],
-): { count: number; lines: string[] } {
-  const runningTasks = Array.from(tasks.values())
-    .filter(t => t.status === 'running' && !t.idleNotified)
+): string[] {
+  const allTasks = Array.from(tasks.values())
 
-  if (runningTasks.length === 0) return { count: 0, lines: [] }
+  if (allTasks.length === 0) return []
 
   const now = Date.now()
-  const lines = runningTasks.map((task) => {
+  return allTasks.map((task) => {
     const sessionId = formatSessionID(task.sessionID, true)
+    const statusText = getDisplayStatus(task)
     const wasChecked = progressInfos.find(p => p.taskId === task.id)
 
     const msgsText = wasChecked ? `${wasChecked.messageCount} msgs` : '—'
 
-    const elapsedMs = now - (task.startedAt?.getTime() ?? 0)
+    const elapsedMs = now - (task.startedAt?.getTime() ?? task.createdAt.getTime())
     const totalSec = Math.floor(elapsedMs / 1000)
     const min = Math.floor(totalSec / 60)
     const sec = totalSec % 60
@@ -140,10 +141,8 @@ export function formatTickStatusLines(
 
     const notifiedMark = wasChecked?.wasNotified ? ' ✓notified' : ''
 
-    return `${sessionId} "${task.description}" ${msgsText}, ${timeText}${ctxText}${notifiedMark}`
+    return `${sessionId} ${task.agent} [${statusText}] "${task.description}" ${msgsText}, ${timeText}${ctxText}${notifiedMark}`
   })
-
-  return { count: runningTasks.length, lines }
 }
 
 export function logTickStatus(
@@ -151,8 +150,8 @@ export function logTickStatus(
   progressInfos: ProgressTaskInfo[],
   debugLog: LoggerInstance,
 ): void {
-  const { count, lines } = formatTickStatusLines(tasks, progressInfos)
-  if (count > 0) {
-    debugLog.debug(`[tick] ${count} tasks:\n${lines.join('\n')}`)
+  const lines = formatTaskTickLines(tasks, progressInfos)
+  if (lines.length > 0) {
+    debugLog.debug(`[tick] ${lines.length} tasks:\n${lines.join('\n')}`)
   }
 }

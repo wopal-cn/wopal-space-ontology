@@ -27,12 +27,12 @@ export function isResumableTask(task: WopalTask): boolean {
 
 /**
  * Get display-friendly status string.
- * - idleNotified running tasks show "idle (awaiting judgment)"
+ * - idleNotified running tasks show "idle"
  * - Other status values shown directly
  */
 export function getDisplayStatus(task: WopalTask): string {
   if (isIdleTask(task)) {
-    return "idle (awaiting judgment)"
+    return "idle"
   }
   return task.status
 }

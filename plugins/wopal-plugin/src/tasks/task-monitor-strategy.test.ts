@@ -16,7 +16,7 @@ let formatTickReceivedInfos: ProgressTaskInfo[] | undefined
 var checkProgressNotificationsMock: ReturnType<typeof vi.fn>
 var clearStuckStateMock: ReturnType<typeof vi.fn>
 var checkStuckTasksAndNotifyMock: ReturnType<typeof vi.fn>
-var formatTickStatusLinesMock: ReturnType<typeof vi.fn>
+var formatTaskTickLinesMock: ReturnType<typeof vi.fn>
 
 vi.mock("./task-monitor.js", async (importOriginal) => {
   const actual = await importOriginal() as any
@@ -32,17 +32,17 @@ vi.mock("./task-monitor.js", async (importOriginal) => {
     callOrder.push("checkStuckTasksAndNotify")
     return actual.checkStuckTasksAndNotify(...args)
   })
-  formatTickStatusLinesMock = vi.fn((tasks: any, infos: any) => {
-    callOrder.push("formatTickStatusLines")
+  formatTaskTickLinesMock = vi.fn((tasks: any, infos: any) => {
+    callOrder.push("formatTaskTickLines")
     formatTickReceivedInfos = infos
-    return actual.formatTickStatusLines(tasks, infos)
+    return actual.formatTaskTickLines(tasks, infos)
   })
   return {
     ...actual,
     checkProgressNotifications: checkProgressNotificationsMock,
     clearStuckState: clearStuckStateMock,
     checkStuckTasksAndNotify: checkStuckTasksAndNotifyMock,
-    formatTickStatusLines: formatTickStatusLinesMock,
+    formatTaskTickLines: formatTaskTickLinesMock,
   }
 })
 
@@ -102,7 +102,7 @@ describe("task-monitor-strategy", () => {
   })
 
   describe("runTaskMonitorTick", () => {
-    it("executes in strict order: checkProgressNotifications → clearStuckState → checkStuckTasksAndNotify → formatTickStatusLines", async () => {
+    it("executes in strict order: checkProgressNotifications → clearStuckState → checkStuckTasksAndNotify → formatTaskTickLines", async () => {
       const task = createRunningTask()
       const tasks = new Map<string, WopalTask>()
       tasks.set(task.id, task)
@@ -114,11 +114,11 @@ describe("task-monitor-strategy", () => {
         "checkProgressNotifications",
         "clearStuckState",
         "checkStuckTasksAndNotify",
-        "formatTickStatusLines",
+        "formatTaskTickLines",
       ])
     })
 
-    it("passes progressInfos from checkProgressNotifications to formatTickStatusLines verbatim", async () => {
+    it("passes progressInfos from checkProgressNotifications to formatTaskTickLines verbatim", async () => {
       // W-02 fix: Override mock to return sentinel array with unique marker
       const sentinelInfos: ProgressTaskInfo[] = [{ taskId: "SENTINEL-W02-UNIQUE", messageCount: 0, contextUsage: null }]
 
@@ -130,6 +130,17 @@ describe("task-monitor-strategy", () => {
 
       // Verbatim pass-through: exact same reference
       expect(formatTickReceivedInfos).toBe(sentinelInfos)
+    })
+
+    it("wraps task lines as task sessions", async () => {
+      const task = createRunningTask()
+      const tasks = new Map<string, WopalTask>([[task.id, task]])
+      const deps = createMockDeps({ tasks })
+
+      const result = await runTaskMonitorTick(deps)
+
+      expect(result.sessions).toHaveLength(1)
+      expect(result.sessions?.[0]).toMatchObject({ kind: "task" })
     })
   })
 

@@ -150,7 +150,7 @@ describe("wopal_task_output", () => {
     expect(result).toBe("Current session ID is unavailable; cannot read task status.")
   })
 
-  it("shows 'idle (awaiting judgment)' status text when task.idleNotified is true", async () => {
+  it("shows 'idle' status text when task.idleNotified is true", async () => {
     const mockClient = createMockClient()
     const idleTask = createRunningTask({ idleNotified: true })
     const mockManager = createMockTaskManager(idleTask, mockClient)
@@ -161,7 +161,7 @@ describe("wopal_task_output", () => {
       { sessionID: parentSessionID },
     )
 
-    expect(result).toContain("**Status:** idle (awaiting judgment)")
+    expect(result).toContain("**Status:** idle")
     expect(result).not.toContain("**Status:** running")
   })
 

@@ -15,7 +15,7 @@ import {
   checkProgressNotifications,
   clearStuckState,
   checkStuckTasksAndNotify,
-  formatTickStatusLines,
+  formatTaskTickLines,
 } from "./task-monitor.js"
 
 export interface TaskMonitorRuntimeDeps {
@@ -48,9 +48,11 @@ export async function runTaskMonitorTick(deps: TaskMonitorRuntimeDeps): Promise<
     notifyParentStuckFn: deps.notifyParentStuckFn,
   })
 
-  // Step 4: Format tick status lines (return to engine)
-  const tasks = formatTickStatusLines(deps.tasks, taskInfos)
-  return { tasks }
+  // Step 4: Format task tick lines and wrap as task sessions
+  const lines = formatTaskTickLines(deps.tasks, taskInfos)
+  return {
+    sessions: lines.map((text) => ({ kind: "task" as const, text })),
+  }
 }
 
 /**

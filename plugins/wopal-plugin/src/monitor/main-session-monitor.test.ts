@@ -294,6 +294,42 @@ describe("createMainSessionMonitorStrategy", () => {
     expect(queueContextWarning).not.toHaveBeenCalled()
   })
 
+  it("returns main session entries with [main] label and full title", async () => {
+    const longTitle = "Main session title should not be truncated in tick logs"
+    const { store } = createMockSessionStore({
+      ids: ["ses_main_1"],
+      states: {
+        ses_main_1: {
+          lastUpdated: 1,
+          seededFromHistory: false,
+          seedCount: 0,
+          recentMessages: [],
+          loadedSkills: new Set(),
+          title: longTitle,
+          providerID: "test-provider",
+          modelID: "test-model",
+          lastTokens: { input: 40_000, output: 100, updatedAt: Date.now() },
+        },
+      },
+    })
+
+    const taskManager = { isTaskSession: vi.fn().mockReturnValue(false) }
+    const strategy = createMainSessionMonitorStrategy({
+      sessionStore: store,
+      client: createMockClient(40),
+      directory: "/test",
+      taskManager: taskManager as unknown as { isTaskSession: (id: string) => boolean },
+      logger,
+    })
+
+    const result = await strategy.tick()
+
+    expect(result.sessions).toHaveLength(1)
+    expect(result.sessions?.[0]).toMatchObject({ kind: "main" })
+    expect(result.sessions?.[0].text).toContain("[main]")
+    expect(result.sessions?.[0].text).toContain(longTitle)
+  })
+
   it("returns strategy with correct name", () => {
     const { store } = createMockSessionStore()
     const strategy = createMainSessionMonitorStrategy({

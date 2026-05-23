@@ -69,6 +69,28 @@ describe("MonitorEngine", () => {
 
       expect(logger.error).toHaveBeenCalledTimes(1)
     })
+
+    it("always logs main sessions before task sessions", async () => {
+      const taskStrategy: MonitorStrategy = {
+        name: "task-monitor",
+        tick: async () => ({
+          sessions: [{ kind: "task", text: "task-1(task) [running] \"Task\" 1 msgs, 0m10s" }],
+        }),
+      }
+      const mainStrategy: MonitorStrategy = {
+        name: "main-session-monitor",
+        tick: async () => ({
+          sessions: [{ kind: "main", text: "main-1(main) [main] \"Main\" ctx:4%" }],
+        }),
+      }
+
+      const engine = new MonitorEngine({ strategies: [taskStrategy, mainStrategy], logger })
+      await engine.runOnceForTesting()
+
+      expect(logger.debug).toHaveBeenCalledWith(
+        `[tick] 2 sessions:\n[0] main-1(main) [main] "Main" ctx:4%\n[1] task-1(task) [running] "Task" 1 msgs, 0m10s`,
+      )
+    })
   })
 
   describe("start / stop idempotency", () => {

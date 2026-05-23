@@ -5,7 +5,7 @@
  * Does NOT send prompts — only records pending state for later consumption.
  */
 
-import type { MonitorStrategy, TickResult } from "./monitor-engine.js"
+import type { MonitorStrategy, TickResult, TickSessionEntry } from "./monitor-engine.js"
 import type { SessionStore } from "../session-store.js"
 import type { OpenCodeClient } from "../types.js"
 import type { TaskSessionInspector } from "../session-runtime-info.js"
@@ -41,7 +41,7 @@ export function createMainSessionMonitorStrategy(
     tick: async (): Promise<TickResult> => {
       const sessionIDs = args.sessionStore.ids()
       const nowMs = Date.now()
-      const lines: string[] = []
+      const sessions: TickSessionEntry[] = []
 
       for (const sessionID of sessionIDs) {
         try {
@@ -64,23 +64,29 @@ export function createMainSessionMonitorStrategy(
             args.taskManager,
           )
 
-          const shortId = sessionID.slice(-10)
-          const title = state.title?.slice(0, 40) ?? ''
+          const sessionLabel = formatSessionID(sessionID, false)
+          const title = state.title ?? ''
           const titleText = title ? `"${title}" ` : ''
 
           if (!ctxInfo) {
-            lines.push(`${shortId}(main) ${titleText}ctx:—`)
+            sessions.push({
+              kind: "main",
+              text: `${sessionLabel} [main] ${titleText}ctx:—`,
+            })
             continue
           }
 
           const warnMark = ctxInfo.pct >= MAIN_SESSION_CONTEXT_WARNING_THRESHOLD_PCT ? ' ⚠️' : ''
-          lines.push(`${shortId}(main) ${titleText}ctx:${ctxInfo.pct}%${warnMark}`)
+          sessions.push({
+            kind: "main",
+            text: `${sessionLabel} [main] ${titleText}ctx:${ctxInfo.pct}%${warnMark}`,
+          })
 
           if (ctxInfo.pct >= MAIN_SESSION_CONTEXT_WARNING_THRESHOLD_PCT) {
             const queued = args.sessionStore.queueContextWarning(sessionID, ctxInfo.pct, nowMs)
             if (queued) {
               args.logger.trace(
-                `[mainSessionMonitor] ${shortId} context warning queued at ${ctxInfo.pct}%`,
+                `[mainSessionMonitor] ${sessionLabel} context warning queued at ${ctxInfo.pct}%`,
               )
             }
           }
@@ -92,7 +98,7 @@ export function createMainSessionMonitorStrategy(
         }
       }
 
-      return { mainSessions: { count: lines.length, lines } }
+      return { sessions }
     },
   }
 }

@@ -637,14 +637,55 @@ describe("logTickStatus", () => {
     expect(debugLog.debug).toHaveBeenCalledWith(expect.stringContaining("(task)"))
   })
 
-  it("should skip logging when no running tasks", () => {
+  it("should log tasks regardless of status", () => {
     const task = createTask({ status: "completed" })
     const tasks = new Map([["task-1", task]])
     const debugLog = createMockLogger()
 
     logTickStatus(tasks, [], debugLog)
 
+    expect(debugLog.debug).toHaveBeenCalledTimes(1)
+    expect(debugLog.debug).toHaveBeenCalledWith(expect.stringContaining("[tick] 1 tasks:"))
+    expect(debugLog.debug).toHaveBeenCalledWith(expect.stringContaining("[completed]"))
+  })
+
+  it("should not log when tasks map is empty", () => {
+    const tasks = new Map<string, WopalTask>()
+    const debugLog = createMockLogger()
+
+    logTickStatus(tasks, [], debugLog)
+
     expect(debugLog.debug).not.toHaveBeenCalled()
+  })
+
+  it("should include pending tasks in tick logs", () => {
+    const task = createTask({ status: "pending" })
+    const tasks = new Map([["task-1", task]])
+    const debugLog = createMockLogger()
+
+    logTickStatus(tasks, [], debugLog)
+
+    expect(debugLog.debug).toHaveBeenCalledTimes(1)
+    expect(debugLog.debug).toHaveBeenCalledWith(expect.stringContaining("[pending]"))
+  })
+
+  it("should use createdAt when pending task has no startedAt", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-05-23T00:00:20.000Z"))
+
+    const task = createTask({
+      status: "pending",
+      startedAt: undefined,
+      createdAt: new Date("2026-05-23T00:00:00.000Z"),
+    })
+    const tasks = new Map([["task-1", task]])
+    const debugLog = createMockLogger()
+
+    logTickStatus(tasks, [], debugLog)
+
+    expect(debugLog.debug).toHaveBeenCalledWith(expect.stringContaining("0m20s"))
+
+    vi.useRealTimers()
   })
 
   it("should not throw for high context usage (debug level)", () => {

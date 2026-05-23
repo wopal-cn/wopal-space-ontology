@@ -72,9 +72,9 @@ describe("task-phase", () => {
   })
 
   describe("getDisplayStatus", () => {
-    it("shows 'idle (awaiting judgment)' for idle task", () => {
+    it("shows 'idle' for idle task", () => {
       const task = createTask({ status: "running", idleNotified: true })
-      expect(getDisplayStatus(task)).toBe("idle (awaiting judgment)")
+      expect(getDisplayStatus(task)).toBe("idle")
     })
 
     it("shows 'running' for actively running task", () => {

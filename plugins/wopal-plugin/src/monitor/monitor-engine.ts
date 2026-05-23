@@ -1,9 +1,16 @@
 import type { LoggerInstance } from "../logger.js"
 import { coreLogger } from "../logger.js"
 
+export type TickSessionKind = "main" | "task"
+
+export interface TickSessionEntry {
+  kind: TickSessionKind
+  text: string
+}
+
 export interface TickResult {
-  tasks?: { count: number; lines: string[] }
-  mainSessions?: { count: number; lines: string[] }
+  /** Unified view: all sessions (main + tasks) with status labels */
+  sessions?: TickSessionEntry[]
 }
 
 export interface MonitorStrategy {
@@ -72,17 +79,25 @@ export class MonitorEngine {
       }
     }
 
-    const taskCount = results.reduce((sum, r) => sum + (r.tasks?.count ?? 0), 0)
-    const mainCount = results.reduce((sum, r) => sum + (r.mainSessions?.count ?? 0), 0)
+    const mainSessions: TickSessionEntry[] = []
+    const taskSessions: TickSessionEntry[] = []
 
-    if (taskCount > 0 || mainCount > 0) {
-      const rawLines: string[] = []
-      for (const r of results) {
-        if (r.tasks?.lines) rawLines.push(...r.tasks.lines)
-        if (r.mainSessions?.lines) rawLines.push(...r.mainSessions.lines)
+    for (const result of results) {
+      for (const session of result.sessions ?? []) {
+        if (session.kind === "main") {
+          mainSessions.push(session)
+        } else {
+          taskSessions.push(session)
+        }
       }
-      const numberedLines = rawLines.map((line, i) => `[${i}] ${line}`)
-      this.logger.info(`[tick] ${taskCount} tasks, ${mainCount} main sessions:\n${numberedLines.join('\n')}`)
+    }
+
+    const orderedSessions = [...mainSessions, ...taskSessions]
+    const sessionCount = orderedSessions.length
+
+    if (sessionCount > 0) {
+      const numberedLines = orderedSessions.map((session, i) => `[${i}] ${session.text}`)
+      this.logger.debug(`[tick] ${sessionCount} sessions:\n${numberedLines.join('\n')}`)
     }
     return results
   }
