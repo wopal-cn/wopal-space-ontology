@@ -51,7 +51,7 @@ export function formatTaskTickLines(
     const ctxPct = wasChecked?.contextUsage
     const ctxText = ctxPct != null
       ? (ctxPct >= CONTEXT_WARN_THRESHOLD ? `, ctx:${ctxPct}% ⚠️` : `, ctx:${ctxPct}%`)
-      : ''
+      : ', ctx:—'
 
     const notifiedMark = wasChecked?.wasNotified ? ' ✓notified' : ''
 

@@ -71,7 +71,7 @@ export function createMainSessionMonitorStrategy(
           if (!ctxInfo) {
             sessions.push({
               kind: "main",
-              text: `${sessionLabel} [main] ${titleText}ctx:—`,
+              text: `${sessionLabel} ${titleText}ctx:—`,
             })
             continue
           }
@@ -79,7 +79,7 @@ export function createMainSessionMonitorStrategy(
           const warnMark = ctxInfo.pct >= MAIN_SESSION_CONTEXT_WARNING_THRESHOLD_PCT ? ' ⚠️' : ''
           sessions.push({
             kind: "main",
-            text: `${sessionLabel} [main] ${titleText}ctx:${ctxInfo.pct}%${warnMark}`,
+            text: `${sessionLabel} ${titleText}ctx:${ctxInfo.pct}%${warnMark}`,
           })
 
           if (ctxInfo.pct >= MAIN_SESSION_CONTEXT_WARNING_THRESHOLD_PCT) {

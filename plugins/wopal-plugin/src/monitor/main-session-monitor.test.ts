@@ -326,7 +326,6 @@ describe("createMainSessionMonitorStrategy", () => {
 
     expect(result.sessions).toHaveLength(1)
     expect(result.sessions?.[0]).toMatchObject({ kind: "main" })
-    expect(result.sessions?.[0].text).toContain("[main]")
     expect(result.sessions?.[0].text).toContain(longTitle)
   })
 
