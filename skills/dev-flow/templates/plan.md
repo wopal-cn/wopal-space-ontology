@@ -75,6 +75,28 @@
 
 - <本次不做的内容及原因>
 
+## Business Rules Impact
+
+<!--
+  ⚠️ Plan 编写时检查是否影响业务规则。
+  1. 读取 `docs/products/{product}/BUSINESS_RULES.md`（如存在）
+  2. 判断本次改动是否引入新业务约束或修改已有规则判定条件
+  3. 引用 BR 编号而非重写规则全文
+  4. 纯技术重构、bug 修复（无新业务约束）时写 "N/A — 无业务规则变更"
+-->
+
+### 新增
+<!-- BR-NNN: {规则描述} -->
+
+### 修改
+<!-- BR-NNN: {旧值} → {新值}（原因） -->
+
+### 废弃
+<!-- BR-NNN: {废弃原因} -->
+
+### 同步确认
+- [ ] 已将上述变更同步到 `BUSINESS_RULES.md`
+
 ## Affected Files
 
 | Component | Files | Operation | Role |
