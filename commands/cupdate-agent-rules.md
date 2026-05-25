@@ -139,6 +139,7 @@ When updating an existing `AGENTS.md`:
 4. Add any missing one-sentence project positioning, compact architecture, directory responsibilities, and development / testing commands.
 5. Merge `rules-context` directly into the right section. If any part is out of scope, explain why it was not added in the completion response.
 6. Keep the document under 300 lines.
+7. ⚠️ **Rules & specifications are immutable after initial creation.** When updating an existing `AGENTS.md`, never directly add, modify, or delete any existing rule / specification content. You may only recommend changes; all additions, modifications, and deletions require explicit user approval before execution.
 
 ## Confirmation Policy
 
