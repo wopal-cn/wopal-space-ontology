@@ -85,10 +85,30 @@ When working inside WopalSpace, prefer canonical startup and structure files:
 - DESIGN must not duplicate PRD-level vision, target users, or product roadmap except as short references.
 - DESIGN must not become an implementation checklist, coding standard, or command transcript.
 - Product DESIGN owns system composition, architecture layers, subsystem contracts, runtime model, flows, governance, and key decisions.
-- Subsystem DESIGN owns internal module architecture, interfaces, data/state model, integration boundaries, and implementation status.
+- Subsystem DESIGN owns internal module architecture, technical stack choices, interfaces, data/state model, and PRD-phase-aligned implementation status.
 - Existing accurate content should be preserved and tightened, not rewritten for novelty.
 - Outdated content should be revised or removed when evidence is clear.
 - Open uncertainties should be marked as needing confirmation, not silently decided.
+
+## Writing Quality Bar
+
+DESIGN documents must use design-language, not process-language.
+
+Required qualities:
+
+- Concise technical claims: every paragraph should define a structure, boundary, contract, state owner, technology choice, or runtime behavior.
+- Design-state wording: describe target architecture and ownership, not temporary implementation location or task progress.
+- Evidence-backed claims: when updating from code, translate code facts into design responsibilities and contracts.
+- Boundary clarity: every integration or technology choice should say what the subsystem owns and what it must not own.
+- Phase-aware status: implementation status should answer how PRD roadmap phases have landed, not merely list modules.
+
+Forbidden writing:
+
+- Template commentary such as "this section should..." or "the document needs...".
+- Filler architecture prose that does not change the reader's understanding of the system.
+- Decorative diagrams that are harder to read than a sentence or table.
+- Implementation-state headings like "current location" as primary design structure.
+- Related-document links to backlog plans, task plans, command transcripts, or other temporary execution artifacts unless the user explicitly asks for implementation traceability.
 
 ---
 
@@ -179,7 +199,7 @@ Record important technical and architectural decisions with rationale.
 
 ### 9. Related Documents
 
-Link the PRD, subsystem documents, business rules, implementation plans, research, and project specs.
+Link only durable product/design references: PRD, subsystem documents, business rules, architecture references, research summaries, and project specs. Do not include backlog plans, task plans, execution plans, command logs, or temporary implementation artifacts unless the user explicitly requests traceability.
 
 ---
 
@@ -193,7 +213,7 @@ Use the shared Change Log format.
 
 ### 1. Subsystem Role
 
-State where the subsystem fits, what it owns, and what it explicitly delegates to other subsystems.
+State where the subsystem fits, what it owns, and what it explicitly delegates to other subsystems. Keep this section concise and technical: role position, responsibility boundary, and target responsibility only. Do not repeat PRD prose or use decorative diagrams unless they clarify a real runtime relationship.
 
 ### 2. Design Principles
 
@@ -201,27 +221,27 @@ List the principles that guide technical choices inside this subsystem. Keep the
 
 ### 3. Module Architecture
 
-Describe internal modules and their responsibilities. Include diagrams or tables when useful.
+Describe internal modules and their responsibilities in design-state language. Avoid implementation-state labels such as "current location". Code paths may appear as implementation carriers, but the primary columns should be design module, responsibility, and owning/target component.
 
-### 4. Interfaces and Contracts
+### 4. Technical Stack Choices
+
+Document the subsystem's technical stack and integration choices: runtime, framework, build/package tools, filesystem/state handling, external binaries, security scanners, protocol/client choices, output model, and configuration format. For each choice, explain why it fits the subsystem and what boundary it must not cross.
+
+### 5. Interfaces and Contracts
 
 Define external surfaces: CLI commands, APIs, events, file formats, schemas, protocols, or integration contracts. Keep this at specification level, not code walkthrough level.
 
-### 5. Data and State Model
+### 6. Data and State Model
 
 Describe owned state, persistence, configuration, caches, generated files, and migration or idempotency rules.
 
-### 6. Integration Boundaries
-
-Clarify relationships with parent architecture, peer subsystems, external tools, plugins, and runtime environments. State what this subsystem must not own.
-
 ### 7. Implementation Status
 
-Summarize current implementation by module or capability. Mark delivered, partial, planned, and deprecated areas based on code and project evidence.
+Summarize current implementation against the related PRD roadmap or phases, not as a flat module inventory. For each phase, state the PRD target, what has landed, what remains, and what is deferred. Use implementation evidence, but write the section as product-design progress rather than a code checklist.
 
 ### 8. Related Documents
 
-Link the parent PRD/DESIGN, subsystem PRD, business rules, plans, research, and project specs.
+Link only durable product/design references: parent PRD/DESIGN, subsystem PRD, business rules, architecture references, and project specs. Do not include backlog plans, task plans, execution plans, command logs, or temporary implementation artifacts unless the user explicitly requests traceability.
 
 ---
 
@@ -235,7 +255,7 @@ When updating an existing DESIGN:
    - user-confirmed requirements and conversation decisions
    - implemented code facts
    - related PRD/DESIGN documents
-   - known roadmap or plan artifacts
+   - known roadmap artifacts and implementation evidence
 4. Add missing required sections when the existing structure is incomplete.
 5. Remove or revise obsolete architecture, boundary, interface, or status claims when evidence is clear.
 6. Append one Change Log row in section 0 for the update.
@@ -249,8 +269,14 @@ Do not paste code-level implementation details into DESIGN. Convert code facts i
 - [ ] Document language follows user preference
 - [ ] Header includes current Updated date
 - [ ] DESIGN is grounded in the PRD
+- [ ] DESIGN uses concise technical design-language, not template/process commentary
 - [ ] Product DESIGN explains cross-subsystem architecture and ownership
-- [ ] Subsystem DESIGN explains internal modules, contracts, state, and integration boundaries
+- [ ] Subsystem role is concise, technical, and boundary-focused
+- [ ] Subsystem module architecture uses design-state language, not implementation-location language
+- [ ] Subsystem DESIGN explains internal modules, technical stack choices, contracts, state, and PRD-phase-aligned implementation status
+- [ ] Technical stack choices include rationale and ownership boundaries
+- [ ] Implementation status is aligned to PRD phases or roadmap, not a flat module table
+- [ ] Related documents exclude backlog plans and temporary implementation artifacts by default
 - [ ] DESIGN avoids PRD-level vision/user/roadmap duplication
 - [ ] DESIGN avoids task-level implementation instructions
 - [ ] Existing accurate content preserved
