@@ -28,7 +28,7 @@ class TestArchivePlanLink(unittest.TestCase):
         tmp_dir = tempfile.mkdtemp()
         try:
             # Create archived plan
-            archived_dir = os.path.join(tmp_dir, 'docs', 'products', 'ontology', 'plans', 'done')
+            archived_dir = os.path.join(tmp_dir, 'docs', 'projects', 'ontology', 'plans', 'done')
             os.makedirs(archived_dir)
             archived_file = os.path.join(archived_dir, '20260422-120-refactor-dev-flow-optimize-new-issue-flow.md')
             with open(archived_file, 'w') as f:
@@ -42,7 +42,7 @@ class TestArchivePlanLink(unittest.TestCase):
 
 | Resource | Link |
 |----------|------|
-| Plan | [120-refactor-dev-flow-optimize-new-issue-flow](https://github.com/sampx/wopal-space/blob/main/docs/products/ontology/plans/120-refactor-dev-flow-optimize-new-issue-flow.md) |
+| Plan | [120-refactor-dev-flow-optimize-new-issue-flow](https://github.com/sampx/wopal-space/blob/main/docs/projects/ontology/plans/120-refactor-dev-flow-optimize-new-issue-flow.md) |
 """)
             
             # Test update_issue_plan_link
@@ -58,7 +58,7 @@ class TestArchivePlanLink(unittest.TestCase):
             edit_args_file = os.path.join(state_dir, 'edit-args.txt')
             if os.path.exists(edit_args_file):
                 content = open(edit_args_file).read()
-                self.assertIn('docs/products/ontology/plans/done/20260422-120-refactor-dev-flow-optimize-new-issue-flow.md', content)
+                self.assertIn('docs/projects/ontology/plans/done/20260422-120-refactor-dev-flow-optimize-new-issue-flow.md', content)
         finally:
             shutil.rmtree(tmp_dir)
 

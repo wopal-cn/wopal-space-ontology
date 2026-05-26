@@ -49,9 +49,9 @@ def find_plan_by_name(plan_name: str, workspace_root: str | Path = None) -> str:
     Find plan file by plan name (no-issue mode).
     
     Search order:
-    1. Active plans in docs/products/plans/ matching exact name
-    2. Project-specific plans in docs/products/*/plans/ matching exact name
-    3. Archived plans in docs/products/*/plans/done/ (YYYYMMDD-prefix)
+    1. Active plans in docs/projects/plans/ matching exact name
+    2. Project-specific plans in docs/projects/*/plans/ matching exact name
+    3. Archived plans in docs/projects/*/plans/done/ (YYYYMMDD-prefix)
     
     Args:
         plan_name: Plan name (without .md extension, e.g., "refactor-dev-flow-cleanup")
@@ -71,11 +71,11 @@ def find_plan_by_name(plan_name: str, workspace_root: str | Path = None) -> str:
     # Search locations in order
     search_dirs = [
         # Space-level active plans
-        os.path.join(workspace_root, "docs/products/plans"),
+        os.path.join(workspace_root, "docs/projects/plans"),
         # Project-level active plans
-        *[d for d in glob.glob(os.path.join(workspace_root, "docs/products/*/plans")) if os.path.isdir(d)],
+        *[d for d in glob.glob(os.path.join(workspace_root, "docs/projects/*/plans")) if os.path.isdir(d)],
         # Archived plans (done directories)
-        *[d for d in glob.glob(os.path.join(workspace_root, "docs/products/*/plans/done")) if os.path.isdir(d)],
+        *[d for d in glob.glob(os.path.join(workspace_root, "docs/projects/*/plans/done")) if os.path.isdir(d)],
     ]
     
     for search_dir in search_dirs:
@@ -104,9 +104,9 @@ def find_plan_by_issue(issue_number: int, workspace_root: str | Path = None) -> 
     Find plan file by issue number, searching active and archived directories.
     
     Search order:
-    1. Active plans in docs/products/plans/
-    2. Project-specific plans in docs/products/*/plans/
-    3. Archived plans in docs/products/*/plans/done/ (YYYYMMDD-prefix)
+    1. Active plans in docs/projects/plans/
+    2. Project-specific plans in docs/projects/*/plans/
+    3. Archived plans in docs/projects/*/plans/done/ (YYYYMMDD-prefix)
     
     Args:
         issue_number: Issue number to search for
@@ -129,11 +129,11 @@ def find_plan_by_issue(issue_number: int, workspace_root: str | Path = None) -> 
     # Search locations in order
     search_dirs = [
         # Space-level active plans
-        os.path.join(workspace_root, "docs/products/plans"),
+        os.path.join(workspace_root, "docs/projects/plans"),
         # Project-level active plans
-        *[d for d in glob.glob(os.path.join(workspace_root, "docs/products/*/plans")) if os.path.isdir(d)],
+        *[d for d in glob.glob(os.path.join(workspace_root, "docs/projects/*/plans")) if os.path.isdir(d)],
         # Archived plans (done directories)
-        *[d for d in glob.glob(os.path.join(workspace_root, "docs/products/*/plans/done")) if os.path.isdir(d)],
+        *[d for d in glob.glob(os.path.join(workspace_root, "docs/projects/*/plans/done")) if os.path.isdir(d)],
     ]
     
     for search_dir in search_dirs:

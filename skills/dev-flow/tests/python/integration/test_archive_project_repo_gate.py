@@ -63,12 +63,12 @@ class TestArchiveProjectRepoGate(unittest.TestCase):
         with open(wopal_git, 'w') as f:
             f.write('gitdir: ../.git/worktrees/wopal-space-main\n')
 
-        # docs/products/ontology/plans/ - for active plans (create first)
+        # docs/projects/ontology/plans/ - for active plans (create first)
         plans_dir = os.path.join(
-            self.tmp_dir, 'docs', 'products', 'ontology', 'plans')
+            self.tmp_dir, 'docs', 'projects', 'ontology', 'plans')
         os.makedirs(plans_dir)
 
-        # docs/products/ontology/plans/done/ - for archived plans (subdirectory)
+        # docs/projects/ontology/plans/done/ - for archived plans (subdirectory)
         plans_done_dir = os.path.join(plans_dir, 'done')
         os.makedirs(plans_done_dir)
 
@@ -140,7 +140,7 @@ elif args[0] == 'issue' and args[1] == 'view':
     print('## Related Resources\n')
     print('| Resource | Link |')
     print('|----------|------|')
-    print('| Plan | [121-dev-flow-clean-up-issue-scripts](https://github.com/sampx/wopal-space/blob/main/docs/products/ontology/plans/121-dev-flow-clean-up-issue-scripts.md) |')
+    print('| Plan | [121-dev-flow-clean-up-issue-scripts](https://github.com/sampx/wopal-space/blob/main/docs/projects/ontology/plans/121-dev-flow-clean-up-issue-scripts.md) |')
     sys.exit(0)
 elif args[0] == 'issue' and args[1] == 'edit':
     # Capture edit args

@@ -53,7 +53,7 @@ class TestRelatedResourcesLinks(unittest.TestCase):
         """sync_plan_to_issue_body: approved plan -> Plan link is GitHub URL"""
         # Setup: approved plan
         self._write_plan_file("executing", "ontology")
-        mock_blob_url.return_value = "https://github.com/sampx/wopal-space/blob/main/docs/products/ontology/plans/120-test-plan.md"
+        mock_blob_url.return_value = "https://github.com/sampx/wopal-space/blob/main/docs/projects/ontology/plans/120-test-plan.md"
         
         # Mock gh CLI availability check
         mock_subprocess.return_value = MagicMock(returncode=0)
@@ -78,7 +78,7 @@ class TestRelatedResourcesLinks(unittest.TestCase):
         body_idx = args.index("--body") + 1
         body = args[body_idx]
         
-        expected_link = "[120-test-plan](https://github.com/sampx/wopal-space/blob/main/docs/products/ontology/plans/120-test-plan.md)"
+        expected_link = "[120-test-plan](https://github.com/sampx/wopal-space/blob/main/docs/projects/ontology/plans/120-test-plan.md)"
         self.assertIn(expected_link, body,
                       "Body should contain Plan link in Related Resources table")
         self.assertIn("## Related Resources", body,

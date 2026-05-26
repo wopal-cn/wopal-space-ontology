@@ -132,9 +132,9 @@ def _resolve_scope_from_title(title: str) -> str:
 def _resolve_plan_dir(project: str, workspace_root: Path) -> Path:
     """Resolve Plan directory path."""
     if project:
-        return workspace_root / "docs" / "products" / project / "plans"
+        return workspace_root / "docs" / "projects" / project / "plans"
     else:
-        return workspace_root / "docs" / "products" / "plans"
+        return workspace_root / "docs" / "projects" / "plans"
 
 
 def _print_existing_plan_info(plan_file: str, target_ref: str) -> None:

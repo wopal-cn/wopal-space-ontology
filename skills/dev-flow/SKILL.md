@@ -65,13 +65,13 @@ Issue 驱动：`flow.sh plan <issue>`。无 Issue：`flow.sh plan --title "..." 
 
 - 先执行 `flow.sh plan ...` 生成或定位 stub，再编辑内容。
 - Plan 目录由 `--project` 决定；不要用组件名猜目录。
-- 本空间约定：跨项目综合 Plan 使用 `--project wopal-space`，目录是 `docs/products/wopal-space/plans/`。
+- 本空间约定：跨项目综合 Plan 使用 `--project wopal-space`，目录是 `docs/projects/wopal-space/plans/`。
 
 ### A+. Plan 编写要点
 
 **业务规则影响评估**：
 
-Plan 编写时，读取产品已有 `docs/products/{product}/BUSINESS_RULES.md`，判断本次改动是否影响业务规则：
+Plan 编写时，读取产品已有 `docs/projects/{project}/BUSINESS_RULES.md`，判断本次改动是否影响业务规则：
 
 | 场景 | Plan 中标注 |
 |------|-----------|
@@ -124,7 +124,7 @@ rook 契约格式见 agents-collab。委派 rook 前不预加载 df-plan-review 
 2. **委派 rook 审 fae 实施结果**（强制，prompt 格式见 agents-collab）
 3. 根据 rook 判定：PASS → 继续；REVISE/BLOCK → fix + re-review（最多 3 轮）
 4. 通过后勾选 `### Agent Verification`
-5. **同步业务规则**：如 Plan 的 `## Business Rules Impact` 非 N/A，将变更同步到 `docs/products/{product}/BUSINESS_RULES.md`，勾选 Plan 中的同步确认 checkbox
+5. **同步业务规则**：如 Plan 的 `## Business Rules Impact` 非 N/A，将变更同步到 `docs/projects/{project}/BUSINESS_RULES.md`，勾选 Plan 中的同步确认 checkbox
 6. `flow.sh complete <issue>`
 
 `complete` 硬门控：所有 Task Done ✓ + Agent Verification ✓ + rook PASS ✓。

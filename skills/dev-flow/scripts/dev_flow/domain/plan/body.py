@@ -244,10 +244,12 @@ def build_issue_body_from_plan(plan_file: str, plan_name: str, repo: str, worksp
     if plan_status in ('planning', 'draft'):
         plan_link = "_待关联_"
     else:
-        if project:
-            plan_path = f"docs/products/{project}/plans/{plan_name}.md"
+        if workspace_root:
+            plan_path = Path(plan_file).resolve().relative_to(Path(workspace_root).resolve()).as_posix()
+        elif project:
+            plan_path = f"docs/projects/{project}/plans/{plan_name}.md"
         else:
-            plan_path = f"docs/products/plans/{plan_name}.md"
+            plan_path = f"docs/projects/plans/{plan_name}.md"
         github_url = build_repo_blob_url(repo, plan_path)
         plan_link = f"[{plan_name}]({github_url})"
     

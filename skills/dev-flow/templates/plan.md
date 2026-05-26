@@ -79,7 +79,7 @@
 
 <!--
   ⚠️ Plan 编写时检查是否影响业务规则。
-  1. 读取 `docs/products/{product}/BUSINESS_RULES.md`（如存在）
+  1. 读取 `docs/projects/{project}/BUSINESS_RULES.md`（如存在）
   2. 判断本次改动是否引入新业务约束或修改已有规则判定条件
   3. 引用 BR 编号而非重写规则全文
   4. 纯技术重构、bug 修复（无新业务约束）时写 "N/A — 无业务规则变更"

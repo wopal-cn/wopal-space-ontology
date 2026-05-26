@@ -26,13 +26,13 @@ class TestBuildRepoBlobUrl(unittest.TestCase):
 
     def test_creates_github_blob_links(self):
         """build_repo_blob_url creates GitHub blob links"""
-        url = build_repo_blob_url('sampx/wopal-space', 'docs/products/ontology/plans/120-demo.md')
-        self.assertEqual(url, 'https://github.com/sampx/wopal-space/blob/main/docs/products/ontology/plans/120-demo.md')
+        url = build_repo_blob_url('sampx/wopal-space', 'docs/projects/ontology/plans/120-demo.md')
+        self.assertEqual(url, 'https://github.com/sampx/wopal-space/blob/main/docs/projects/ontology/plans/120-demo.md')
 
     def test_with_different_repo(self):
         """build_repo_blob_url with different repo"""
-        url = build_repo_blob_url('wopal-cn/ontology', 'docs/products/plans/121-test.md')
-        self.assertEqual(url, 'https://github.com/wopal-cn/ontology/blob/main/docs/products/plans/121-test.md')
+        url = build_repo_blob_url('wopal-cn/ontology', 'docs/projects/plans/121-test.md')
+        self.assertEqual(url, 'https://github.com/wopal-cn/ontology/blob/main/docs/projects/plans/121-test.md')
 
 
 class TestFindPlanByIssue(unittest.TestCase):
@@ -44,7 +44,7 @@ class TestFindPlanByIssue(unittest.TestCase):
         import shutil
         tmp_dir = tempfile.mkdtemp()
         try:
-            archived_dir = os.path.join(tmp_dir, 'docs', 'products', 'ontology', 'plans', 'done')
+            archived_dir = os.path.join(tmp_dir, 'docs', 'projects', 'ontology', 'plans', 'done')
             os.makedirs(archived_dir)
             archived_plan = os.path.join(archived_dir, '20260422-120-refactor-dev-flow-optimize-new-issue-flow.md')
             with open(archived_plan, 'w') as f:

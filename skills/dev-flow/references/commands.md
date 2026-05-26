@@ -77,7 +77,7 @@ flow.sh plan --title "feat(scope): desc" --project <name> --type <type>
 
 先运行这条命令生成或定位 Plan stub，再编辑内容；禁止手写创建新的 Plan 文件。
 
-目录由 `--project` 决定。本空间约定：跨项目综合 Plan 使用 `--project wopal-space`，目录为 `docs/products/wopal-space/plans/`。
+目录由 `--project` 决定。本空间约定：跨项目综合 Plan 使用 `--project wopal-space`，目录为 `docs/projects/wopal-space/plans/`。
 
 ### plan --check
 
@@ -120,8 +120,8 @@ flow.sh verify-switch <issue> --merge
 ### decompose-prd
 
 ```bash
-flow.sh decompose-prd docs/products/<project>/PRD.md --dry-run   # 预览
-flow.sh decompose-prd docs/products/<project>/PRD.md --project <name>  # 创建
+flow.sh decompose-prd docs/projects/<project>/PRD.md --dry-run   # 预览
+flow.sh decompose-prd docs/projects/<project>/PRD.md --project <name>  # 创建
 ```
 
 ### reset（破坏性）

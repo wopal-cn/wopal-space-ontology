@@ -234,13 +234,13 @@ def find_plan(input: str) -> str:
     
     # String input → search all plan directories
     workspace_root = find_workspace_root()
-    search_dir = Path(workspace_root) / "docs" / "products"
+    search_dir = Path(workspace_root) / "docs" / "projects"
     
     if not search_dir.exists():
         log_error("No plan directory found")
         raise FileNotFoundError("No plan directory")
     
-    # Search: docs/products/plans/ and docs/products/*/plans/
+    # Search: docs/projects/plans/ and docs/projects/*/plans/
     matches = []
     
     # Global plans

@@ -220,21 +220,21 @@ def _scan_local_plans(workspace_root: str) -> list[dict]:
     Returns list of dicts: {name, project, status, has_issue, issue_number}
     """
     results = []
-    products_dir = Path(workspace_root) / "docs" / "products"
+    projects_dir = Path(workspace_root) / "docs" / "projects"
     
-    if not products_dir.exists():
+    if not projects_dir.exists():
         return results
     
-    # Scan: docs/products/plans/*.md and docs/products/*/plans/*.md
+    # Scan: docs/projects/plans/*.md and docs/projects/*/plans/*.md
     search_dirs = []
     
     # Global plans
-    global_plans = products_dir / "plans"
+    global_plans = projects_dir / "plans"
     if global_plans.exists():
         search_dirs.append(("plans", global_plans))
     
     # Project plans
-    for project_dir in sorted(products_dir.iterdir()):
+    for project_dir in sorted(projects_dir.iterdir()):
         if project_dir.is_dir() and project_dir.name != "plans":
             plans_dir = project_dir / "plans"
             if plans_dir.exists():

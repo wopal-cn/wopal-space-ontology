@@ -16,31 +16,24 @@ from dev_flow.core.workspace import find_workspace_root
 
 def _build_relative_path(archived_file: str, workspace_root: Path) -> str:
     """
-    Build relative path from docs/products.
+    Build relative path from docs/.
     
     Args:
         archived_file: Absolute path to archived plan file
         workspace_root: Workspace root path
         
     Returns:
-        Relative path like "ontology/plans/done/20260422-plan.md"
+        Relative path like "projects/ontology/plans/done/20260422-plan.md"
     """
     archived_path = Path(archived_file)
-    docs_products = workspace_root / 'docs' / 'products'
+    docs_root = workspace_root / 'docs'
     
     try:
-        relative = archived_path.relative_to(docs_products)
+        relative = archived_path.relative_to(docs_root)
         return str(relative)
     except ValueError:
-        # Fallback: extract from path structure
-        # Pattern: .../docs/products/<project>/plans/done/<filename>
-        parts = archived_path.parts
-        if 'docs' in parts and 'products' in parts:
-            idx = parts.index('products')
-            return '/'.join(parts[idx + 1:])
-        
         # Last resort: use filename directly
-        return f"ontology/plans/done/{archived_path.name}"
+        return archived_path.name
 
 
 def update_issue_plan_link(issue_number: int, plan_file: str, repo: str, workspace_root: str = None):
@@ -71,11 +64,11 @@ def update_issue_plan_link(issue_number: int, plan_file: str, repo: str, workspa
     # Extract plan name (remove .md extension and date prefix if present)
     plan_name = Path(plan_file).stem
     
-    # Build relative path from docs/products
+    # Build relative path from docs/
     relative_path = _build_relative_path(plan_file, workspace)
     
     # Build GitHub blob URL
-    blob_url = f"https://github.com/{repo}/blob/main/docs/products/{relative_path}"
+    blob_url = f"https://github.com/{repo}/blob/main/docs/{relative_path}"
     
     # Get current Issue body - check for test mock first
     state_dir = workspace / 'state'
