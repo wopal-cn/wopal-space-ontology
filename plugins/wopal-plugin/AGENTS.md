@@ -6,8 +6,8 @@ Wopal's dedicated ellamaka runtime plugin — rule injection, task delegation, m
 
 Canonical references:
 
-- PRD: `docs/products/wopal-space-ontology/PRD.md`
-- DESIGN: `docs/products/wopal-space-ontology/DESIGN.md`
+- PRD: `docs/projects/wopal-space-ontology/PRD.md`
+- DESIGN: `docs/projects/wopal-space-ontology/DESIGN.md`
 - Parent Rules: `.wopal/AGENTS.md`
 
 ## 2. Architecture and Directories

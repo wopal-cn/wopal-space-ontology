@@ -8,8 +8,8 @@ WopalSpace 的空间灵魂、规约与能力基因工具包；`agents/`、`rules
 
 Canonical references:
 
-- PRD: `docs/products/wopal-space-ontology/PRD.md`
-- DESIGN: `docs/products/wopal-space-ontology/DESIGN.md`
+- PRD: `docs/projects/wopal-space-ontology/PRD.md`
+- DESIGN: `docs/projects/wopal-space-ontology/DESIGN.md`
 - Business Rules: `.wopal/rules/business-rules.md`
 - Parent Rules: `.wopal-space/REGULATIONS.md`
 - Plugin Rules: `.wopal/plugins/wopal-plugin/AGENTS.md`
@@ -18,7 +18,7 @@ Canonical references:
 
 执行链：修改 ontology 源 → 如涉及加载链路，由用户重启 ellamaka → 在 ellamaka 运行时验证。
 
-本地化审核目录使用 `docs/products/wopal-space-ontology/LANG/<locale>/...`；`<locale>` 采用 IETF BCP 47 / RFC 5646 语言标记，例如 `zh-CN`、`en-US`，不要写死 `zh-CN`。
+本地化审核目录使用 `docs/projects/wopal-space-ontology/LANG/<locale>/...`；`<locale>` 采用 IETF BCP 47 / RFC 5646 语言标记，例如 `zh-CN`、`en-US`，不要写死 `zh-CN`。
 
 | 目录 | 职责 |
 |---|---|
@@ -40,7 +40,7 @@ Canonical references:
 
 - 英文正式版是运行时加载源，路径为 `.wopal/` 对应目录。
 - 先生成用户偏好语言审核版，再同步正式英文版。
-- 审核版路径：`docs/products/wopal-space-ontology/LANG/<locale>/<type>/`。
+- 审核版路径：`docs/projects/wopal-space-ontology/LANG/<locale>/<type>/`。
 - `<type>` 与运行时目录对齐：`agents/`、`rules/`、`commands/`、`templates/`、`prompts/`。
 - `<locale>` 采用 IETF BCP 47 / RFC 5646 语言标记，例如 `zh-CN`、`en-US`，不要写死。
 - 审核版标题和正文使用目标语言，禁止中英文标题混杂。

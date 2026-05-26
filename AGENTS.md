@@ -8,8 +8,8 @@ This project is primarily declarative ontology files; only the plugin and some s
 
 Canonical references:
 
-- PRD: `docs/products/wopal-space-ontology/PRD.md`
-- DESIGN: `docs/products/wopal-space-ontology/DESIGN.md`
+- PRD: `docs/projects/wopal-space-ontology/PRD.md`
+- DESIGN: `docs/projects/wopal-space-ontology/DESIGN.md`
 - Business Rules: `.wopal/rules/business-rules.md`
 - Parent Rules: `.wopal-space/REGULATIONS.md`
 - Plugin Rules: `.wopal/plugins/wopal-plugin/AGENTS.md`
@@ -18,7 +18,7 @@ Canonical references:
 
 Execution chain: modify ontology source → if load-path-related, user restarts ellamaka → verify at ellamaka runtime.
 
-Localization review directory: `docs/products/wopal-space-ontology/LANG/<locale>/...`. `<locale>` uses IETF BCP 47 / RFC 5646 tags, e.g. `zh-CN`, `en-US`. Never hardcode `zh-CN`.
+Localization review directory: `docs/projects/wopal-space-ontology/LANG/<locale>/...`. `<locale>` uses IETF BCP 47 / RFC 5646 tags, e.g. `zh-CN`, `en-US`. Never hardcode `zh-CN`.
 
 | Directory | Responsibility |
 |---|---|
@@ -40,7 +40,7 @@ Applies to semantic content in: `agents/`, `rules/`, `commands/`, `templates/`, 
 
 - The formal English version is the runtime source, located under `.wopal/` in the corresponding directory.
 - Generate the user's preferred language review version first, then sync to the formal English version.
-- Review path: `docs/products/wopal-space-ontology/LANG/<locale>/<type>/`.
+- Review path: `docs/projects/wopal-space-ontology/LANG/<locale>/<type>/`.
 - `<type>` aligns with the runtime directory: `agents/`, `rules/`, `commands/`, `templates/`, `prompts/`.
 - `<locale>` uses IETF BCP 47 / RFC 5646 language tags, e.g. `zh-CN`, `en-US`. Never hardcode.
 - Review version titles and body use the target language; mixing Chinese and English titles is forbidden.

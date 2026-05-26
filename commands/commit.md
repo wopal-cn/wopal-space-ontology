@@ -71,7 +71,7 @@ git diff --stat
 ```
 📦 Workspace:
   - MEMORY.md
-  - docs/products/plans/xxx.md
+  - docs/projects/plans/xxx.md
 
 📦 projects/ontology:
   - agents/wopal/commands/summon.md
