@@ -111,6 +111,7 @@ def main(argv: list[str] | None = None) -> int:
         print("")
         print("Utility commands:")
         print("  decompose-prd   Create Issues from PRD phases")
+        print("  decompose       Create Issues from PRD or ROADMAP.md slices")
         print("  roadmap         Product phase roadmap (Analyze/Discuss/Produce/Decompose)")
         print("  reset           Reset Plan to planning status")
         print("  query           Low-level data queries")
@@ -146,8 +147,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "plan":
         return cmd_plan(args)
 
-    # Dispatch decompose-prd subcommand
-    if args.command == "decompose-prd":
+    # Dispatch decompose-prd / decompose subcommand
+    if args.command in ("decompose-prd", "decompose"):
         return cmd_decompose(args)
 
     # Dispatch roadmap subcommand

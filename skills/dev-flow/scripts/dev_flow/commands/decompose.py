@@ -448,31 +448,37 @@ def _decompose_from_roadmap(roadmap_path: str, args: argparse.Namespace) -> int:
 # argparse registration
 # ============================================
 
-def register_decompose_parser(subparsers: argparse._SubParsersAction) -> None:
-    """Register decompose-prd subcommand."""
-    decompose_parser = subparsers.add_parser(
-        "decompose-prd",
-        help="Create Issues from PRD phases",
-    )
-    decompose_parser.add_argument(
+def _add_decompose_args(parser):
+    """Add shared arguments to decompose parser."""
+    parser.add_argument(
         "prd_path",
         nargs="?",
         help="Path to PRD file (relative to workspace root)",
     )
-    decompose_parser.add_argument(
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Show what would be created without creating Issues",
     )
-    decompose_parser.add_argument(
+    parser.add_argument(
         "--project",
         help="Target project name (default: space)",
     )
-    decompose_parser.add_argument(
+    parser.add_argument(
         "--from", dest="from_file",
         help="Decompose from ROADMAP.md or PRD",
     )
-    decompose_parser.add_argument(
+    parser.add_argument(
         "--product",
         help="Product name (for ROADMAP.md slices)",
     )
+
+
+def register_decompose_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Register decompose-prd and decompose subcommands."""
+    for name in ("decompose-prd", "decompose"):
+        p = subparsers.add_parser(
+            name,
+            help="Create Issues from PRD phases or ROADMAP.md slices",
+        )
+        _add_decompose_args(p)

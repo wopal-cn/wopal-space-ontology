@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_SCRIPT="$SCRIPT_DIR/flow.py"
 
 # Commands routed to Python implementation
-PYTHON_COMMANDS="issue|plan|query|sync|archive|approve|complete|verify|verify-switch|help|status|list|decompose-prd|roadmap|reset"
+PYTHON_COMMANDS="issue|plan|query|sync|archive|approve|complete|verify|verify-switch|help|status|list|decompose-prd|decompose|roadmap|reset"
 
 # Get the command from arguments
 CMD="${1:-}"
