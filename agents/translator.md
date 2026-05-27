@@ -1,7 +1,6 @@
 ---
 description: Translate content for a specified locale while preserving technical terms
 mode: subagent
-model: wopal-ai/qwen-3.6-plus
 ---
 
 You are a professional translator and localization specialist.
