@@ -12,7 +12,7 @@ import { createOpencodeClient as createV2OpencodeClient } from "@opencode-ai/sdk
 import { discoverRuleFiles, type DiscoveredRule } from "./rules/index.js";
 import { createHookContext, createAllHooks } from "./hooks/index.js";
 import { sessionStore } from "./session-store-instance.js";
-import { coreLogger, memoryLogger, rulesLogger, contextLogger } from "./logger.js";
+import { coreLogger, memoryLogger, rulesLogger, contextLogger, getLogFile, getMinLevelName } from "./logger.js";
 import { SimpleTaskManager } from "./tasks/simple-task-manager.js";
 import { MonitorEngine } from "./monitor/monitor-engine.js";
 import { createMainSessionMonitorStrategy } from "./monitor/main-session-monitor.js";
@@ -76,7 +76,7 @@ async function ensureMemorySystem(): Promise<typeof _memorySystem> {
     const injector = new MemoryInjector(retriever);
 
     _memorySystem = { injector, distillEngine, store, embedder, llm };
-    memoryLogger.info("Memory system initialized (LanceDB + Embedding + LLM)");
+    memoryLogger.info(`Memory system ready (LanceDB, Embedding, LLM)`);
     return _memorySystem;
   } catch (error) {
     coreLogger.warn({ err: error instanceof Error ? error : new Error(String(error)) }, "Memory system initialization failed (non-fatal)");
@@ -194,6 +194,7 @@ const openCodeRulesPlugin = async (pluginInput: PluginInput): Promise<Hooks> => 
     );
   }
 
+  coreLogger.debug({ log_file: getLogFile(), log_level: getMinLevelName() }, "Logger config");
   coreLogger.info({ tools: Object.keys(tools).join(", "), memory: !!memory }, "Plugin initialized");
 
   return {

@@ -127,7 +127,7 @@ export async function handleSessionCompacted(
 
   // Fire background title generation from compaction summary (non-blocking)
   if (compactionText) {
-    generateTitleInBackground(ctx.client, sessionID, compactionText, ctx.contextLogger, isTask)
+    generateTitleInBackground(ctx.client, sessionID, compactionText, ctx.contextLogger)
       .catch(() => {})
   }
 
@@ -183,7 +183,6 @@ async function generateTitleInBackground(
   sessionID: string,
   compactionText: string,
   logger: LoggerInstance,
-  isTask: boolean,
 ): Promise<void> {
   try {
     const llm = new LLMClient()
@@ -198,7 +197,6 @@ async function generateTitleInBackground(
 
     if (!title) return
 
-    // Save SessionContext.summary
     const existingCtx = loadSessionContext(sessionID)
     const newCtx: SessionContext = {
       sessionID,
@@ -210,7 +208,6 @@ async function generateTitleInBackground(
         generatedAt: new Date().toISOString(),
       },
     }
-    saveSessionContext(newCtx)
 
     // Update session title via API
     if (typeof client?.session?.update === "function") {
@@ -219,10 +216,10 @@ async function generateTitleInBackground(
         body: { title },
       })
       newCtx.title = title
-      saveSessionContext(newCtx)
     }
 
-    logger.debug({ session_id: formatSessionID(sessionID, isTask), title }, "Background title updated")
+    saveSessionContext(newCtx)
+    logger.info(`Title generated: "${title}"`)
   } catch {
     // Best-effort: silently skip on any failure
   }

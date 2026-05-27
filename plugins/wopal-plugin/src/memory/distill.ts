@@ -50,7 +50,11 @@ export function setPendingConfirmation(sessionID: string, data: { candidates: Pr
 }
 
 export function clearPendingConfirmation(sessionID: string): void {
+  const had = pendingConfirmations.has(sessionID);
   pendingConfirmations.delete(sessionID);
+  if (had) {
+    memoryLogger.info({ session_id: formatSessionID(sessionID, false) }, "[distill] Cancelled");
+  }
 }
 
 /**
@@ -85,17 +89,19 @@ export class DistillEngine {
    * Distill memories from session messages
    */
   async distill(sessionID: string, messages: SessionMessage[], project: string = "wopal-space"): Promise<DistillResult> {
-    memoryLogger.debug(`[distill] ${formatSessionID(sessionID, false)} project=${project} messages=${messages.length}`);
+    const sid = formatSessionID(sessionID, false);
 
     const existingState = loadExtractionState(sessionID);
     if (existingState?.distill) {
-      memoryLogger.debug(`[distill] Already extracted at ${existingState.distill.extractedAt}`);
+      memoryLogger.trace({ session_id: sid, extracted_at: existingState.distill.extractedAt }, "[distill] Already extracted");
       return { memoriesCreated: 0, memoriesMerged: 0, memoriesSkipped: 0, title: existingState.title, depth: "shallow" };
     }
 
     const conversation = extractConversationText(messages);
+    memoryLogger.debug({ session_id: sid, raw_messages: messages.length, chars: conversation.length }, "[distill] Conversation extracted");
+
     if (conversation.length < MIN_CONVERSATION_LENGTH) {
-      memoryLogger.debug(`[distill] Too short (${conversation.length} chars), skip`);
+      memoryLogger.trace({ session_id: sid, chars: conversation.length }, "[distill] Too short, skip");
       return { memoriesCreated: 0, memoriesMerged: 0, memoriesSkipped: 0, title: null, depth: "shallow" };
     }
 
@@ -104,12 +110,12 @@ export class DistillEngine {
     try {
       extractResult = await this.llm.completeJson<ExtractResult>(extractionPrompt);
     } catch (error) {
-      memoryLogger.warn(`[distill] LLM extraction failed: ${error}`);
+      memoryLogger.warn({ session_id: sid, err: error }, "[distill] LLM extraction failed");
       return { memoriesCreated: 0, memoriesMerged: 0, memoriesSkipped: 0, title: null, depth: "shallow" };
     }
 
     if (!extractResult.memories || extractResult.memories.length === 0) {
-      memoryLogger.debug(`[distill] No memories extracted`);
+      memoryLogger.trace({ session_id: sid }, "[distill] No memories extracted");
       return { memoriesCreated: 0, memoriesMerged: 0, memoriesSkipped: 0, title: extractResult.title ?? null, depth: "shallow" };
     }
 
@@ -126,7 +132,10 @@ export class DistillEngine {
     };
     saveSessionContext(ctx);
 
-    memoryLogger.debug(`[distill] Done: created=${dedupResult.create.length}, merged=${dedupResult.merge.length}, skipped=${dedupResult.skip.length}`);
+    memoryLogger.info(
+      { session_id: sid, created: dedupResult.create.length, merged: dedupResult.merge.length, skipped: dedupResult.skip.length },
+      "[distill] Done",
+    );
     return {
       memoriesCreated: dedupResult.create.length,
       memoriesMerged: dedupResult.merge.length,
@@ -140,11 +149,13 @@ export class DistillEngine {
    * Preview memories from session messages without writing to database
    */
   async preview(sessionID: string, messages: SessionMessage[]): Promise<{ candidates: PreviewCandidate[]; title: string | null }> {
-    memoryLogger.debug(`[preview] ${formatSessionID(sessionID, false)} messages=${messages.length}`);
+    const sid = formatSessionID(sessionID, false);
 
     const conversation = extractConversationText(messages);
+    memoryLogger.debug({ session_id: sid, raw_messages: messages.length, chars: conversation.length }, "[preview] Conversation extracted");
+
     if (conversation.length < MIN_CONVERSATION_LENGTH) {
-      memoryLogger.debug(`[preview] Too short (${conversation.length} chars), skip`);
+      memoryLogger.trace({ session_id: sid, chars: conversation.length }, "[preview] Too short, skip");
       return { candidates: [], title: null };
     }
 
@@ -153,12 +164,12 @@ export class DistillEngine {
     try {
       extractResult = await this.llm.completeJson<ExtractResult>(extractionPrompt);
     } catch (error) {
-      memoryLogger.warn(`[preview] LLM extraction failed: ${error}`);
+      memoryLogger.warn({ session_id: sid, err: error }, "[preview] LLM extraction failed");
       return { candidates: [], title: null };
     }
 
     if (!extractResult.memories || extractResult.memories.length === 0) {
-      memoryLogger.debug(`[preview] No memories extracted`);
+      memoryLogger.trace({ session_id: sid }, "[preview] No memories extracted");
       return { candidates: [], title: extractResult.title ?? null };
     }
 
@@ -167,7 +178,7 @@ export class DistillEngine {
       return { category: validated.category, body: validated.body, tags: m.tags ?? [], importance: getDefaultImportance(validated.category) };
     });
 
-    memoryLogger.debug(`[preview] ${candidates.length} candidates`);
+    memoryLogger.info({ session_id: sid, candidates: candidates.length, raw_messages: messages.length }, "[preview] Done");
     return { candidates, title: extractResult.title ?? null };
   }
 
@@ -183,7 +194,7 @@ export class DistillEngine {
       return { created: 0, merged: 0, skipped: 0, mergeDetails: [] };
     }
 
-    memoryLogger.debug(`[confirm] Starting dedup for ${candidates.length} candidates`);
+    memoryLogger.trace({ candidates: candidates.length }, "[confirm] Starting dedup");
 
     const dedupResult = await performDeduplication(
       candidates.map((c) => ({ category: c.category, body: c.body, tags: c.tags })),
@@ -192,7 +203,10 @@ export class DistillEngine {
 
     await this.writeDedupResult(dedupResult, sessionID, project);
 
-    memoryLogger.debug(`[confirm] Done: created=${dedupResult.create.length}, merged=${dedupResult.merge.length}, skipped=${dedupResult.skip.length}`);
+    memoryLogger.info(
+      { session_id: formatSessionID(sessionID, false), created: dedupResult.create.length, merged: dedupResult.merge.length, skipped: dedupResult.skip.length },
+      "[confirm] Done",
+    );
     return {
       created: dedupResult.create.length,
       merged: dedupResult.merge.length,

@@ -69,6 +69,11 @@ Use module-level loggers (`src/logger.ts`); `console.log` is forbidden.
 | `contextLogger` | Session state/compaction/recovery |
 
 - Log levels: trace(10) / debug(20) / info(30) / warn(40) / error(50) / fatal(60); default `info`
+- **Log level usage rules**:
+  - `info`: Core event completion — one info log per key event (e.g., distill done, confirm done, cancel). Do not add more
+  - `debug`: Important data display — log key metrics/data points for operational visibility (e.g., message count, conversation length after extraction)
+  - `trace`: Detailed debugging flow — step-by-step traces for troubleshooting (e.g., "already extracted", "too short, skip", "no memories extracted")
+  - `warn`: Structured error output — must carry `{ err: error }`, never interpolate error.message
 - Structured fields via `data` object, field names in snake_case; do not interpolate into message
 - Error logs must carry `{ err: error }`; logging only `error.message` is forbidden
 - sessionID format: `formatSessionID(sessionID, isTask)` → `<last10chars>(main|task)`

@@ -18,12 +18,17 @@ const LEVELS: Record<string, number> = {
 // Environment helpers
 // ---------------------------------------------------------------------------
 
-function getMinLevel(): number {
+export function getMinLevel(): number {
   const env = process.env.WOPAL_PLUGIN_LOG_LEVEL ?? "info"
   return LEVELS[env] ?? LEVELS["info"]!
 }
 
-function getLogFile(): string {
+export function getMinLevelName(): string {
+  const env = process.env.WOPAL_PLUGIN_LOG_LEVEL ?? "info"
+  return Object.hasOwn(LEVELS, env) ? env : "info"
+}
+
+export function getLogFile(): string {
   const env = process.env.WOPAL_PLUGIN_LOG_FILE
   if (env) return env
   return join(process.cwd(), ".wopal-space", "logs", "wopal-plugin.log")

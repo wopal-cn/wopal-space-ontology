@@ -118,7 +118,7 @@ export async function performDeduplication(
   );
 
   if (candidatesNeedingDedup.length === 0) {
-    memoryLogger.debug(`[deduplicate] No existing similar memories found, all candidates created directly`);
+    memoryLogger.trace({ direct_created: result.create.length }, "[deduplicate] No similar memories, all created directly");
     return result;
   }
 
@@ -139,7 +139,7 @@ export async function performDeduplication(
   try {
     batchResult = await llm.completeJson<BatchDecision>(dedupPrompt);
   } catch (error) {
-    memoryLogger.warn(`[deduplicate] Batch LLM failed: ${error}`);
+    memoryLogger.warn({ err: error }, "[deduplicate] Batch LLM failed, creating all as new");
     // On LLM failure, create all candidates that needed dedup as new memories
     for (let i = 0; i < validated.length; i++) {
       if (existingByCandidate.has(i + 1)) {
@@ -175,7 +175,7 @@ export async function performDeduplication(
       const existingList = existingByCandidate.get(dec.index);
       const matchedExisting = existingList?.[matchIdx - 1];
       if (!matchedExisting) {
-        memoryLogger.warn(`[deduplicate] match ${matchIdx} out of range for candidate ${dec.index}`);
+        memoryLogger.warn({ candidate: dec.index, match_idx: matchIdx }, "[deduplicate] match index out of range");
         result.create.push({ text: body, vector, category, importance, tags, metadata });
         continue;
       }

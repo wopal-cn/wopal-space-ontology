@@ -7,7 +7,7 @@
 
 import type { MemoryRetriever } from "./retriever.js";
 import type { Memory } from "./store.js";
-import { memoryLogger } from "../logger.js";
+import { memoryLogger, formatSessionID } from "../logger.js";
 
 export class MemoryInjector {
   private retriever: MemoryRetriever;
@@ -24,7 +24,7 @@ export class MemoryInjector {
    * Retrieve and format memories for injection.
    * Returns formatted string (pure content, no wrapping tags), or undefined if no memories found.
    */
-  async retrieveAndFormat(userQuery: string): Promise<string | undefined> {
+  async retrieveAndFormat(userQuery: string, sessionID?: string, isTask?: boolean): Promise<string | undefined> {
     try {
       const memories = await this.retriever.retrieve(userQuery);
 
@@ -35,9 +35,10 @@ export class MemoryInjector {
 
       const { formatted, injectedCount, injectedIds } = this.formatMemories(memories);
       const tokens = Math.ceil(formatted.length / 4);
+      const sid = formatSessionID(sessionID, !!isTask);
       const idLines = injectedIds.map((id, i) => `  [${i + 1}] ${id}`).join("\n");
       memoryLogger.info(
-        `[inject] retrieved=${memories.length}, injected=${injectedCount}, tokens=${tokens}\n${idLines}`
+        `[inject] ${sid} retrieved=${memories.length}, injected=${injectedCount}, tokens=${tokens}\n${idLines}`,
       );
 
       return formatted;

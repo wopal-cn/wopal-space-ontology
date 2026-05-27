@@ -5,7 +5,6 @@
 import {
   readAndFormatRules,
   type DiscoveredRule,
-  type MatchedRuleInfo,
 } from "../rules/index.js";
 import type { LoggerInstance } from "../logger.js";
 import { formatSessionID } from "../logger.js";
@@ -14,19 +13,6 @@ export interface RuleInjectorContext {
   directory: string;
   ruleFiles: DiscoveredRule[];
   rulesLogger: LoggerInstance;
-}
-
-
-
-/**
- * Format matched rules info for logging.
- * @param matchedRules - Array of matched rule info
- * @returns Array of formatted strings like "typescript.md (match reason)"
- */
-function formatMatchedRulesForLog(matchedRules: MatchedRuleInfo[]): string[] {
-  return matchedRules.map((rule) =>
-    rule.reason === "unconditional" ? rule.name : `${rule.name} (${rule.reason})`,
-  );
 }
 
 /**
@@ -52,9 +38,10 @@ export async function injectRules(
   );
 
   if (result.content) {
-    const matchedRuleNames = formatMatchedRulesForLog(result.matchedRules);
-    ctx.rulesLogger.debug(
-      `${formatSessionID(sessionID, !!isTask)} agent=${agentName ?? "?"}: injected ${matchedRuleNames.length} rules → ${matchedRuleNames.join(", ")}`,
+    const sid = formatSessionID(sessionID, !!isTask);
+    const idLines = result.matchedRules.map((r, i) => `  [${i + 1}] ${r.name} (${r.reason})`).join("\n");
+    ctx.rulesLogger.info(
+      `[inject] ${sid} matched=${result.matchedRules.length}\n${idLines}`,
     );
     return result.content;
   } else {

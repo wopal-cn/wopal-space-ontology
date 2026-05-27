@@ -145,7 +145,7 @@ async function doInjectMemory(
   const injector = ctx.memoryInjector;
   if (!injector) return;
 
-  const memoryText = await injector.retrieveAndFormat(enrichedQuery);
+  const memoryText = await injector.retrieveAndFormat(enrichedQuery, sessionID);
   if (!memoryText) {
     clearInjectedMemory(ctx.sessionStore, sessionID);
     ctx.memoryLogger.debug("No relevant memories found");

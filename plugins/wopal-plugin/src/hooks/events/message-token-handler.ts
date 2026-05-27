@@ -163,7 +163,10 @@ export async function handleMessagePartUpdated(
       // ignore — percentage is informational only
     }
 
-    ctx.contextLog.debug(`${formatSessionID(sessionID, isTask)} agent=${agent} model=${model} tokens: input=${t.input ?? 0} output=${t.output ?? 0} cache_read=${cache.read ?? 0} cache_write=${cache.write ?? 0}${pctText}`)
+    ctx.contextLog.info(
+      { session_id: formatSessionID(sessionID, isTask), agent, model, input: t.input ?? 0, output: t.output ?? 0, cache_read: cache.read ?? 0, cache_write: cache.write ?? 0, ...(pctText ? { pct: pctText.trim() } : {}) },
+      "Token usage",
+    )
 
     // Store token data + context limit + title in sessionStore
     if (t.input || cache.read) {
