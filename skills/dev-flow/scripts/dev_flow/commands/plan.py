@@ -40,13 +40,15 @@ from pathlib import Path
 from datetime import date
 
 from dev_flow.domain.plan.find import find_plan, find_plan_by_issue, find_plan_by_name
-from dev_flow.domain.plan.naming import make_plan_name, validate_plan_name, ValidationError
+from dev_flow.domain.plan.naming import make_plan_name, validate_plan_name, ValidationError as NamingValidationError
 from dev_flow.domain.plan.metadata import get_plan_status
 from dev_flow.domain.issue.title import extract_scope, extract_type
 from dev_flow.domain.issue.sync import ensure_label_exists, sync_status_label_group
 from dev_flow.domain.labels import normalize_plan_type
+from dev_flow.domain.labels import ValidationError as LabelsValidationError
 from dev_flow.domain.workflow import PLAN_STATES
 from dev_flow.domain.validation import check_doc_plan
+from dev_flow.domain.validation.check_doc import ValidationError as CheckDocValidationError
 from dev_flow.core.logging import log_info, log_success, log_error, log_warn
 from dev_flow.core.workspace import find_workspace_root, detect_space_repo
 
@@ -372,7 +374,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         # Validate type
         try:
             plan_type = normalize_plan_type(plan_type_arg)
-        except ValidationError as e:
+        except LabelsValidationError as e:
             log_error(str(e))
             log_error("Available types: feature, enhance, fix, perf, refactor, docs, chore, test")
             return 1
@@ -439,7 +441,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
                 plan_name = f"{plan_type}-{scope}-{slug}"
                 print(f"Next: flow.sh approve {plan_name}")
             return 0
-        except ValidationError as e:
+        except CheckDocValidationError as e:
             log_error("Plan has issues. Fix and re-run with --check")
             print(str(e))
             return 1
@@ -530,7 +532,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         # Normalize type
         try:
             plan_type = normalize_plan_type(raw_type)
-        except ValidationError as e:
+        except LabelsValidationError as e:
             log_error(str(e))
             return 1
         
@@ -540,7 +542,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         
         try:
             plan_name = make_plan_name(issue_number, plan_type, scope, slug)
-        except ValidationError as e:
+        except NamingValidationError as e:
             log_error(str(e))
             return 1
         
@@ -559,7 +561,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         
         try:
             plan_name = make_plan_name(None, plan_type, scope, slug)
-        except ValidationError as e:
+        except NamingValidationError as e:
             log_error(str(e))
             return 1
     
