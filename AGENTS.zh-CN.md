@@ -8,7 +8,6 @@ WopalSpace 的空间灵魂、规约与能力基因工具包；`agents/`、`rules
 
 规范文档引用：
 
-- PRD: `docs/projects/wopal-space-ontology/PRD.md`
 - DESIGN: `docs/projects/wopal-space-ontology/DESIGN.md`
 - Business Rules: `.wopal/rules/business-rules.md`
 - Parent Rules: `.wopal-space/REGULATIONS.md`

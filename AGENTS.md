@@ -8,7 +8,6 @@ This project is primarily declarative ontology files; only the plugin and some s
 
 Canonical references:
 
-- PRD: `docs/projects/wopal-space-ontology/PRD.md`
 - DESIGN: `docs/projects/wopal-space-ontology/DESIGN.md`
 - Business Rules: `.wopal/rules/business-rules.md`
 - Parent Rules: `.wopal-space/REGULATIONS.md`
