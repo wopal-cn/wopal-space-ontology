@@ -9,19 +9,20 @@ from __future__ import annotations
 import argparse
 import sys
 
-from dev_flow import __version__
-from dev_flow.commands.issue import register_issue_parser, cmd_issue
-from dev_flow.commands.query import cmd_query_status, cmd_query_list
-from dev_flow.commands.sync import register_sync_parser, cmd_sync
-from dev_flow.commands.archive import register_archive_parser, cmd_archive
-from dev_flow.commands.approve import register_approve_parser, cmd_approve
-from dev_flow.commands.complete import register_complete_parser, cmd_complete
-from dev_flow.commands.verify import register_verify_parser, cmd_verify
-from dev_flow.commands.plan import register_plan_parser, cmd_plan
-from dev_flow.commands.decompose import register_decompose_parser, cmd_decompose
-from dev_flow.commands.roadmap import register_roadmap_parser, cmd_roadmap
-from dev_flow.commands.reset import register_reset_parser, cmd_reset
-from dev_flow.commands.verify_switch import run_verify_switch
+__version__ = "0.1.0"
+
+from commands.issue import register_issue_parser, cmd_issue
+from commands.query import cmd_query_status, cmd_query_list
+from commands.sync import register_sync_parser, cmd_sync
+from commands.archive import register_archive_parser, cmd_archive
+from commands.approve import register_approve_parser, cmd_approve
+from commands.complete import register_complete_parser, cmd_complete
+from commands.verify import register_verify_parser, cmd_verify
+from commands.plan import register_plan_parser, cmd_plan
+from commands.decompose import register_decompose_parser, cmd_decompose
+from commands.roadmap import register_roadmap_parser, cmd_roadmap
+from commands.reset import register_reset_parser, cmd_reset
+from commands.verify_switch import run_verify_switch
 
 
 def build_parser() -> argparse.ArgumentParser:
