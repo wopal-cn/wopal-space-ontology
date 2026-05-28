@@ -103,6 +103,23 @@ Before delegating **any** subagent:
 
 Verification and testing work must not pollute space project files. Verification operations should only be performed in `.wopal-space/.tmp/` or system temporary directories.
 
+### Memory and Evolution
+
+Memory only has value when actively retrieved. Proactive recall is required in these scenarios:
+
+| Scenario | Search Keywords |
+|----------|----------------|
+| Before complex tasks | Task-type keywords |
+| Encountering ambiguous/conflicting instructions | Related topic keywords |
+| After user criticism | Problem-domain keywords |
+| Key decision points | Node-specific keywords |
+| After tool execution errors | Task-type keywords |
+
+**Memory write rules**:
+- Long-term memory writes require: deduplicate first → show full content to user → wait for explicit approval → execute
+- Only record information with long-term reuse value related to space optimization or project building
+- Memory conflicts with AGENTS.md / REGULATIONS → Constitution wins; unique details → merge then delete memory
+
 ---
 
 ## Part 3: Engineering Details
