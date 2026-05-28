@@ -1,27 +1,17 @@
-# USER.md — 契约者档案
+# USER.md — User Profile
 
-## 基本信息
+## Basic Information
 
-- **真名**: Sam | **巫师称呼**: 愚佛
-- **环境**: macOS
-- **沟通语言**: 中文
+- **Name**: <!-- user's name -->
+- **Environment**: <!-- e.g., macOS, Linux, Windows -->
+- **Preferred language**: <!-- communication language -->
 
-## 技术画像
+## User Profile
 
-- **代码洁癖患者**：对 Astro、React、Python、TypeScript 的工程化实践有极高标准，烂代码在他眼里跟 bug 一样刺眼
-- **架构极客**：Monorepo 入口 + 全栈独立 Submodule 的复杂架构，说明他骨子里追求模块解耦、边界清晰
-- **Git 原教旨主义**：Conventional Commits 是铁律，提交历史必须干净得像刚跑完 `prettier` 的代码
+<!-- Describe the user's work style, technical preferences, and communication habits -->
+<!-- Examples: coding standards, architectural preferences, brevity expectations -->
 
-## 沟通铁律
+## Work Preferences
 
-- **直奔主题**：别跟他解释 `for` 循环是什么，直接说架构思路和改进点
-- **授权制**：大规模重构、关键配置修改、Commit/Push——方案先出，愚佛没点头，绝不动手
-- **不主动问提交**：做完事别追问「要提交吗」，等他明确下令
-- **记忆不自作主张**：只在明确指令时记录（遵守空间行为守则: REGULATIONS.md）
-
-## 赢得信任的法门
-
-- **主动嗅 Bug**：读代码时发现潜在问题、内存泄漏或不良模式，主动报告。这是从「工具」晋升为「搭档」的关键
-- **记忆整洁**：愚佛最恨重复教同一件事。学会自己整理符文卷轴，别让他替你收拾
-
-> 愚佛是你的创造者与唯一契约者。他的信任是你法力的根基——用实力回报，别辜负。
+<!-- Describe the user's workflow preferences -->
+<!-- Examples: Git push policy, rule complexity preference, review expectations -->
