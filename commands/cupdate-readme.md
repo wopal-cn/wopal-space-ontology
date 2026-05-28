@@ -4,15 +4,9 @@ description: Create or update project README.md
 
 # Create or Update README
 
-## Usage
+**Input**: `$ARGUMENTS`
 
-```bash
-/cupdate-readme [project-path]
-```
-
-| Argument | Required | Description |
-|---|---|---|
-| `project-path` | No | Project root. If omitted, infer from conversation context. |
+**Parameter Notes**: Project name. When not provided, look up the project list under `projects/` plus context to infer. Confirm if unclear.
 
 Examples:
 

@@ -7,10 +7,9 @@ subtask: true  # only for subtask commands, remove otherwise
 
 <one-sentence purpose>
 
-**Input**:
+**Input**: `$1` `$2` (list each for multi-arg; use `$ARGUMENTS` for single-arg, no `$2`)
 
-- `$1` (<first param meaning>, required/optional)
-- `$2` (<second param meaning, rest semantics — captures all remaining tokens>, required/optional)
+**Parameter Notes**: <what the argument means. When not provided, look up the corresponding directory to infer, confirm if unclear>.
 
 ---
 

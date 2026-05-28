@@ -6,12 +6,9 @@ description: Create or update product phase roadmap documents
 
 Discuss and generate compliant phase documents from a product DESIGN or project DESIGN Evolution Roadmap section. Confirm each phase interactively before writing. After writing, validate with the dev-flow `roadmap` command. On pass, guide the user to use `decompose` to create Issues.
 
-**Input**:
+**Input**: `$1` `$2`
 
-- `$1` (DESIGN file path, inferable from context, rest semantics)
-
-If `$1` is omitted, infer the DESIGN path from the conversation context. If ambiguous, ask the user.
-The source document is a product DESIGN (`docs/products/<name>/DESIGN.md`, §9 Evolution Roadmap) or a project DESIGN (`docs/projects/<name>/DESIGN.md`, §8 Evolution Roadmap).
+**Parameter Notes**: `<name> [type: product|project]`. When not provided, look up `docs/products/` and `docs/projects/` plus context to infer. Confirm if unclear.
 
 **Two modes**:
 

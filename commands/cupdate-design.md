@@ -6,15 +6,9 @@ description: Create or update product DESIGN documents
 
 Create or update a product or project DESIGN document. Product DESIGN is the overall architecture, derived from the product PRD, describing cross-project system composition, architecture layers, and project contracts. Project DESIGN is a subsystem design, derived from the parent product PRD and overall DESIGN, describing the internal architecture, technical stack, and capability scope of a single project.
 
-**Input**: `$1` (type keyword, optional), `$2` (name, optional, rest semantics)
+**Input**: `$1` `$2`
 
-| `$1` | Action |
-|------|--------|
-| (empty) | Infer from context; target missing → create, exists → update |
-| `product` | Product DESIGN, `$2` = product name |
-| `project` | Project DESIGN, `$2` = project name |
-
-- If ambiguous, ask the user
+**Parameter Notes**: `<name> [product|project]`. When not provided, look up `docs/products/` and `docs/projects/` plus context to infer. Confirm if unclear.
 
 ---
 

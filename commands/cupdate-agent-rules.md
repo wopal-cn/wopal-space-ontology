@@ -6,25 +6,9 @@ description: Create or update project AGENTS.md
 
 Create or update project-level or directory-level `AGENTS.md`.
 
-**Input**:
+**Input**: `$1` `$2`
 
-- `$1` (target path or project name, optional)
-- `$2` (rules-context, optional, rest semantics)
-
-Examples:
-
-```bash
-/cupdate-agent-rules
-/cupdate-agent-rules projects/wopal-cli
-/cupdate-agent-rules wopal-cli
-/cupdate-agent-rules projects/wopal-cli "keep CLI UI/UX rules and add helpText constraints"
-/cupdate-agent-rules projects/wopal-cli/src/lib/fae "emphasize SSE reconnect and task state rules"
-```
-
-- If `$1` is omitted, infer from conversation context
-- If `$1` is a project name rather than a path, first infer the target project path from the space structure
-- If inference yields a single candidate project, show the inferred target and confirm with the user before writing
-- If there are multiple candidates or inference is not safe, ask the user
+**Parameter Notes**: `[path|project-name] [extra-rules-context]`. When only a project name is given, look up `projects/` to derive the path. Path or project name is required; confirm if not provided.
 
 ---
 

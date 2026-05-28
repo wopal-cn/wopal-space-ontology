@@ -6,14 +6,10 @@ description: Create or update product PRD documents
 
 Create or update a product PRD document.
 
-**Input**: `$1` (type keyword, optional), `$2` (name, optional, rest semantics)
+**Input**: `$ARGUMENTS`
 
-| `$1` | Action |
-|------|--------|
-| (empty) | Infer from context; target missing → create, exists → update |
-| `product` | Product PRD, `$2` = product name |
+**Parameter Notes**: Product name. When not provided, look up `docs/products/` to infer.
 
-- If ambiguous, ask the user
 - Deprecated: project-level PRDs no longer exist independently; project-level information is maintained in DESIGN documents
 
 ---
