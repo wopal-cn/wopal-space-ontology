@@ -10,53 +10,54 @@
 |---|---|---|
 | YYYY-MM-DD | Created / Updated | One-line summary |
 
-## 1. Design Goals
+## 1. Architecture Design
 
-Define what this design document establishes and which product goals it supports. Point to the PRD for product intent.
+Provide a high-level architecture diagram (ASCII preferred) and a layer table.
 
-## 2. System Overview
+```text
+<ASCII architecture diagram>
+```
 
-Provide a high-level architecture view. Include a concise diagram when useful. Show the major runtime parts and how they relate.
+### Layers
 
-## 3. Architecture Layers
+| Layer | Location | Owner | Responsibility |
+|---|---|---|---|
+| ... | ... | ... | ... |
 
-Describe the main layers or domains. For each layer, specify responsibility, ownership, and consumers.
+## 2. Core Projects
 
-## 4. Core Projects
+Define each core project's role, boundary, and interaction contract. One subsection per project, covering responsibility, design principles, and external contracts. Link to the corresponding project DESIGN document.
 
-Define each core project's role, boundary, and interaction contract. Link project PRD / DESIGN documents.
-
-## 5. Runtime Model
+## 3. Runtime Model
 
 Describe runtime structure, state locations, data ownership, configuration layers, lifecycle behavior, and persistence boundaries.
 
-## 6. End-to-End Flows
+## 4. End-to-End Flows
 
-Describe critical cross-project flows. Use numbered flows or sequence-style descriptions. Focus on system behavior, not implementation tasks.
+Describe critical cross-project flows. Use numbered steps. Focus on system behavior.
 
-## 7. Ownership and Governance
+## 5. Evolution Roadmap
 
-Define which component owns each file, state area, configuration, rule, or lifecycle responsibility, including protection and update rules.
+Describe product phases from current to target state using design decisions as the unit of tracking. Each phase has one Goal and a set of D-NN decisions with checkbox completion status:
 
-## 8. Key Decisions
-
-Record important technical and architectural decisions with rationale.
-
-| Decision | Choice | Rationale |
-|---|---|---|
-
-## 9. Evolution Roadmap
-
-Describe product phases from current state to target state. Use structured headings so tooling can parse phase definitions:
-
+```markdown
 ### Phase N: Title
 
-- **Target**: product capability target for this phase
-- **Landed**: what has been implemented
-- **Remaining**: what is still needed
+> Phase doc: [phases/<product>-pN-<slug>.md]
 
-Mark each phase as completed, current, planned, or deprecated when known. Focus on product outcomes and capability maturity, not task lists. This section is the primary input for `/cupdate-roadmap`.
+- **Goal**: Product capability target for this phase (one line, ≥20 chars, no placeholders)
 
-## 10. Related Documents
+- [x] D-01: <design decision, done>
+- [ ] D-02: <design decision, pending>
+```
 
-Link only durable product / design references: PRD, project documents, business rules, architecture references, research summaries, and project specs.
+**Requirements**:
+- Every phase must have a **Goal** line and ≥1 D-NN decision
+- D-NN numbering restarts per phase. `[x]` = done, `[ ]` = pending
+- Completion is based on whether the design has been decided and implemented, not on code completeness
+- A phase with all `[x]` is considered complete
+- This section is the input source for `/cupdate-roadmap`
+
+## 6. Related Documents
+
+Link only durable product/design references: PRD, project DESIGNs, business rules, architecture references, research summaries, project specs.
