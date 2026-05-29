@@ -22,7 +22,7 @@ description: 创建或更新项目 AGENTS.md
 - `name` 写当前项目或目录模块名称；`description` 单行、稳定、无 Markdown，描述当前项目或目录模块职责，并作为 `wopal space scan` 的受控描述来源。
 - `description` 不写 roadmap、临时状态、完成进度、营销口号或模糊愿景；无法可靠确定时在方案中标记“需确认”。
 - 正文只写项目特定技术实施规则；只写当前实现事实，不写路线猜测。
-- 只列有信息量的权威引用；不存在的 PRD / `BUSINESS_RULES.md` 不写 `N/A` 占位。
+- 只列有信息量的权威引用；不存在的 PRD / `BUSINESS_RULES.md` 不写 `N/A` 占位。目录级 `AGENTS.md` 必须列出与其范围直接相关的 DESIGN 或 PRD 文档，不可仅依赖父级间接引用。
 - 正文不得复述 DESIGN、frontmatter 或空间全局法规；只写本项目特有、可执行、会改变开发行为的规则。
 - 从 PRD 只提炼影响实现的范围约束；若 PRD 已合并入 DESIGN，则只引用 DESIGN。从 DESIGN 提炼执行链、目录职责、技术选择、接口 / 状态 / 配置 / 输出 / 错误处理契约。
 - `BUSINESS_RULES.md` 仅在存在时作为权威文档链接引用，禁止读取并抽取规则写入正文。

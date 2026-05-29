@@ -22,7 +22,7 @@ Create or update project-level or directory-level `AGENTS.md`.
 - `name` identifies the current project or directory module. `description` must be single-line, stable, Markdown-free, describe the current project or directory module responsibility, and serve as the controlled description source for `wopal space scan`.
 - Do not write roadmap, temporary status, completion progress, marketing slogans, or vague vision in `description`. If the description cannot be determined reliably, mark it as "needs confirmation" in the plan.
 - The body must contain only project-specific technical implementation rules. Use current implementation facts, not roadmap speculation.
-- List only informative canonical references; do not write `N/A` placeholders for nonexistent PRD or `BUSINESS_RULES.md` files.
+- List only informative canonical references; do not write `N/A` placeholders for nonexistent PRD or `BUSINESS_RULES.md` files. Directory-level `AGENTS.md` must list any DESIGN or PRD document directly relevant to its scope; do not rely solely on parent-level indirect references.
 - The body must not restate DESIGN, frontmatter, or space-wide regulations. Write only project-specific, executable rules that change development behavior.
 - From PRD, extract only scope constraints that affect implementation. If PRD has been merged into DESIGN, reference DESIGN only. From DESIGN, extract the execution chain, directory responsibilities, technology choices, and interface / state / configuration / output / error-handling contracts.
 - `BUSINESS_RULES.md` must only be linked as a canonical reference when it exists. Do not read it to extract rules into the body.
