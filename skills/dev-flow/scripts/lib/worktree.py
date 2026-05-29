@@ -13,8 +13,217 @@
 #   - clean_worktree: One-stop cleanup (remove_worktree + delete_branch)
 
 import os
+import re
 import subprocess
+from dataclasses import dataclass, fields
 from pathlib import Path
+
+
+# ============================================
+# WorktreeContext
+# ============================================
+
+@dataclass
+class WorktreeContext:
+    """Structured worktree configuration stored in Plan metadata.
+
+    Fields:
+        enabled: Whether worktree isolation is active
+        project_type: "standard" or "ontology-worktree"
+        branch: Worktree branch name
+        path: Worktree directory path (relative to workspace root)
+        repo_root: Git repo root for the worktree
+        base_branch: Branch the worktree was created from
+        merge_target: Target branch for merging (usually same as base_branch)
+        verify_mode: "direct" (standard) or "switch-runtime" (ontology-worktree)
+        cleanup_policy: "archive" (auto-cleanup) or "manual"
+    """
+    enabled: bool
+    project_type: str  # "standard" | "ontology-worktree"
+    branch: str
+    path: Path
+    repo_root: Path
+    base_branch: str
+    merge_target: str
+    verify_mode: str  # "direct" | "switch-runtime"
+    cleanup_policy: str  # "archive" | "manual"
+
+
+def _worktree_field_name(field: str) -> str:
+    """Convert python field name to Plan metadata key.
+
+    e.g. 'project_type' -> 'project_type', 'verify_mode' -> 'verify_mode'
+    """
+    return field
+
+
+def parse_worktree_context(plan_path: str) -> WorktreeContext | None:
+    """Parse WorktreeContext from Plan metadata.
+
+    Supports two formats:
+    1. New structured format (indented list under Worktree heading)
+    2. Legacy format: "- **Worktree**: branch | path"
+
+    Args:
+        plan_path: Path to Plan markdown file
+
+    Returns:
+        WorktreeContext if found, None otherwise
+    """
+    path = Path(plan_path)
+    if not path.exists():
+        return None
+
+    content = path.read_text()
+
+    # Try new structured format first
+    ctx = _parse_structured_worktree(content)
+    if ctx is not None:
+        return ctx
+
+    # Fallback to legacy format: "- **Worktree**: branch | path"
+    return _parse_legacy_worktree(content)
+
+
+def _parse_structured_worktree(content: str) -> WorktreeContext | None:
+    """Parse new structured Worktree block from Plan content.
+
+    Format:
+        - **Worktree**:
+          - enabled: true
+          - branch: feature/test-1-slug
+          - path: .worktrees/project-issue-1-slug
+          - ...
+    """
+    # Match the Worktree field heading and its indented sub-fields
+    pattern = r'^- \*\*Worktree\*\*:\s*$\n((?:  - .+\n)*)'
+    match = re.search(pattern, content, re.MULTILINE)
+    if not match:
+        return None
+
+    block = match.group(1)
+    kv: dict[str, str] = {}
+
+    for line in block.strip().split('\n'):
+        line = line.strip()
+        if not line.startswith('- '):
+            continue
+        line = line[2:]  # strip "- "
+        if ':' not in line:
+            continue
+        key, _, value = line.partition(':')
+        kv[key.strip()] = value.strip()
+
+    if not kv:
+        return None
+
+    # Build WorktreeContext from parsed kv
+    try:
+        return WorktreeContext(
+            enabled=kv.get('enabled', 'false').lower() == 'true',
+            project_type=kv.get('project_type', 'standard'),
+            branch=kv.get('branch', ''),
+            path=Path(kv.get('path', '')),
+            repo_root=Path(kv.get('repo_root', '')),
+            base_branch=kv.get('base_branch', 'main'),
+            merge_target=kv.get('merge_target', kv.get('base_branch', 'main')),
+            verify_mode=kv.get('verify_mode', 'direct'),
+            cleanup_policy=kv.get('cleanup_policy', 'archive'),
+        )
+    except Exception:
+        return None
+
+
+def _parse_legacy_worktree(content: str) -> WorktreeContext | None:
+    """Parse legacy '- **Worktree**: branch | path' format."""
+    pattern = r'^\- \*\*Worktree\*\*:\s*(.+)$'
+    match = re.search(pattern, content, re.MULTILINE)
+    if not match:
+        return None
+
+    raw = match.group(1).strip()
+    parts = raw.split('|', 1)
+    if len(parts) != 2:
+        return None
+
+    branch = parts[0].strip()
+    wt_path = parts[1].strip()
+
+    if not branch or not wt_path:
+        return None
+
+    return WorktreeContext(
+        enabled=True,
+        project_type='standard',
+        branch=branch,
+        path=Path(wt_path),
+        repo_root=Path(''),
+        base_branch='main',
+        merge_target='main',
+        verify_mode='direct',
+        cleanup_policy='archive',
+    )
+
+
+def write_worktree_context(plan_path: str, ctx: WorktreeContext) -> bool:
+    """Write WorktreeContext to Plan metadata in structured format.
+
+    Replaces existing Worktree field (new or legacy format) with structured block.
+
+    Args:
+        plan_path: Path to Plan markdown file
+        ctx: WorktreeContext to write
+
+    Returns:
+        True if write succeeded, False otherwise
+    """
+    path = Path(plan_path)
+    if not path.exists():
+        return False
+
+    content = path.read_text()
+
+    # Build the structured block
+    lines = [
+        '- **Worktree**:',
+        f'  - enabled: {str(ctx.enabled).lower()}',
+        f'  - project_type: {ctx.project_type}',
+        f'  - branch: {ctx.branch}',
+        f'  - path: {ctx.path}',
+        f'  - repo_root: {ctx.repo_root}',
+        f'  - base_branch: {ctx.base_branch}',
+        f'  - merge_target: {ctx.merge_target}',
+        f'  - verify_mode: {ctx.verify_mode}',
+        f'  - cleanup_policy: {ctx.cleanup_policy}',
+    ]
+    new_block = '\n'.join(lines)
+
+    # Try replacing existing structured format
+    structured_pattern = r'^\- \*\*Worktree\*\*:\s*$\n((?:  - .+\n)*)'
+    structured_match = re.search(structured_pattern, content, re.MULTILINE)
+    if structured_match:
+        new_content = content[:structured_match.start()] + new_block + content[structured_match.end():]
+        path.write_text(new_content)
+        return True
+
+    # Try replacing legacy format
+    legacy_pattern = r'^\- \*\*Worktree\*\*:\s*.+$'
+    legacy_match = re.search(legacy_pattern, content, re.MULTILINE)
+    if legacy_match:
+        new_content = content[:legacy_match.start()] + new_block + content[legacy_match.end():]
+        path.write_text(new_content)
+        return True
+
+    # No existing Worktree field — insert after Status field
+    status_pattern = r'^\- \*\*Status\*\*:\s*.*$'
+    status_match = re.search(status_pattern, content, re.MULTILINE)
+    if status_match:
+        insert_pos = status_match.end()
+        new_content = content[:insert_pos] + '\n' + new_block + content[insert_pos:]
+        path.write_text(new_content)
+        return True
+
+    return False
 
 
 def scan_projects(workspace_root: Path) -> list[str]:

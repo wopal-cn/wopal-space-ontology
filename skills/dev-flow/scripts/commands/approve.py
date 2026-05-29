@@ -6,7 +6,7 @@
 # Command:
 #   approve <issue> --confirm - Approve Plan and transition to executing phase
 #   approve <plan-name> --confirm - Approve Plan (no-issue mode)
-#   approve <issue> --confirm --worktree - Create isolated worktree for execution
+#   approve <issue> --confirm --no-worktree - Skip worktree creation
 #
 # Flow:
 #   1. Find Plan file (by issue number OR plan name)
@@ -16,8 +16,8 @@
 #
 # Preflight checks (--confirm mode):
 #   - check_doc validation
-#   - Target Project dirty workspace check (BLOCK or stash if --worktree)
-#   - Worktree creation (if --worktree)
+#   - Target Project dirty workspace check (BLOCK or stash if worktree)
+#   - Worktree creation (default; skip with --no-worktree)
 #
 # Issue sync (--confirm mode):
 #   - Sync status label (planning -> in-progress)
@@ -52,7 +52,7 @@ from lib.git import (
     get_relative_path,
     get_current_branch,
 )
-from lib.worktree import create_worktree
+from lib.worktree import create_worktree, WorktreeContext, write_worktree_context
 
 
 # ============================================
@@ -269,18 +269,18 @@ def cmd_approve(args: argparse.Namespace) -> int:
     Modes:
     1. approve <issue-or-plan> - validate + snapshot commit/push for review
     2. approve <issue-or-plan> --confirm - preflight + status transition + Issue sync
-    3. approve <issue-or-plan> --confirm --worktree - create isolated worktree
+    3. approve <issue-or-plan> --confirm --no-worktree - skip worktree creation
     
     Returns:
         0 on success, 1 on error
     """
     input_ref = args.target
     confirm = args.confirm
-    use_worktree = args.worktree
+    use_worktree = not args.no_worktree  # default: worktree enabled
     
     if not input_ref:
         log_error("Issue number or Plan name required")
-        log_error("Usage: flow.sh approve <issue-or-plan> [--confirm] [--worktree]")
+        log_error("Usage: flow.sh approve <issue-or-plan> [--confirm] [--no-worktree]")
         return 1
     
     workspace_root = find_workspace_root()
@@ -356,9 +356,10 @@ def cmd_approve(args: argparse.Namespace) -> int:
     if project_path:
         dirty_workspace = is_repo_dirty(str(project_path))
     
-    # --- Preflight Check 2: Worktree creation (if requested) ---
+    # --- Preflight Check 2: Worktree creation (default; skip with --no-worktree) ---
     worktree_created = False
     branch = ""
+    wt_ctx = None  # WorktreeContext for structured metadata
     
     if use_worktree:
         if not project:
@@ -367,6 +368,12 @@ def cmd_approve(args: argparse.Namespace) -> int:
         
         # Read Project Type from Plan metadata
         project_type_str = get_plan_field(plan_path, "Project Type")
+        
+        # Determine verify_mode based on project type
+        if project_type_str == ProjectType.ONTOLOGY_WORKTREE.value:
+            verify_mode = "switch-runtime"
+        else:
+            verify_mode = "direct"
         
         # Generate branch name
         slug = _extract_slug(plan_name)
@@ -433,11 +440,22 @@ def cmd_approve(args: argparse.Namespace) -> int:
             log_success(f"Ontology worktree created: {worktree_path}")
             worktree_created = True
             
-            # Write Worktree field to Plan metadata
-            if set_plan_worktree(plan_path, branch, str(worktree_path)):
-                log_success(f"Plan Worktree field set: {branch} | {worktree_path}")
+            # Write WorktreeContext to Plan metadata
+            wt_ctx = WorktreeContext(
+                enabled=True,
+                project_type="ontology-worktree",
+                branch=branch,
+                path=worktree_path,
+                repo_root=main_repo,
+                base_branch=base_branch,
+                merge_target=base_branch,
+                verify_mode=verify_mode,
+                cleanup_policy="archive",
+            )
+            if write_worktree_context(plan_path, wt_ctx):
+                log_success(f"Plan WorktreeContext written: {branch}")
             else:
-                log_warn("Failed to write Worktree field to Plan")
+                log_warn("Failed to write WorktreeContext to Plan")
         
         # --- Standard project branch ---
         else:
@@ -454,12 +472,23 @@ def cmd_approve(args: argparse.Namespace) -> int:
             if _create_worktree(project, branch, workspace_root):
                 worktree_created = True
 
-                # Write Worktree field to Plan metadata
-                worktree_path = f"{workspace_root}/.worktrees/{project}-{branch}"
-                if set_plan_worktree(plan_path, branch, worktree_path):
-                    log_success(f"Plan Worktree field set: {branch} | {worktree_path}")
+                # Write WorktreeContext to Plan metadata
+                wt_path = workspace_root / ".worktrees" / f"{project}-{branch}"
+                wt_ctx = WorktreeContext(
+                    enabled=True,
+                    project_type="standard",
+                    branch=branch,
+                    path=wt_path,
+                    repo_root=project_path,
+                    base_branch="main",
+                    merge_target="main",
+                    verify_mode=verify_mode,
+                    cleanup_policy="archive",
+                )
+                if write_worktree_context(plan_path, wt_ctx):
+                    log_success(f"Plan WorktreeContext written: {branch}")
                 else:
-                    log_warn("Failed to write Worktree field to Plan")
+                    log_warn("Failed to write WorktreeContext to Plan")
 
                 # Restore stashed changes to main workspace
                 if stashed:
@@ -481,7 +510,7 @@ def cmd_approve(args: argparse.Namespace) -> int:
                 return 1
     
     elif dirty_workspace:
-        # No --worktree but dirty workspace: block and warn
+        # --no-worktree with dirty workspace: block and warn
         status_result = subprocess.run(
             ["git", "status", "--porcelain"],
             cwd=str(project_path),
@@ -501,7 +530,7 @@ def cmd_approve(args: argparse.Namespace) -> int:
         print("")
         print("建议处理方式:")
         print(f"  1. 先提交当前变更: cd {project_path} && git add . && git commit")
-        print(f"  2. 改用 worktree 隔离: flow.sh approve {input_ref} --confirm --worktree（会自动 stash 旧变更）")
+        print(f"  2. 默认会创建 worktree 隔离（当前使用了 --no-worktree）")
         print("")
         return 1
     
@@ -575,7 +604,7 @@ def register_approve_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Confirm approval and transition state"
     )
     approve_parser.add_argument(
-        "--worktree",
+        "--no-worktree",
         action="store_true",
-        help="Create isolated worktree for execution"
+        help="Skip worktree creation (worktree is created by default)"
     )
