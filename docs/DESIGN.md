@@ -391,11 +391,11 @@ CLI 边界：
 
 WopalSpace 的设计知识按三层分工，避免细节错位和维护混乱：
 
-| 文档 | 定位 | 写什么 | 不写什么 |
+| 文档 | 定位 | 内容 |
 |---|---|---|---|
-| 产品 DESIGN | 跨项目的稳定架构契约 | 系统分层、子系统职责边界、"谁负责什么" | JSON schema、命令参数细节、扫描规则 |
-| 项目 DESIGN | 单个项目的稳定设计真相 | 命令契约、JSON schema、模块架构、数据模型 | 阶段范围、exit criteria、临时实施决策 |
-| Phase 文档 | 某阶段的范围与验收条件 | Phase scope、involved projects、exit criteria、风险 | 架构细节、命令契约、JSON schema |
+| 产品 DESIGN | 跨项目的稳定架构契约 | 系统分层、子系统职责边界、"谁负责什么"。详细契约和 schema 以项目 DESIGN 为准 |
+| 项目 DESIGN | 单个项目的稳定设计真相 | 命令契约、JSON schema、模块架构、数据模型、关键决策。阶段范围和验收以 Phase 文档为准 |
+| Phase 文档 | 某阶段的范围与验收条件 | Phase scope、involved projects、exit criteria、风险。架构细节以项目 DESIGN 为准 |
 
 关系：
 
