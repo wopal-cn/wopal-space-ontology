@@ -47,7 +47,7 @@ Read enough context to avoid inventing requirements.
 - PRD must not explain internal architecture, APIs, storage schemas, implementation steps, or coding conventions.
 - Product PRD owns vision, users, product shape, capability boundaries, governance, and evolution.
 - Capability Scope / Core Capability Boundaries sections must describe target-state capability boundaries only: owned target capabilities, excluded capabilities, and delegation boundaries.
-- Capability Scope / Core Capability Boundaries sections must not include phase timing, current/future grouping, implementation status, delivery progress, module state, checkboxes, or "done / partial / pending" labels. Implementation status and phase roadmap belong in the DESIGN document's Evolution Roadmap section.
+- Capability Scope / Core Capability Boundaries sections must not include phase timing, current/future grouping, implementation status, delivery progress, module state, checkboxes, or "done / partial / pending" labels. Implementation status belongs in Phase, Plan, UAT, or Verification documents, not in PRD or DESIGN.
 - Do not include standalone success-standard or validation-signal sections in PRDs. If validation signals are needed, place them in Plans, UAT, verification documents, or roadmap phase acceptance notes.
 - PRD body must use product language, not documentation-authoring language. Do not explain what a section is for, how the document is organized, or how the template should be used.
 - Avoid abstract classification or defensive phrasing that does not communicate product value, such as "this is not X but Y", "exposes an interface", "has grown into", or "this section describes".
@@ -145,7 +145,7 @@ When a sentence fails the bar, rewrite it into a concrete product statement befo
 - [ ] Header includes current Updated date
 - [ ] PRD stays product-level and avoids architecture/implementation details
 - [ ] Capability Scope / Core Capability Boundaries contains target-state boundaries only, no phase timing or implementation status
-- [ ] Implementation status and phase roadmap belong in DESIGN's Evolution Roadmap, not PRD
+- [ ] Implementation status is not in PRD or DESIGN; it is left to Phase, Plan, UAT, or Verification documents
 - [ ] No standalone success-standard or validation-signal section appears in the PRD
 - [ ] Required PRD structure is preserved while section wording is improved
 - [ ] PRD body contains no template commentary, section instructions, or documentation-authoring language

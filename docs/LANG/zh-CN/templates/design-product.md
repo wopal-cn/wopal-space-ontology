@@ -54,14 +54,12 @@
 ```markdown
 ### Phase N: 标题
 
+- **Goal**: 本阶段产品能力目标（一句话，≥20 字符，可验证的产品能力陈述）
+
 > Phase doc: [phases/<product>-pN-<slug>.md]
 
-- **Goal**: 本阶段产品能力目标（一句话，≥20 字符，可验证的产品能力陈述）
 ```
-
-- 每 phase 有 Goal 和 Phase doc 链接
-- 全部 Phase doc 的 Exit Criteria 均完成时即为产品阶段完成
 
 ## 6. Related Documents
 
-链接长期有效的参考文档：PRD、项目 DESIGN、业务规则、架构参考、项目规范。每个链接有明确引用目的。
+链接长期有效的参考文档：项目 DESIGN、业务规则、架构参考、项目规范。每个链接有明确引用目的。

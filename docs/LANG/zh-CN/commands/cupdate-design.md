@@ -30,6 +30,8 @@ description: 创建或更新产品 DESIGN 或项目 DESIGN
 - 命令的核心是引导用户讨论和澄清设计决策。产品 DESIGN 使用 `design-product.md` 模板，项目 DESIGN 使用 `design-project.md` 模板。
 - 产品 DESIGN 讨论重点：系统分层与子系统边界、运行时模型、端到端流程、阶段拆分（至少明确当前阶段总体目标，细节由 `/cupdate-roadmap` 承接）。
 - 项目 DESIGN 讨论重点：项目角色与边界、能力范围、模块架构、技术选型、接口契约、数据模型。
+- DESIGN 只保留架构、边界、契约、运行时模型和演进骨架，不保留实施状态、交付进度、验收结果或任务清单。
+- 产品 DESIGN 的 Evolution Roadmap 是阶段骨架：每个 Phase 只保留标题、Goal 和 Phase 文档链接；已完成/已落地/剩余工作属于 Phase、Plan、UAT 或 Verification 文档。
 - 保留准确既有内容。过时信息在证据充分时修订或移除。未确认事项标为待确认。
 - 所有写入操作前展示完整内容并获取用户明确确认。
 
@@ -56,7 +58,7 @@ description: 创建或更新产品 DESIGN 或项目 DESIGN
 2. 核心子系统的角色、边界和交互契约
 3. 运行时模型（状态位置、配置分层、生命周期）
 4. 关键端到端流程
-5. 阶段拆分：将产品愿景分解为可交付的阶段，至少明确当前阶段总体目标
+5. 阶段拆分：将产品愿景分解为可交付的阶段骨架，只保留 Phase 标题、Goal 和 Phase 文档链接
 
 **项目 DESIGN 讨论要点**：
 1. 项目在父产品中的定位和职责边界（简化流程：自身定位和存在价值）
@@ -77,7 +79,7 @@ description: 创建或更新产品 DESIGN 或项目 DESIGN
 2. 更新 `Updated` 日期
 3. 将讨论结论与既有内容对齐
 4. 补齐缺失章节
-5. 修订或移除过时内容
+5. 修订或移除过时内容，删除 DESIGN 中的实施状态和交付进度
 6. 追加 Change Log（记录设计意图、架构、边界、契约变化）
 7. 未解决事项标为待确认
 
@@ -87,17 +89,49 @@ description: 创建或更新产品 DESIGN 或项目 DESIGN
 
 ## Step 4: 验证
 
-写入后检查模板章节完整性和设计语言质量。
+写入后执行质量检查门。只有质量检查通过，命令才真正完成；不通过则回到 Step 2 或 Step 3 修订。
+
+### 通用质量检查
+
+- [ ] 选择了正确模板：产品 DESIGN 或项目 DESIGN
+- [ ] 文档语言符合用户偏好
+- [ ] Header 包含当前 `Updated` 日期
+- [ ] Change Log 已追加有意义的创建/更新记录
+- [ ] 相关长期文档已链接，未链接 backlog、临时计划或命令日志
+- [ ] 保留准确既有内容，明确修订或移除过时内容
+- [ ] 未确认事项明确标记为待确认
+- [ ] 正文使用设计语言，不含模板注释、流程说明、任务清单或命令转录
+- [ ] DESIGN 不包含实施状态、交付进度、验收结果、复选框式任务或“已完成/待完成”模块状态
+
+### 产品 DESIGN 质量检查
+
+- [ ] 基于目标 PRD 编写或更新
+- [ ] 说明跨项目系统组成、架构层次、项目职责和交互契约
+- [ ] Runtime Model 明确状态位置、数据归属、配置分层、生命周期和持久化边界
+- [ ] End-to-End Flows 覆盖关键跨项目路径，聚焦系统行为而非实现步骤
+- [ ] Evolution Roadmap 只保留阶段骨架：`### Phase N: Title`、`Goal`、`Phase doc`
+- [ ] 不重复 PRD 的愿景、目标用户、产品叙事或完整路线图
+
+### 项目 DESIGN 质量检查
+
+- [ ] 标准流程下基于上级产品 PRD 与产品 DESIGN；简化流程下 Header 明确 `上级产品: N/A`
+- [ ] Project Role 简洁说明项目定位、职责边界和不负责内容
+- [ ] Capability Scope 只描述目标态能力边界，不含阶段时间、实施状态或交付进度
+- [ ] Module Architecture 使用设计态语言说明模块责任和载体，不以临时实现位置作为主结构
+- [ ] Technical Stack Choices 包含选择理由和明确边界
+- [ ] Interfaces and Contracts 说明对外表面、消费者、输入输出约定、文件格式、配置或模板契约
+- [ ] Data and State Model 明确项目拥有的状态、位置、Owner 和规则
 
 ---
 
-## Completion Standard
+## Discussion Completion Standard
 
-以下条件满足时，本命令完成：
+以下条件满足时，研究讨论可以结束，并进入 Step 3 编写与 Step 4 验证：
 
 - 产品 DESIGN：系统架构边界已明确，当前阶段总体目标已确定，可交给 `/cupdate-roadmap` 做阶段细化
 - 项目 DESIGN（标准流程）：内部架构决策已明确，可进入 `/cupdate-agent-rules` 或准备 Plan
 - 项目 DESIGN（简化流程）：设计决策已充分明确，可直接进入 Plan
+- 仍未确认的关键问题已显式列出，并且不阻塞当前 DESIGN 的架构表达
 
 ---
 
@@ -108,3 +142,4 @@ description: 创建或更新产品 DESIGN 或项目 DESIGN
 1. 文件路径
 2. 创建/更新摘要（新增、修订、移除/废弃项、待确认项）
 3. 建议下一步：产品 DESIGN → `/cupdate-roadmap`；标准项目 DESIGN → `/cupdate-agent-rules`；简化流程项目 DESIGN → 创建 Plan
+4. 验证结果：Step 4 质量检查通过；若有未通过项，先修订，不输出完成响应

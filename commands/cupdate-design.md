@@ -30,6 +30,8 @@ In the standard flow, the product DESIGN is used for phase decomposition and arc
 - The command's core role is guiding users to discuss and clarify design decisions. Product DESIGN uses the `design-product.md` template; project DESIGN uses the `design-project.md` template.
 - Product DESIGN discussion focus: system layering and subsystem boundaries, runtime model, end-to-end flows, phase decomposition (at minimum, clarify the current phase's overall goal; detail is deferred to `/cupdate-roadmap`).
 - Project DESIGN discussion focus: project role and boundaries, capability scope, module architecture, technology choices, interface contracts, data model.
+- DESIGN keeps only architecture, boundaries, contracts, runtime model, and evolution skeleton. It does not keep implementation status, delivery progress, acceptance results, or task lists.
+- Product DESIGN's Evolution Roadmap is a phase skeleton: each Phase keeps only the title, Goal, and Phase document link. Completed/landed/remaining work belongs in Phase, Plan, UAT, or Verification documents.
 - Preserve accurate existing content. Revise or remove outdated information when evidence is sufficient. Mark unresolved items as needing confirmation.
 - Present the full content and obtain explicit user confirmation before any write operation.
 
@@ -56,7 +58,7 @@ Guide the user through each template section in order.
 2. Core subsystem roles, boundaries, and interaction contracts
 3. Runtime model (state locations, configuration layers, lifecycle)
 4. Key end-to-end flows
-5. Phase decomposition: break the product vision into deliverable phases; at minimum, clarify the current phase's overall goal
+5. Phase decomposition: break the product vision into a deliverable phase skeleton, keeping only Phase titles, Goals, and Phase document links
 
 **Project DESIGN discussion points**:
 1. Project positioning and responsibility boundary within the parent product (simplified flow: self-defined positioning and value proposition)
@@ -77,7 +79,7 @@ Produce the DESIGN document from the discussion conclusions using the template. 
 2. Update the `Updated` date
 3. Align discussion conclusions with existing content
 4. Fill in missing sections
-5. Revise or remove outdated content
+5. Revise or remove outdated content, deleting implementation status and delivery progress from DESIGN
 6. Append a Change Log entry (record design intent, architecture, boundary, or contract changes)
 7. Mark unresolved items as needing confirmation
 
@@ -87,17 +89,49 @@ Present the full content and wait for user confirmation before writing.
 
 ## Step 4: Verify
 
-After writing, check template section completeness and design language quality.
+After writing, run the quality gate. The command is truly complete only when the quality gate passes; if it fails, return to Step 2 or Step 3 and revise.
+
+### General Quality Checklist
+
+- [ ] Correct template selected: product DESIGN or project DESIGN
+- [ ] Document language follows user preference
+- [ ] Header includes current `Updated` date
+- [ ] Change Log has a meaningful creation/update entry
+- [ ] Durable related documents are linked; backlog, temporary plans, and command logs are not linked
+- [ ] Accurate existing content is preserved; obsolete content is explicitly revised or removed
+- [ ] Unconfirmed items are explicitly marked as needing confirmation
+- [ ] Body uses design language and contains no template commentary, process explanation, task list, or command transcript
+- [ ] DESIGN contains no implementation status, delivery progress, acceptance results, checkbox-style tasks, or "completed / pending" module status
+
+### Product DESIGN Quality Checklist
+
+- [ ] Grounded in the target PRD
+- [ ] Explains cross-project system composition, architecture layers, project responsibilities, and interaction contracts
+- [ ] Runtime Model clarifies state locations, data ownership, configuration layers, lifecycle, and persistence boundaries
+- [ ] End-to-End Flows cover critical cross-project paths and focus on system behavior rather than implementation steps
+- [ ] Evolution Roadmap keeps only the phase skeleton: `### Phase N: Title`, `Goal`, and `Phase doc`
+- [ ] Does not duplicate the PRD's vision, target users, product narrative, or full roadmap
+
+### Project DESIGN Quality Checklist
+
+- [ ] Standard flow is grounded in the parent product PRD and product DESIGN; simplified flow explicitly uses `Parent Product: N/A`
+- [ ] Project Role concisely explains project positioning, responsibility boundaries, and non-responsibilities
+- [ ] Capability Scope describes only target-state capability boundaries, with no phase timing, implementation status, or delivery progress
+- [ ] Module Architecture uses design-state language to explain module responsibilities and carriers; temporary implementation locations are not the primary structure
+- [ ] Technical Stack Choices include rationale and explicit boundaries
+- [ ] Interfaces and Contracts describe external surfaces, consumers, input/output conventions, file formats, configuration, or template contracts
+- [ ] Data and State Model clarifies project-owned state, location, owner, and rules
 
 ---
 
-## Completion Standard
+## Discussion Completion Standard
 
-The command is complete when the following conditions are met:
+The research discussion can end, and Step 3 writing plus Step 4 verification can begin, when the following conditions are met:
 
 - Product DESIGN: system architecture boundaries are clear, the current phase's overall goal is defined, and the work is ready for `/cupdate-roadmap` phase refinement
 - Project DESIGN (standard flow): internal architecture decisions are clear, ready for `/cupdate-agent-rules` or Plan creation
 - Project DESIGN (simplified flow): design decisions are sufficiently clear to proceed directly to Plan
+- Any remaining key questions are explicitly listed and do not block the current DESIGN's architecture expression
 
 ---
 
@@ -108,3 +142,4 @@ Respond in the user's preferred language with:
 1. File path
 2. Creation/update summary (additions, revisions, removals/deprecations, items needing confirmation)
 3. Suggested next step: product DESIGN → `/cupdate-roadmap`; standard project DESIGN → `/cupdate-agent-rules`; simplified project DESIGN → create Plan
+4. Verification result: Step 4 quality gate passed; if any item fails, revise first and do not output the completion response

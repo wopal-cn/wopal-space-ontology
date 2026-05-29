@@ -54,14 +54,11 @@ Product evolution skeleton. Each phase includes title, Goal, and Phase document 
 ```markdown
 ### Phase N: Title
 
-> Phase doc: [phases/<product>-pN-<slug>.md]
-
 - **Goal**: Product capability target for this phase (one line, ≥20 characters, verifiable product capability statement)
-```
 
-- Every phase has a Goal and a Phase doc link
-- The product phase is complete when all Phase documents' Exit Criteria are satisfied
+> Phase doc: [phases/<product>-pN-<slug>.md]
+```
 
 ## 6. Related Documents
 
-Link durable reference documents: PRD, project DESIGNs, business rules, architecture references, project specs. Each link has a clear reference purpose.
+Link durable reference documents: project DESIGNs, business rules, architecture references, project specs. Each link has a clear reference purpose.
