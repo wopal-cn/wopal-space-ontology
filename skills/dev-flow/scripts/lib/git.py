@@ -346,3 +346,74 @@ def has_uncommitted_changes(repo_path: str) -> bool:
         True if repo has uncommitted changes
     """
     return is_repo_dirty(repo_path)
+
+
+def commit_paths(repo_root: str, paths: list[str], message: str) -> bool:
+    """Stage and commit specific paths in a given repo.
+
+    Only stages the listed paths (not git add -A), then commits.
+    Returns True if commit succeeded or there was nothing to commit.
+
+    Args:
+        repo_root: Path to git repository root
+        paths: List of repo-relative paths to stage and commit
+        message: Commit message
+
+    Returns:
+        True if commit succeeded or nothing to commit
+    """
+    if not paths:
+        return True
+
+    # Stage specific paths
+    add_result = subprocess.run(
+        ["git", "add", *paths],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    if add_result.returncode != 0:
+        return False
+
+    # Commit
+    commit_result = subprocess.run(
+        ["git", "commit", "-m", message],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+
+    if commit_result.returncode == 0:
+        return True
+
+    # "nothing to commit" is acceptable
+    if "nothing to commit" in commit_result.stdout:
+        return True
+
+    return False
+
+
+def push_repo(repo_root: str, branch: str | None = None) -> bool:
+    """Push a specific branch in a given repo.
+
+    If branch is None, pushes the current branch.
+
+    Args:
+        repo_root: Path to git repository root
+        branch: Branch name to push (None = current branch)
+
+    Returns:
+        True if push succeeded
+    """
+    if branch is None:
+        branch = get_current_branch(repo_root)
+        if not branch:
+            return False
+
+    result = subprocess.run(
+        ["git", "push", "origin", branch],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0

@@ -38,8 +38,9 @@ from plan import (
     get_plan_field,
 )
 from plan import commit_project_changes, commit_ontology_worktree
-from lib.git import has_uncommitted_changes
+from lib.git import has_uncommitted_changes, commit_paths
 from plan import resolve_project_path
+from lib.project import resolve_plan_location
 from validation import (
     ValidationError,
     check_acceptance_criteria,
@@ -122,6 +123,20 @@ def _get_plan_name(plan_path: str) -> str:
     return Path(plan_path).stem
 
 
+def _build_complete_message(
+    plan_type: str,
+    issue_number: int | None,
+    plan_name: str,
+    repo: str | None,
+) -> str:
+    """Build commit message for same-repo merge commit (code + Plan status).
+
+    Uses plan.py's build_commit_message for Issue-aware messages.
+    """
+    from plan import build_commit_message
+    return build_commit_message(plan_name, plan_type, issue_number, repo)
+
+
 # ============================================
 # complete command
 # ============================================
@@ -195,33 +210,62 @@ def cmd_complete(args: argparse.Namespace) -> int:
     # Extract Target Project from Plan
     project = get_plan_project(plan_path)
 
-    # 6. Commit project changes — implementation is complete and verified,
-    #    commit now so code is safely versioned before user validation.
+    # 6. Resolve Plan location and determine same-repo condition
     project_type_str = get_plan_field(plan_path, "Project Type")
     plan_type = get_plan_type(plan_path) or "chore"
 
+    plan_location = resolve_plan_location(Path(plan_path), workspace_root)
+    plan_repo_root = str(plan_location.repo_root)
+
+    # Determine code repo root (where code changes will be committed)
+    code_repo_root = None
     if project_type_str == "ontology-worktree":
-        if not commit_ontology_worktree(workspace_root, plan_type, plan_issue, plan_name, repo):
-            log_error("Failed to commit ontology changes")
-            return 1
+        code_repo_root = str((workspace_root / ".wopal").resolve())
     elif project:
         project_path_obj = resolve_project_path(plan_path, project, workspace_root)
         if project_path_obj:
             wt = get_plan_worktree(plan_path)
             wt_path = wt.get('path') if wt else None
             if wt_path and Path(wt_path).exists():
-                # Worktree: commit on worktree branch
-                wt_path = wt['path']
-                if has_uncommitted_changes(wt_path):
-                    if not commit_project_changes(wt_path, plan_type, plan_issue, plan_name, repo):
-                        log_error("Failed to commit worktree changes")
-                        return 1
+                code_repo_root = str(Path(wt_path).resolve())
             else:
-                # No worktree: commit directly in project dir
-                if has_uncommitted_changes(str(project_path_obj)):
-                    if not commit_project_changes(str(project_path_obj), plan_type, plan_issue, plan_name, repo):
-                        log_error("Failed to commit project changes")
-                        return 1
+                code_repo_root = str(project_path_obj.resolve())
+
+    # Same repo = Plan file and code share the same working directory root.
+    # This is the condition for merge commit (D-03, D-07).
+    # Worktree paths are different working dirs even if same underlying git repo,
+    # so they won't match here — which is correct (separate commits on separate branches).
+    same_repo = (
+        code_repo_root is not None
+        and Path(plan_repo_root).resolve() == Path(code_repo_root).resolve()
+    )
+
+    if not same_repo:
+        # Different repos or worktree: commit code now, Plan status later.
+        # This preserves the existing behavior for separate-repo scenarios.
+        if project_type_str == "ontology-worktree":
+            if not commit_ontology_worktree(workspace_root, plan_type, plan_issue, plan_name, repo):
+                log_error("Failed to commit ontology changes")
+                return 1
+        elif project:
+            project_path_obj = resolve_project_path(plan_path, project, workspace_root)
+            if project_path_obj:
+                wt = get_plan_worktree(plan_path)
+                wt_path = wt.get('path') if wt else None
+                if wt_path and Path(wt_path).exists():
+                    # Worktree: commit on worktree branch
+                    wt_path = wt['path']
+                    if has_uncommitted_changes(wt_path):
+                        if not commit_project_changes(wt_path, plan_type, plan_issue, plan_name, repo):
+                            log_error("Failed to commit worktree changes")
+                            return 1
+                else:
+                    # No worktree: commit directly in project dir
+                    if has_uncommitted_changes(str(project_path_obj)):
+                        if not commit_project_changes(str(project_path_obj), plan_type, plan_issue, plan_name, repo):
+                            log_error("Failed to commit project changes")
+                            return 1
+    # else: same_repo — defer commit until after Plan status update (merge commit)
 
     # 6. Validate state transition
     target_status = "verifying"
@@ -332,6 +376,30 @@ def cmd_complete(args: argparse.Namespace) -> int:
         if effective_issue:
             print("")
             print(f"Issue: #{effective_issue}")
+
+    # 8. Final commit: same-repo merge commit or Plan-only commit
+    if same_repo:
+        # D-03 / D-07: code changes + Plan status=verifying in one commit
+        if has_uncommitted_changes(plan_repo_root):
+            commit_msg = _build_complete_message(plan_type, plan_issue, plan_name, repo)
+            from lib.git import commit_all as _commit_all
+            if not _commit_all(plan_repo_root, commit_msg):
+                log_error("Failed to commit combined code + Plan changes")
+                return 1
+            log_success(f"Same-repo merge commit: {commit_msg}")
+    else:
+        # Different repos: commit Plan status change in Plan's repo
+        plan_rel = plan_location.repo_relative_path
+        if plan_issue:
+            plan_commit_msg = f"docs(plan): complete plan #{plan_issue}"
+        else:
+            plan_commit_msg = f"docs(plan): complete plan {plan_name}"
+            max_total = 72
+            if len(plan_commit_msg) > max_total:
+                prefix = "docs(plan): complete plan "
+                plan_commit_msg = prefix + plan_name[:max_total - len(prefix)]
+        if not commit_paths(plan_repo_root, [plan_rel], plan_commit_msg):
+            log_warn("Failed to commit Plan status change in Plan's repo")
 
     return 0
 

@@ -215,7 +215,7 @@ cd .wopal/skills/dev-flow && python -m pytest tests/python/unit -q && python -m 
 ```
 
 **Done**:
-- [ ] 实施 Agent 已完成功能开发和验证，确认结果符合预期
+- [x] 实施 Agent 已完成功能开发和验证，确认结果符合预期
 
 ---
 
@@ -246,7 +246,7 @@ cd .wopal/skills/dev-flow && python -m pytest tests/python/unit/test_verify_swit
 ```
 
 **Done**:
-- [ ] 实施 Agent 已完成功能开发和验证，确认结果符合预期
+- [x] 实施 Agent 已完成功能开发和验证，确认结果符合预期
 
 ---
 

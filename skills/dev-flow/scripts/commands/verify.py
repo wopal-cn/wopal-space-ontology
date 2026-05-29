@@ -33,6 +33,8 @@ from plan import (
     get_plan_field,
     get_plan_issue,
 )
+from lib.git import commit_paths
+from lib.project import resolve_plan_location
 from validation import (
     ValidationError,
     check_user_validation,
@@ -297,6 +299,23 @@ def cmd_verify(args: argparse.Namespace) -> int:
     else:
         log_error("Failed to update Plan status")
         return 1
+
+    # 9.5. Commit Plan status=done to Plan's repo (D-05)
+    plan_location = resolve_plan_location(Path(plan_path), workspace_root)
+    plan_repo_root = str(plan_location.repo_root)
+    plan_rel = plan_location.repo_relative_path
+    if plan_issue:
+        plan_commit_msg = f"docs(plan): verify plan #{plan_issue}"
+    else:
+        plan_commit_msg = f"docs(plan): verify plan {_get_plan_name(plan_path)}"
+        max_total = 72
+        if len(plan_commit_msg) > max_total:
+            prefix = "docs(plan): verify plan "
+            plan_commit_msg = prefix + _get_plan_name(plan_path)[:max_total - len(prefix)]
+    if not commit_paths(plan_repo_root, [plan_rel], plan_commit_msg):
+        log_warn("Failed to commit Plan status=done in Plan's repo")
+    else:
+        log_success("Plan status=done committed to Plan's repo")
 
     # 10. Sync Issue if exists
     if effective_issue and repo:

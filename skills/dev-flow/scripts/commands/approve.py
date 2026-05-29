@@ -51,7 +51,10 @@ from lib.git import (
     is_commit_in_remote,
     get_relative_path,
     get_current_branch,
+    commit_paths,
+    push_repo,
 )
+from lib.project import resolve_plan_location
 from lib.worktree import create_worktree, WorktreeContext, write_worktree_context
 
 
@@ -98,9 +101,8 @@ def _extract_slug(plan_name: str) -> str:
 def _commit_and_push_plan(plan_path: str, issue_number: int | None, workspace_root: Path) -> bool:
     """Commit and push Plan file after status transition.
 
-    Mirrors Bash _commit_and_push_plan_if_needed:
-    1. git add + commit plan file (if dirty)
-    2. git push origin main (if not already pushed)
+    Repo-aware: resolves Plan's repo via resolve_plan_location() and
+    commits/pushes in that repo instead of always using workspace_root.
 
     Args:
         plan_path: Absolute path to Plan file
@@ -110,12 +112,15 @@ def _commit_and_push_plan(plan_path: str, issue_number: int | None, workspace_ro
     Returns:
         True if commit/push succeeded, False if failed
     """
-    plan_relative = get_relative_path(plan_path, str(workspace_root))
+    # Resolve Plan's owning repo
+    plan_location = resolve_plan_location(Path(plan_path), workspace_root)
+    repo_root = str(plan_location.repo_root)
+    plan_relative = plan_location.repo_relative_path
 
     # Check if plan file has uncommitted changes
     status_result = subprocess.run(
         ["git", "status", "--porcelain", "--", plan_relative],
-        cwd=str(workspace_root),
+        cwd=repo_root,
         capture_output=True,
         text=True,
     )
@@ -135,53 +140,19 @@ def _commit_and_push_plan(plan_path: str, issue_number: int | None, workspace_ro
                 max_name = max_total - len(prefix)
                 commit_msg = prefix + plan_filename[:max_name]
 
-        # git add
-        add_result = subprocess.run(
-            ["git", "add", plan_relative],
-            cwd=str(workspace_root),
-            capture_output=True,
-            text=True,
-        )
-        if add_result.returncode != 0:
-            log_error(f"git add failed: {add_result.stderr}")
-            return False
-
-        # git commit
-        commit_result = subprocess.run(
-            ["git", "commit", "-m", commit_msg],
-            cwd=str(workspace_root),
-            capture_output=True,
-            text=True,
-        )
-        if commit_result.returncode != 0:
+        if not commit_paths(repo_root, [plan_relative], commit_msg):
             log_error("Auto-commit failed. Please commit manually")
-            if commit_result.stdout:
-                print(commit_result.stdout, file=sys.stderr)
-            if commit_result.stderr:
-                print(commit_result.stderr, file=sys.stderr)
             return False
 
         log_success(f"Plan file committed: {commit_msg}")
 
     # Push if not already in remote
-    branch_result = subprocess.run(
-        ["git", "branch", "--show-current"],
-        cwd=str(workspace_root),
-        capture_output=True,
-        text=True,
-    )
-    current_branch = branch_result.stdout.strip() or "main"
+    current_branch = plan_location.branch
 
-    if not is_commit_in_remote(str(workspace_root), "origin", current_branch):
-        log_step("Auto-pushing Plan file to origin/main...")
-        push_result = subprocess.run(
-            ["git", "push", "origin", current_branch],
-            cwd=str(workspace_root),
-            capture_output=True,
-            text=True,
-        )
-        if push_result.returncode != 0:
-            log_error(f"Auto-push failed. Please push manually: cd {workspace_root} && git push")
+    if not is_commit_in_remote(repo_root, "origin", current_branch):
+        log_step(f"Auto-pushing Plan file to origin/{current_branch}...")
+        if not push_repo(repo_root, current_branch):
+            log_error(f"Auto-push failed. Please push manually: cd {repo_root} && git push")
             return False
         log_success("Plan file pushed successfully")
 

@@ -58,9 +58,13 @@ from lib.git import (
     push_branch,
     has_uncommitted_changes,
     commit_all,
+    commit_paths,
+    push_repo,
+    get_relative_path,
 )
 from plan import push_project_changes, push_ontology_worktree, commit_project_changes
 from lib.worktree import clean_worktree
+from lib.project import resolve_plan_location
 
 
 # ============================================
@@ -236,7 +240,8 @@ def _cleanup_worktree(
 def archive_plan_file(plan_path: str, workspace_root: Path) -> str:
     """Move Plan file to done/ directory with date prefix.
 
-    Uses git mv if plan is tracked, otherwise uses regular mv.
+    Repo-aware: resolves Plan's repo_root via resolve_plan_location()
+    and uses that repo for git mv operations (D-06).
 
     Args:
         plan_path: Path to Plan file
@@ -265,21 +270,25 @@ def archive_plan_file(plan_path: str, workspace_root: Path) -> str:
     archived_name = f"{archive_date}-{plan_file.name}"
     archived_file = done_dir / archived_name
 
-    # Check if plan is tracked in git
-    plan_rel = plan_file.relative_to(workspace_root)
-    archived_rel = archived_file.relative_to(workspace_root)
+    # Resolve Plan's owning repo
+    plan_location = resolve_plan_location(plan_file, workspace_root)
+    repo_root = str(plan_location.repo_root)
+
+    # Check if plan is tracked in git (within Plan's repo)
+    plan_rel = get_relative_path(str(plan_file), repo_root)
+    archived_rel = get_relative_path(str(archived_file), repo_root)
 
     is_tracked = subprocess.run(
-        ["git", "ls-files", "--error-unmatch", str(plan_rel)],
-        cwd=str(workspace_root),
+        ["git", "ls-files", "--error-unmatch", plan_rel],
+        cwd=repo_root,
         capture_output=True,
     ).returncode == 0
 
     if is_tracked:
-        # Use git mv
+        # Use git mv in Plan's repo
         subprocess.run(
-            ["git", "mv", str(plan_rel), str(archived_rel)],
-            cwd=str(workspace_root),
+            ["git", "mv", plan_rel, archived_rel],
+            cwd=repo_root,
             capture_output=True,
             check=True,
         )
@@ -324,7 +333,10 @@ def commit_archived_plan(
     issue_number: int | None,
     workspace_root: Path
 ) -> bool:
-    """Commit and push archived plan in space repo.
+    """Commit and push archived plan in Plan's repo.
+
+    Repo-aware: resolves Plan's repo_root via resolve_plan_location()
+    and commits/pushes in that repo instead of always using workspace_root (D-06).
 
     Args:
         archived_file: Path to archived plan file
@@ -334,10 +346,15 @@ def commit_archived_plan(
     Returns:
         True if committed successfully
     """
-    # Check staged changes
+    # Resolve Plan's owning repo from the archived file path
+    plan_location = resolve_plan_location(Path(archived_file), workspace_root)
+    repo_root = str(plan_location.repo_root)
+    plan_rel = plan_location.repo_relative_path
+
+    # Check staged changes in Plan's repo
     result = subprocess.run(
         ["git", "diff", "--cached", "--quiet"],
-        cwd=str(workspace_root),
+        cwd=repo_root,
         capture_output=True,
     )
 
@@ -364,29 +381,23 @@ def commit_archived_plan(
             plan_name = plan_name[: max_desc - len(prefix) - 3] + "..."
         commit_msg = f"{prefix}{plan_name}"
 
-    # Commit
-    result = subprocess.run(
-        ["git", "commit", "-m", commit_msg],
-        cwd=str(workspace_root),
-        capture_output=True,
-        text=True,
-    )
+    # Commit in Plan's repo
+    if not commit_paths(repo_root, [plan_rel], commit_msg):
+        # Fallback: try commit_all for staged changes (git mv stages automatically)
+        result = subprocess.run(
+            ["git", "commit", "-m", commit_msg],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            log_warn("Failed to commit archived plan")
+            if result.stderr.strip():
+                log_warn(f"  {result.stderr.strip()}")
+            return False
 
-    if result.returncode != 0:
-        log_warn("Failed to commit archived plan")
-        if result.stderr.strip():
-            log_warn(f"  {result.stderr.strip()}")
-        return False
-
-    # Push
-    result = subprocess.run(
-        ["git", "push"],
-        cwd=str(workspace_root),
-        capture_output=True,
-        text=True,
-    )
-
-    if result.returncode != 0:
+    # Push in Plan's repo
+    if not push_repo(repo_root, plan_location.branch):
         log_warn("Failed to push archived plan")
         return False
 
@@ -568,13 +579,16 @@ def cmd_archive(args: argparse.Namespace) -> int:
             workspace_root=str(workspace_root),
         )
 
-    # 6. Stage all changes (rename + sync content updates)
-    archived_rel = Path(archived_file).relative_to(workspace_root)
+    # 6. Stage archived plan in Plan's repo (rename is already staged by git mv)
+    #    If git mv was used, the rename is already staged. For safety, also
+    #    stage the archived file path.
+    plan_location = resolve_plan_location(Path(archived_file), workspace_root)
+    repo_root = str(plan_location.repo_root)
+    archived_repo_rel = get_relative_path(archived_file, repo_root)
     subprocess.run(
-        ["git", "add", str(archived_rel)],
-        cwd=str(workspace_root),
+        ["git", "add", archived_repo_rel],
+        cwd=repo_root,
         capture_output=True,
-        check=True,
     )
 
     # 7. Commit archived plan
