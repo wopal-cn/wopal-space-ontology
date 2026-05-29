@@ -31,7 +31,8 @@ from pathlib import Path
 from lib.workspace import find_workspace_root, get_ontology_main_repo
 from lib.logging import log_info, log_success, log_error, log_warn, log_step
 from lib.git import has_uncommitted_changes, get_current_branch, push_branch
-from issue import build_repo_blob_url
+from lib.project import resolve_plan_location, build_plan_blob_url
+from lib import project as _project_resolver
 
 
 # ============================================
@@ -504,19 +505,27 @@ def _render_issue_section(heading: str, content: str, placeholder: str = "") -> 
 
 
 def build_plan_link_for_issue(plan_file: str, plan_name: str, repo: str, workspace_root: str = None) -> str:
-    """Build Plan link row for Issue's Related Resources table."""
+    """Build Plan link row for Issue's Related Resources table.
+    
+    Uses resolve_plan_location() to determine the Plan's actual project repo,
+    so the blob URL points to the correct repo and branch.
+    
+    Args:
+        plan_file: Absolute or relative path to Plan file
+        plan_name: Plan name (used as display text)
+        repo: Space repo (unused for blob URL; kept for API compatibility)
+        workspace_root: Workspace root path (required for path resolution)
+    """
     plan_status = get_plan_field(plan_file, "Status")
     if plan_status in ('planning', 'draft'):
         return "| Plan | _待关联_ |"
     
-    project = get_plan_field(plan_file, "Target Project")
     if workspace_root:
-        plan_path = Path(plan_file).resolve().relative_to(Path(workspace_root).resolve()).as_posix()
-    elif project:
-        plan_path = f"docs/projects/{project}/plans/{plan_name}.md"
+        loc = resolve_plan_location(Path(plan_file), Path(workspace_root))
+        github_url = build_plan_blob_url(loc)
     else:
-        plan_path = f"docs/projects/plans/{plan_name}.md"
-    github_url = build_repo_blob_url(repo, plan_path)
+        github_url = ""
+    
     return f"| Plan | [{plan_name}]({github_url}) |"
 
 
@@ -530,78 +539,42 @@ def build_issue_body_from_plan(plan_file: str, plan_name: str, repo: str, worksp
 # ============================================
 
 def find_plan(input_ref: str, workspace_root: str | Path | None = None) -> str:
-    """Smart plan lookup: find plan by Issue number OR plan name."""
+    """Smart plan lookup: find plan by Issue number OR plan name.
+
+    Delegates to lib.project.find_plan() for path resolution.
+    Returns the plan file path as a string for backward compatibility.
+    """
     if workspace_root is None:
         workspace_root = find_workspace_root()
-    
-    workspace_root = str(workspace_root)
-    
-    if re.match(r'^\d+$', input_ref):
-        return find_plan_by_issue(int(input_ref), workspace_root)
-    else:
-        return find_plan_by_name(input_ref, workspace_root)
+
+    location = _project_resolver.find_plan(input_ref, Path(workspace_root))
+    return str(location.path)
 
 
 def find_plan_by_name(plan_name: str, workspace_root: str | Path = None) -> str:
-    """Find plan file by plan name (no-issue mode)."""
+    """Find plan file by plan name.
+
+    Delegates to lib.project.find_plan() which handles new paths
+    and DEPRECATED legacy read-only fallback.
+    """
     if workspace_root is None:
         workspace_root = find_workspace_root()
-    
-    workspace_root = str(workspace_root)
-    
-    search_dirs = [
-        os.path.join(workspace_root, "docs/projects/plans"),
-        *[d for d in glob.glob(os.path.join(workspace_root, "docs/projects/*/plans")) if os.path.isdir(d)],
-        *[d for d in glob.glob(os.path.join(workspace_root, "docs/projects/*/plans/done")) if os.path.isdir(d)],
-    ]
-    
-    for search_dir in search_dirs:
-        if not os.path.isdir(search_dir):
-            continue
-        
-        if "done" in search_dir:
-            archived_pattern = os.path.join(search_dir, f"*-{plan_name}.md")
-            matches = glob.glob(archived_pattern)
-        else:
-            active_pattern = os.path.join(search_dir, f"{plan_name}.md")
-            matches = glob.glob(active_pattern)
-        
-        if matches:
-            return matches[0]
-    
-    raise FileNotFoundError(f"No plan found for: {plan_name}")
+
+    location = _project_resolver.find_plan(plan_name, Path(workspace_root))
+    return str(location.path)
 
 
 def find_plan_by_issue(issue_number: int, workspace_root: str | Path = None) -> str:
-    """Find plan file by issue number, searching active and archived directories."""
+    """Find plan file by issue number.
+
+    Delegates to lib.project.find_plan() which handles new paths
+    and DEPRECATED legacy read-only fallback.
+    """
     if workspace_root is None:
         workspace_root = find_workspace_root()
-    
-    workspace_root = str(workspace_root)
-    
-    pattern_prefix = f"{issue_number}-"
-    
-    search_dirs = [
-        os.path.join(workspace_root, "docs/projects/plans"),
-        *[d for d in glob.glob(os.path.join(workspace_root, "docs/projects/*/plans")) if os.path.isdir(d)],
-        *[d for d in glob.glob(os.path.join(workspace_root, "docs/projects/*/plans/done")) if os.path.isdir(d)],
-    ]
-    
-    for search_dir in search_dirs:
-        if not os.path.isdir(search_dir):
-            continue
-        
-        if "done" in search_dir:
-            archived_pattern = os.path.join(search_dir, f"*-{pattern_prefix}*.md")
-            matches = glob.glob(archived_pattern)
-        else:
-            active_pattern = os.path.join(search_dir, f"{pattern_prefix}*.md")
-            matches = glob.glob(active_pattern)
-        
-        if matches:
-            return matches[0]
-    
-    raise FileNotFoundError(f"No plan found for issue #{issue_number}")
+
+    location = _project_resolver.find_plan(str(issue_number), Path(workspace_root))
+    return str(location.path)
 
 
 # ============================================
@@ -621,7 +594,17 @@ def _build_relative_path(archived_file: str, workspace_root: Path) -> str:
 
 
 def update_issue_plan_link(issue_number: int, plan_file: str, repo: str, workspace_root: str = None):
-    """Update Issue Plan link after archive."""
+    """Update Issue Plan link after archive.
+    
+    Uses resolve_plan_location() to determine the Plan's actual project repo,
+    so the blob URL points to the correct repo and branch.
+    
+    Args:
+        issue_number: Issue number to update
+        plan_file: Path to the (archived) Plan file
+        repo: Space repo (used for gh CLI --repo flag for Issue operations)
+        workspace_root: Workspace root path
+    """
     workspace = Path(workspace_root) if workspace_root else find_workspace_root()
     
     if not os.path.isfile(plan_file):
@@ -629,8 +612,10 @@ def update_issue_plan_link(issue_number: int, plan_file: str, repo: str, workspa
         return
     
     plan_name = Path(plan_file).stem
-    relative_path = _build_relative_path(plan_file, workspace)
-    blob_url = f"https://github.com/{repo}/blob/main/docs/{relative_path}"
+
+    # Resolve Plan location to get correct repo + branch + relative path
+    loc = resolve_plan_location(Path(plan_file), workspace)
+    blob_url = build_plan_blob_url(loc)
     
     # Get current Issue body
     state_dir = workspace / 'state'

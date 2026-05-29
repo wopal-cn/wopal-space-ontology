@@ -269,17 +269,18 @@ def build_structured_issue_body(**kwargs) -> str:
 # Link (from link.py)
 # ============================================
 
-def build_repo_blob_url(repo: str, repo_path: str) -> str:
+def build_repo_blob_url(repo: str, repo_path: str, branch: str = "main") -> str:
     """Build GitHub blob URL for a repository path.
     
     Args:
         repo: Repository in owner/repo format (e.g., "sampx/wopal-space")
         repo_path: Path within the repository
+        branch: Branch name (default: "main")
         
     Returns:
         Full GitHub blob URL
     """
-    return f"https://github.com/{repo}/blob/main/{repo_path}"
+    return f"https://github.com/{repo}/blob/{branch}/{repo_path}"
 
 
 # ============================================

@@ -18,7 +18,6 @@ import os
 import re
 from pathlib import Path
 
-from plan import find_plan_by_issue
 from issue import (
     sync_status_label_group,
     sync_type_label_group,
@@ -35,6 +34,7 @@ from labels import (
 from plan import build_plan_link_for_issue as _build_plan_link
 from lib.logging import log_info, log_success, log_warn, log_error
 from lib.workspace import find_workspace_root, detect_space_repo
+from lib import project as _project_resolver
 
 
 # ============================================
@@ -254,56 +254,19 @@ def shutil_which(cmd: str) -> bool:
 def find_plan(input: str) -> str:
     """
     Find Plan by Issue number OR Plan name.
-    
-    - If numeric → find_plan_by_issue
-    - If string → search all plan directories
+
+    Delegates to lib.project.find_plan() for canonical path resolution
+    across new paths and DEPRECATED legacy read-only fallback.
+
+    Returns plan file path as string.
     """
     if not input:
         log_error("Issue number or Plan name required")
         raise ValueError("input required")
-    
-    # Numeric input → Issue lookup
-    if re.match(r'^[0-9]+$', input):
-        return find_plan_by_issue(int(input))
-    
-    # String input → search all plan directories
+
     workspace_root = find_workspace_root()
-    search_dir = Path(workspace_root) / "docs" / "projects"
-    
-    if not search_dir.exists():
-        log_error("No plan directory found")
-        raise FileNotFoundError("No plan directory")
-    
-    # Search: docs/projects/plans/ and docs/projects/*/plans/
-    matches = []
-    
-    # Global plans
-    global_plans_dir = search_dir / "plans"
-    if global_plans_dir.exists():
-        for f in global_plans_dir.glob("*.md"):
-            if f.stem == input or input in f.stem:
-                matches.append(str(f))
-    
-    # Project plans (excluding done)
-    for project_dir in search_dir.iterdir():
-        if project_dir.is_dir() and project_dir.name != "plans":
-            plans_dir = project_dir / "plans"
-            if plans_dir.exists():
-                for f in plans_dir.glob("*.md"):
-                    if "done" not in str(f.parent) and (f.stem == input or input in f.stem):
-                        matches.append(str(f))
-    
-    if not matches:
-        log_error(f"No plan found matching: {input}")
-        raise FileNotFoundError(f"No plan found: {input}")
-    
-    if len(matches) > 1:
-        log_error(f"Multiple plans matched: {input}")
-        for m in matches:
-            print(f"  - {m}", file=sys.stderr)
-        raise ValueError(f"Multiple plans: {input}")
-    
-    return matches[0]
+    location = _project_resolver.find_plan(input, workspace_root)
+    return str(location.path)
 
 
 # ============================================

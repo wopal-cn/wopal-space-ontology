@@ -52,6 +52,7 @@ from validation import check_doc_plan
 from validation import ValidationError as CheckDocValidationError
 from lib.logging import log_info, log_success, log_error, log_warn
 from lib.workspace import find_workspace_root, detect_space_repo
+from lib import project as _project_resolver
 
 
 # ============================================
@@ -158,11 +159,12 @@ def _resolve_scope_from_title(title: str) -> str:
 
 
 def _resolve_plan_dir(project: str, workspace_root: Path) -> Path:
-    """Resolve Plan directory path."""
-    if project:
-        return workspace_root / "docs" / "projects" / project / "plans"
-    else:
-        return workspace_root / "docs" / "projects" / "plans"
+    """Resolve Plan directory path.
+
+    Delegates to lib.project.resolve_plan_dir() for canonical path resolution.
+    New Plans are written to projects/<project>/docs/plans/ or .wopal/docs/plans/.
+    """
+    return _project_resolver.resolve_plan_dir(project, workspace_root)
 
 
 def _print_existing_plan_info(plan_file: str, target_ref: str) -> None:

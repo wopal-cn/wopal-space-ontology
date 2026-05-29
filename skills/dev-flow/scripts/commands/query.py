@@ -19,6 +19,7 @@ from pathlib import Path
 from plan import find_plan
 from lib.logging import log_info, log_success, log_warn, log_error, log_step
 from lib.workspace import find_workspace_root, detect_space_repo
+from lib import project as _project_resolver
 
 
 # ============================================
@@ -216,41 +217,52 @@ def cmd_query_status(args: argparse.Namespace) -> int:
 def _scan_local_plans(workspace_root: str) -> list[dict]:
     """
     Scan local Plan files (excluding done/ directories).
-    
+
+    Uses lib.project._search_dirs() to discover plan directories
+    across new paths and DEPRECATED legacy read-only fallback.
+
     Returns list of dicts: {name, project, status, has_issue, issue_number}
     """
     results = []
-    projects_dir = Path(workspace_root) / "docs" / "projects"
-    
-    if not projects_dir.exists():
-        return results
-    
-    # Scan: docs/projects/plans/*.md and docs/projects/*/plans/*.md
-    search_dirs = []
-    
-    # Global plans
-    global_plans = projects_dir / "plans"
-    if global_plans.exists():
-        search_dirs.append(("plans", global_plans))
-    
-    # Project plans
-    for project_dir in sorted(projects_dir.iterdir()):
-        if project_dir.is_dir() and project_dir.name != "plans":
-            plans_dir = project_dir / "plans"
-            if plans_dir.exists():
-                search_dirs.append((project_dir.name, plans_dir))
-    
-    for project_name, plans_dir in search_dirs:
+    ws = Path(workspace_root)
+
+    # Use canonical search dirs from lib.project
+    search_dirs = _project_resolver._search_dirs(ws)
+
+    for plans_dir in search_dirs:
+        # Skip done/ subdirectories for active plan listing
+        if plans_dir.name == "done":
+            continue
+
+        # Derive project name from path
+        # New paths: projects/<name>/docs/plans → <name>
+        # Ontology: .wopal/docs/plans → "wopal-space-ontology"
+        # DEPRECATED: docs/projects/<name>/plans → <name>
+        # DEPRECATED: docs/projects/plans → "plans"
+        parts = plans_dir.relative_to(ws).parts
+        if parts[0] == "projects" and len(parts) >= 3:
+            project_name = parts[1]
+        elif parts[0] == ".wopal":
+            project_name = "wopal-space-ontology"
+        elif parts[0] == "docs" and parts[1] == "projects":
+            # DEPRECATED: legacy read-only compatibility
+            if len(parts) >= 4:
+                project_name = parts[2]
+            else:
+                project_name = "plans"
+        else:
+            project_name = "unknown"
+
         for f in sorted(plans_dir.glob("*.md")):
-            # Skip done/ subdirectory
-            if "done" in str(f.parent) and f.parent.name == "done":
+            # Skip files inside done/ subdirectory
+            if f.parent.name == "done":
                 continue
-            
+
             plan_name = f.stem
             metadata = get_plan_metadata(str(f))
             status = metadata.get('status', 'draft')
             issue_str = metadata.get('issue', '')
-            
+
             # Extract issue number
             issue_number = None
             has_issue = False
@@ -259,7 +271,7 @@ def _scan_local_plans(workspace_root: str) -> list[dict]:
                 if m:
                     issue_number = int(m.group(1))
                     has_issue = True
-            
+
             results.append({
                 'name': plan_name,
                 'project': project_name,
@@ -267,7 +279,7 @@ def _scan_local_plans(workspace_root: str) -> list[dict]:
                 'has_issue': has_issue,
                 'issue_number': issue_number,
             })
-    
+
     return results
 
 
