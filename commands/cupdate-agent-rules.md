@@ -8,40 +8,46 @@ Create or update project-level or directory-level `AGENTS.md`.
 
 **Input**: `$1` `$2`
 
-**Parameter Notes**: `[path|project-name] [extra-rules-context]`. When only a project name is given, look up `projects/` to derive the path. Path or project name is required; confirm if not provided.
+**Parameter Notes**: `[path|project-name] [extra-rules-context]`. Path or project name is required. When only a project name is given, infer candidates from `.wopal-space/STRUCTURE.md` and `projects/`; confirm if the target cannot be resolved uniquely.
 
 ---
 
 ## Core Principles
 
-### Document Paths
+- `AGENTS.md` is a development rules document for coding agents. It answers only: what the project is, where the code structure lives, and which project-specific technical rules must be followed during development, testing, and verification.
+- It is not a README, DESIGN, PRD, or business rules document. Product intent, design details, and business behavior must be referenced through canonical documents only.
+- Project-level documents define the project boundary. Directory-level documents define only the rules directly owned by that directory and must not duplicate the whole project spec.
+- Use `.wopal/templates/agents.md`. The formal `AGENTS.md` must preserve the template frontmatter `name` and `description`; information already present in frontmatter must not be repeated in the body.
+- `name` identifies the current project or directory module. `description` must be single-line, stable, Markdown-free, describe the current project or directory module responsibility, and serve as the controlled description source for `wopal space scan`.
+- Do not write roadmap, temporary status, completion progress, marketing slogans, or vague vision in `description`. If the description cannot be determined reliably, mark it as "needs confirmation" in the plan.
+- The body must contain only project-specific technical implementation rules. Use current implementation facts, not roadmap speculation.
+- From PRD, extract frontmatter `description` and only scope constraints that affect implementation. From DESIGN, extract the execution chain, directory responsibilities, technology choices, and interface / state / configuration / output / error-handling contracts.
+- `BUSINESS_RULES.md` must only be linked as a canonical reference. Extracting any rule from it into the body is forbidden.
+- From code / config, extract build, test, typecheck, lint, and format commands, basic development commands, existing framework / library constraints, and local implementation conventions.
+- Merge project technical rules from `rules-context` directly into the appropriate section. If content belongs to PRD, business rules, or a temporary plan, do not put it in the body and explain that after completion.
+- `AGENTS.md` must stay under 300 lines. If it would exceed 300 lines, compress content, replace detail with references, or split rules into a closer subdirectory `AGENTS.md`.
+- Preserve basic development / testing commands and applicable verification requirements. The Testing section must include a TDD requirement.
+- Use direct, executable imperatives. Make boundaries explicit: what this scope owns and what it must not change.
+- User-preferred language versions must follow the AGENTS template headings; English section headings defined by the template must not be translated.
+- Forbid README-style introductions, low-information applicability sentences, PRD vision / user narrative / roadmap, business rule restatements, large copied DESIGN prose, architecture diagrams, directory encyclopedias, API / command catalogs, and links to temporary plans or command logs unless the user explicitly asks for them.
+- `User-Supplied Rules` is user-maintained. When generating or updating, do not add, modify, delete, or reorder content in this section.
 
-- Project-level: `<project>/AGENTS.md`
-- Directory-level: `<target-directory>/AGENTS.md`
-- If the user's preferred language is not English, first create `AGENTS.<locale>.md` in the same directory for review; after confirmation, update `AGENTS.md`
+## Step 1: Resolve Target
 
-### Purpose
+1. If `$1` is an explicit path, use it directly.
+2. If `$1` is a project name, locate candidates from `.wopal-space/STRUCTURE.md` and `projects/`.
+3. If exactly one project matches, ask the user to confirm the inferred path. If there are multiple exact or near matches, list the candidates and let the user choose.
+4. Determine the target file: project-level uses `<project>/AGENTS.md`; directory-level uses `<target-directory>/AGENTS.md`.
 
-`AGENTS.md` is a development rules document for coding agents.
+**Output**: Target directory, target `AGENTS.md` path, and any path assumption that needs user confirmation.
 
-It answers only three questions:
+## Step 2: Collect Context
 
-1. What this project is.
-2. Where the code structure lives.
-3. Which project-specific technical rules must be followed during development, testing, and verification.
+Prefer reading:
 
-It is not a README, not a DESIGN document, and not a business rules document.
-
-### Preconditions
-
-Before generating, prefer reading:
-
-- Target `AGENTS.md`
-- Nearest parent `AGENTS.md`
+- Target `AGENTS.md` and nearest parent `AGENTS.md`
 - `.wopal-space/STRUCTURE.md`
-- Related PRD
-- Related DESIGN
-- Related `BUSINESS_RULES.md`
+- Related PRD, DESIGN, and `BUSINESS_RULES.md`
 - Project package / build / test / typecheck / lint configuration
 - Key source files in the target scope
 - `rules-context` when provided
@@ -49,120 +55,58 @@ Before generating, prefer reading:
 Common WopalSpace document locations:
 
 ```text
-projects/<project-name>/docs/PRD.md
-projects/<project-name>/docs/PRD-*.md
-projects/<project-name>/docs/DESIGN.md
-projects/<project-name>/docs/DESIGN-*.md
-projects/<project-name>/docs/BUSINESS_RULES.md
-<project>/AGENTS.md
+docs/product/<name>/docs/PRD*.md
+docs/product/<name>/docs/DESIGN*.md
+projects/<name>/docs/DESIGN.md
+<project repo>/AGENTS.md
 ```
 
-Project inference rules:
+**Output**: Canonical document list, existing rules summary, implementation facts summary, and missing or needs-confirmation information.
 
-- If `$1` is an explicit path, use it directly
-- If `$1` is a project name, first locate candidate projects from the project structure in `.wopal-space/STRUCTURE.md`
-- If exactly one project matches, ask the user to confirm that inferred path
-- If there are multiple exact or near matches, list the candidates and let the user choose
+## Step 3: Draft Confirmation Plan
 
-### Output Language and File Naming
-
-- If the user's preferred language is not English, first generate the user's preferred language version for review. After user confirmation, translate and update the formal English version.
-- Name the user's preferred language version as `AGENTS.<locale>.md`, for example `AGENTS.zh-CN.md`.
-- `<locale>` must use an IETF BCP 47 / RFC 5646 tag.
-- The formal English version keeps the unmodified filename: `AGENTS.md`.
-- If the user's preferred language is English, create or update `AGENTS.md` directly. Do not generate English variants such as `AGENTS.en-US.md`.
-
-### Core Rules
-
-- Project-level documents define the project boundary. Directory-level documents define only the rules directly owned by that directory and must not duplicate the whole project spec.
-- The body must contain only project-specific technical implementation rules. Product intent, design detail, and business behavior should be referenced through canonical documents.
-- From PRD, extract a one-sentence project positioning and only the scope constraints that affect implementation.
-- From DESIGN, extract the compact execution chain, directory / module responsibilities, technology choices, and interface / state / configuration / output / error-handling contracts.
-- `BUSINESS_RULES.md` must only be linked as a canonical reference. Extracting any rule from it into the `AGENTS.md` body is forbidden.
-- From code / config, extract build, test, typecheck, lint, and format commands, basic development commands, framework / library constraints already in use, and local implementation conventions.
-- Declare the technology stack once in the architecture section only; do not repeat it in implementation rules.
-- `rules-context` contains project-specific technical rules explicitly requested by the user and must be merged directly into the appropriate section. If content clearly belongs to PRD, business rules, or a temporary plan, do not put it in `AGENTS.md`; explain that in the completion response.
-
-### Writing Quality Bar
-
-- `AGENTS.md` must stay under 300 lines. If it would exceed 300 lines, compress content, replace detail with references, or split rules into a closer subdirectory `AGENTS.md`.
-- Preserve basic development / testing commands and any applicable verification requirements.
-- Keep only implementation, testing, and verification rules.
-- Prefer references over repeated explanation.
-- Use direct, imperative rules.
-- Use current implementation facts, not roadmap speculation.
-- Make boundaries explicit: what this scope owns and what it must not change.
-- In user-preferred language versions, all section titles must use the target language; formal English versions keep English titles.
-- The Do Not section must contain only project-specific development prohibitions; do not add maintenance filler such as "do not duplicate PRD content".
-
-Forbidden:
-
-- README-style project introduction
-- Low-information sections such as "This file applies to..."
-- PRD vision, user narrative, or roadmap
-- Business rule restatements
-- Large copied DESIGN prose
-- Architecture diagrams, directory encyclopedias, or API / command catalogs
-- Links to temporary implementation artifacts such as backlog items, task plans, or command logs unless the user explicitly asks for them
-
----
-
-## Templates
-
-- AGENTS: `.wopal/templates/agents.md`
-
----
-
-## Update Mode
-
-When updating an existing `AGENTS.md`:
-
-1. Preserve accurate project-specific development / testing rules.
-2. Remove stale, duplicated, verbose, and generic space-level rules.
-3. Replace copied PRD / DESIGN prose with references plus concise technical constraints; delete any rules copied from `BUSINESS_RULES.md`.
-4. Add any missing one-sentence project positioning, compact architecture, directory responsibilities, and development / testing commands.
-5. Merge `rules-context` directly into the right section. If any part is out of scope, explain why it was not added in the completion response.
-6. Keep the document under 300 lines.
-7. ⚠️ **Rules & specifications are immutable after initial creation.** When updating an existing `AGENTS.md`, never directly add, modify, or delete any existing rule / specification content. You may only recommend changes; all additions, modifications, and deletions require explicit user approval before execution.
-
-## Confirmation Policy
-
-Before writing or overwriting `AGENTS.md`, present the full optimization plan and get explicit user confirmation.
-
-The plan must include:
+Before writing, present the full plan and get explicit user confirmation. The plan must include:
 
 1. Target file path
 2. Canonical documents to reference
-3. One-sentence project positioning
+3. frontmatter `name` and `description` to write or preserve
 4. Summary of rules to preserve, add, remove, or compress
 5. Architecture / directory summary plan
 6. Development, testing, and verification requirements
 7. Where `rules-context` will be merged
 8. Compression or split strategy if the result may exceed 300 lines
+9. Confirmation that `User-Supplied Rules` will remain unchanged
 
-Before confirmation, do not write, overwrite, or reorder the formal English `AGENTS.md`.
+When updating an existing `AGENTS.md`, rules and specifications are immutable after initial creation. Any addition, modification, or deletion must first appear as a proposal in the plan and can only be executed after explicit user confirmation.
 
-If a user-preferred language version was generated first, then after confirmation:
+**Output**: Change plan waiting for user confirmation.
 
-1. Update the user-preferred language version first.
-2. Translate and update the formal English version.
-3. Keep the formal English version semantically aligned with the confirmed version.
+## Step 4: Write After Confirmation
+
+1. If the user's preferred language is not English, first update `AGENTS.<locale>.md` in the same directory. `<locale>` must use an IETF BCP 47 / RFC 5646 tag.
+2. After the user confirms the review version, translate and update the formal English `AGENTS.md`. The formal English version must stay semantically aligned with the confirmed version.
+3. If the user's preferred language is English, create or update `AGENTS.md` directly. Do not generate English variants such as `AGENTS.en-US.md`.
+4. Before confirmation, do not write, overwrite, or reorder the formal English `AGENTS.md`.
+
+**Output**: Updated review-version and / or formal-version paths.
 
 ## Quality Checklist
 
 - [ ] Target path is explicit or safely inferred
+- [ ] frontmatter `name` and `description` exist, and body content does not repeat frontmatter information
+- [ ] frontmatter `description` is single-line, stable, and suitable for `wopal space scan`
 - [ ] Target and parent `AGENTS.md` files were considered when present
 - [ ] PRD, DESIGN, and `BUSINESS_RULES.md` were referenced when present
 - [ ] `AGENTS.md` stays under 300 lines
 - [ ] Basic development / testing commands are preserved
-- [ ] Rules focus on implementation, testing, and verification
+- [ ] Rules focus on technical implementation, testing, and verification
 - [ ] If the user's preferred language is not English, the user-preferred language version was generated first
 - [ ] Canonical documents are referenced instead of copied
 - [ ] No rules were extracted from `BUSINESS_RULES.md` into the body
 - [ ] Testing section includes a TDD requirement
-- [ ] User-preferred language version titles use the target language
-- [ ] The Do Not section contains only project-specific prohibitions, with no maintenance filler
-- [ ] The full optimization plan was shown and confirmed before writing
+- [ ] User-preferred language version follows the AGENTS template headings and does not translate template-defined English section headings
+- [ ] `User-Supplied Rules` remained unchanged: no additions, modifications, deletions, or reordering
+- [ ] The full plan was shown and confirmed before writing
 - [ ] The formal English version was updated after confirmation when applicable
 
 ## Response After Completion

@@ -1,24 +1,27 @@
-# <Project or Directory> — Agent Development Rules
+---
+name: <Project or Directory Module> AGENT RULES
+description: <One-line stable description of the current project or directory module responsibility>
+---
 
-## 1. Project Positioning
+# Agent Development Rules
 
-<One-sentence project description extracted from PRD>
+## 1. Canonical References
 
 Canonical references:
 
 - PRD: `<path-or-N/A>`
 - DESIGN: `<path-or-N/A>`
 - Business Rules: `<path-or-N/A>`
-- Parent Rules: `<path-or-N/A>`
+- Referral Rules: `<path-or-N/A>`
 
 ## 2. Architecture and Directories
 
-<Compact execution chain>
+<Brief architecture description; may include a concise runtime flow>
 
 | Directory | Responsibility |
 |---|---|
 
-## 3. Development Commands
+## 3. Development Commands (build format test)
 
 | Scenario | Command | When |
 |---|---|---|
@@ -30,8 +33,9 @@ Canonical references:
 
 ## 5. Testing
 
-- Follow TDD: write a failing test first, then implement to make it pass.
+- <For code projects, follow TDD: write a failing test first, then implement code to make it pass>
+- <project-specific testing rules>
 
-## 6. Do Not
+## 6. User-Supplied Rules
 
-- <project-specific forbidden action>
+- <user-supplied rules; commands must not modify this section>
