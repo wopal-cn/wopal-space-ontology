@@ -2,7 +2,7 @@
 version: 1
 space: {space-name}
 
-space-component-type: [ontology-worktree, space-runtime, projects, contents, docs]
+space-component-type: [ontology-worktree, space-runtime, projects, contents, docs, labs, external, scripts]
 
 ontology-worktree: {path: .wopal, repo: ${ONTOLOGY_REPO}@space/{space-name}}
 
@@ -18,14 +18,13 @@ space-runtime:
     - REGULATIONS.md: space regulations
     - STRUCTURE.md: space structure source of truth (this file)
 
-projects: []
-
-contents: []
+repos: {}
 
 ---
 
 # {space-name} Space Structure
 
+<!-- MANAGED:START -->
 | path | type | level | description |
 |------|------|-------|-------------|
 | `.wopal` | ontology-worktree | worktree | ontology worktree — {space-name} space |
@@ -33,11 +32,12 @@ contents: []
 | `.wopal/agents/` | ontology-worktree | module | Agent souls |
 | `.wopal/rules/` | ontology-worktree | module | behavior rules |
 | `.wopal/commands/` | ontology-worktree | module | custom commands |
-| `.wopal-space/.tmp/` | space-runtime | dir | temporary buffer |
-| `.wopal-space/INBOX/` | space-runtime | dir | external skill staging |
-| `.wopal-space/backup/` | space-runtime | dir | space content backup |
-| `.wopal-space/logs/` | space-runtime | dir | space component runtime logs |
-| `.wopal-space/memory/` | space-runtime | dir | MEMORY.md + diary/ |
-| `projects/` | projects | dir | project repositories |
-| `contents/` | contents | dir | content documents |
-| `docs/` | docs | dir | space-level documentation |
+| `.wopal/plugins/wopal-plugin/` | ontology-worktree | module | runtime plugin — rule injection, task delegation, memory system, context management |
+
+<!-- MANAGED:END -->
+
+<!-- USER:START -->
+| path | type | level | description |
+|------|------|-------|-------------|
+
+<!-- USER:END -->

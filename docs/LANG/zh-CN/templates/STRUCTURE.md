@@ -2,7 +2,7 @@
 version: 1
 space: {space-name}
 
-space-component-type: [ontology-worktree, space-runtime, projects, contents, docs]
+space-component-type: [ontology-worktree, space-runtime, projects, contents, docs, labs, external, scripts]
 
 ontology-worktree: {path: .wopal, repo: ${ONTOLOGY_REPO}@space/{space-name}}
 
@@ -18,14 +18,13 @@ space-runtime:
     - REGULATIONS.md: 空间守则
     - STRUCTURE.md: 空间结构真相源（本文件）
 
-projects: []
-
-contents: []
+repos: {}
 
 ---
 
 # {space-name} 空间结构
 
+<!-- MANAGED:START -->
 | path | type | level | description |
 |------|------|-------|-------------|
 | `.wopal` | ontology-worktree | worktree | ontology worktree — {space-name} 空间 |
@@ -33,11 +32,12 @@ contents: []
 | `.wopal/agents/` | ontology-worktree | module | Agent 灵魂 |
 | `.wopal/rules/` | ontology-worktree | module | 行为规则 |
 | `.wopal/commands/` | ontology-worktree | module | 自定义命令 |
-| `.wopal-space/.tmp/` | space-runtime | dir | 临时缓冲 |
-| `.wopal-space/INBOX/` | space-runtime | dir | 外部技能暂存 |
-| `.wopal-space/backup/` | space-runtime | dir | 空间内容备份 |
-| `.wopal-space/logs/` | space-runtime | dir | 空间组件运行日志 |
-| `.wopal-space/memory/` | space-runtime | dir | MEMORY.md + diary/ |
-| `projects/` | projects | dir | 项目仓库 |
-| `contents/` | contents | dir | 内容文档 |
-| `docs/` | docs | dir | 空间级文档 |
+| `.wopal/plugins/wopal-plugin/` | ontology-worktree | module | 运行时插件 — 规则注入、任务委派、记忆系统、上下文管理 |
+
+<!-- MANAGED:END -->
+
+<!-- USER:START -->
+| path | type | level | description |
+|------|------|-------|-------------|
+
+<!-- USER:END -->

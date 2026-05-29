@@ -2,51 +2,71 @@
 description: calibrate space runtime structure
 ---
 
-Calibrate the current WopalSpace runtime structure: verify the `.wopal-space/` skeleton, detect structural drift, and report template diffs for user confirmation before writing.
+# Calibrate Space Runtime Structure
 
-User-provided focus or constraints (honor these):
-$ARGUMENTS
+Maintenance command for existing spaces: consume `wopal space scan` to obtain repo / module fact list, generate an update plan against the `STRUCTURE.md` compact schema, verify the runtime skeleton and template diffs, and write changes after user confirmation.
 
-## Goal
+**Input**: `$ARGUMENTS`
 
-Ensure the current space runtime matches its declared structure in `STRUCTURE.md` and that key runtime files (`REGULATIONS.md`, `memory/USER.md`, `memory/MEMORY.md`) are present and up to date. This is a maintenance command for existing spaces — not a replacement for `wopal space init`.
+**Parameter Notes**: Optional focus area or constraints; full calibration when not provided.
 
-## Investigation scope
+---
 
-Read these sources to build the current-state picture:
+## Core Principles
 
-1. **Structure truth source**: `.wopal-space/STRUCTURE.md` — frontmatter and markdown table define what the space should contain.
-2. **Runtime directory**: `.wopal-space/` — scan actual directories and files against the declared structure.
-3. **Space root**: check `AGENTS.md` and `.gitignore` at the space root.
-4. **Ontology templates**: `.wopal/templates/` — reference templates for diff comparison (`STRUCTURE.md`, `REGULATIONS.md`, `root-AGENTS.md`, `gitignore`, `memory/USER.md`, `memory/MEMORY.md`).
-5. **Schema**: `.wopal/templates/wopalspace-schema.yaml` — defines the canonical runtime and space file/directory layout.
+- `/init` is a maintenance entry for existing spaces, not a replacement for `wopal space init`; initialization goes through the CLI.
+- Call `wopal space scan` to obtain the fact list of repos / worktrees and `AGENTS.md` module rules; `/init` performs no recursive scanning of its own.
+- Generate frontmatter / table diffs against the compact schema: the managed block may be rewritten by `/init`; the user block is never modified; non-pinned assets deleted by the user from the managed table must not be silently restored.
+- The runtime `.wopal-space/` is checked only for the existence of fixed directories and files; do not deep-scan runtime content or write runtime into the table.
+- Every write operation must be preceded by a structured report and explicit user confirmation; do not touch any file before confirmation.
+- Label each finding: **missing** (does not exist), **drift** (exists but differs from declared structure), or **template-diff** (instance differs from template).
 
-If `STRUCTURE.md` is missing, report that `wopal space init` should be run first and stop.
+## Step 1: Collect Context
 
-## Execution order
+Read the following sources to build a space state snapshot:
 
-1. **Read current state** — load `STRUCTURE.md`, scan `.wopal-space/` and space root for actual files and directories.
-2. **Calibrate structure** — compare actual layout against `STRUCTURE.md` frontmatter and schema. Identify missing directories, missing files, and undeclared entries.
-3. **Check runtime files** — verify presence of `REGULATIONS.md`, `memory/USER.md`, `memory/MEMORY.md`. Check if root `AGENTS.md` and `.gitignore` exist.
-4. **Report template diffs** — for each runtime file that has a corresponding template, show a concise diff or summary of differences between the template and the current instance. Highlight user-authored content that must be preserved.
-5. **Wait for user confirm** — present all findings as a structured report. Do not write any files until the user explicitly confirms.
-6. **Write** — after confirmation, apply only the approved changes: create missing directories/files, update `STRUCTURE.md` structure facts, and preserve all user-authored content.
+1. `.wopal-space/STRUCTURE.md` — extract frontmatter, managed table, and user table.
+2. `wopal space scan` JSON — repo / module fact list.
+3. `.wopal-space/` — verify existence of fixed dirs and files; no deep scanning.
+4. Space root — check whether `AGENTS.md` and `.gitignore` exist.
+5. `.wopal/templates/` — reference templates for diff comparison.
+6. `.wopal/templates/wopalspace-schema.yaml` — canonical layout reference.
 
-## Output constraints
+If `STRUCTURE.md` does not exist, report and prompt to run `wopal space init` first, then stop.
 
-- Structure report must reference `STRUCTURE.md` and `REGULATIONS.md` explicitly.
-- Clearly label each finding as: **missing** (does not exist), **drift** (exists but differs from declared structure), or **template-diff** (instance differs from template).
-- Never overwrite user-authored content in `REGULATIONS.md`, `memory/USER.md`, or `memory/MEMORY.md` without showing the diff and getting explicit confirmation.
-- Preserve the interactive confirmation style: always report first, wait for user approval, then write.
-- Do not move deterministic init logic (directory creation, template rendering) into this command — that belongs to `wopal space init`.
+**Output**: Structure declaration snapshot, scan fact list, runtime existence check results, template diff candidates.
 
-## Questions
+## Step 2: Generate Calibration Plan
 
-Only ask the user questions if the runtime state cannot be resolved from the available sources. Use the `question` tool for one short batch at most.
+1. Generate frontmatter / table diffs against the compact schema and managed/user block rules.
+2. Identify missing items, drift items, and undeclared scan findings.
+3. For each runtime file that has a corresponding template, show a diff summary highlighting user-authored content.
 
-Good questions:
-- ambiguous structural entries in `STRUCTURE.md`
-- conflicting information between `STRUCTURE.md` and actual layout
-- user intent for undeclared directories found during scan
+**Output**: Structured diff report, with each item labeled by type (missing / drift / template-diff) and handling recommendation.
 
-Do not ask about anything the schema or `STRUCTURE.md` already makes clear.
+## Step 3: Report and Confirm
+
+1. Present the full structured report.
+2. Ask questions only when the available information is insufficient: ambiguous structure entries, conflicts between declarations and facts that need a decision, stale managed table entries to confirm deletion.
+3. Wait for explicit user approval before proceeding to write.
+
+**Output**: Change plan waiting for user confirmation.
+
+## Step 4: Write After Confirmation
+
+Execute only the user-approved changes:
+
+1. Create missing directories / files.
+2. Update `STRUCTURE.md` managed frontmatter and managed table.
+3. Preserve all user-authored content; never overwrite the user block.
+
+**Output**: Updated file paths and change summary.
+
+## Response After Completion
+
+Respond in the user's language with:
+
+1. Updated file paths
+2. Change summary (frontmatter / table / runtime layers)
+3. Template diffs requiring manual handling
+4. Undeclared scan findings with recommendations
