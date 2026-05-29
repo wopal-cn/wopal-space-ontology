@@ -9,6 +9,7 @@
 
 | Date | Type | Summary |
 |---|---|---|
+| 2026-05-29 | Updated | 新增 Design Document Layering（§6.4）与 Memory Runtime Files（§7.1），承接产品 DESIGN 迁移的项目级细节。 |
 | 2026-05-29 | Updated | 明确 STRUCTURE compact schema 与 `/init` 消费 `wopal space scan` JSON 的维护边界。 |
 | 2026-05-28 | Updated | 同步 P1 实施真相：空间初始化模板已补齐，schema 已对齐 runtime/space 结构，`/init` 已收敛为 runtime 维护入口。 |
 | 2026-05-24 | Updated | 补齐 Agent 体系（Rook + WSF 子代理）、技能规模更新、命令体系扩展、Ontology 目标结构新增 templates 与 config |
@@ -387,7 +388,24 @@ CLI 边界：
 
 `/init` 聚焦 CLI 初始化后的结构维护：消费 scan 事实、维护 compact `STRUCTURE.md`、runtime 检查、模板差异提示与用户确认后的写入。
 
-### 6.4 分发模型
+### 6.4 Design Document Layering
+
+WopalSpace 的设计知识按三层分工，避免细节错位和维护混乱：
+
+| 文档 | 定位 | 写什么 | 不写什么 |
+|---|---|---|---|
+| 产品 DESIGN | 跨项目的稳定架构契约 | 系统分层、子系统职责边界、"谁负责什么" | JSON schema、命令参数细节、扫描规则 |
+| 项目 DESIGN | 单个项目的稳定设计真相 | 命令契约、JSON schema、模块架构、数据模型 | 阶段范围、exit criteria、临时实施决策 |
+| Phase 文档 | 某阶段的范围与验收条件 | Phase scope、involved projects、exit criteria、风险 | 架构细节、命令契约、JSON schema |
+
+关系：
+
+- 产品 DESIGN 回答"系统如何组成"；项目 DESIGN 回答"单个项目如何实现"；Phase 文档回答"这一阶段要交付什么"。
+- 稳定契约只进项目 DESIGN，不进 Phase 文档——Phase 最终归档后不应成为查找架构细节的入口。
+- 产品 DESIGN 引用但不复制项目 DESIGN 细节；Phase 文档引用但不复制 DESIGN 契约。
+- Phase 讨论中形成的设计决策，在讨论完毕后沉淀到对应项目 DESIGN；Phase 文档只保留范围和验收。
+
+### 6.5 分发模型
 
 ```
 ontology source → clone by default / fork with --fork → space/<name> branch → <space>/.wopal/ worktree
@@ -415,6 +433,25 @@ ontology 本身是无状态的声明式能力包，不持有运行时状态：
 | 空间守则 | `.wopal-space/REGULATIONS.md` | ontology 提供初始化模板，不持有实例 |
 
 Runtime 维护由 ontology commands 驱动：`/init`（结构校准）、`/wopal:memo`（日记暂存）、`/wopal:evolve`（经验沉淀）、`/wopal:distill`（记忆蒸馏）、`/cupdate-agent-rules`（项目规范更新）。
+
+### 7.1 Memory Runtime Files
+
+空间运行时记忆由多层文件/存储组成，各有明确的维护者：
+
+| File / Store | 职责 | Maintainer |
+|---|---|---|
+| `memory/USER.md` | 稳定用户偏好、沟通方式、工作习惯 | `/wopal:evolve` |
+| `memory/MEMORY.md` | 适合文件保存的空间级经验 | `/wopal:evolve` |
+| `memory/diary/` | 会话经验和候选沉淀暂存池 | `/wopal:memo` / `/wopal:evolve` |
+| LanceDB | 可检索可注入的记忆 | `memory_manage` / `/wopal:distill` / `/wopal:memory` |
+
+规则：
+
+1. USER.md 记录稳定用户偏好和画像。
+2. MEMORY.md 记录适合文件保存的空间级经验。
+3. LanceDB 记录可检索的知识、经验、避坑。
+4. diary 是暂存池，不是最终知识库。
+5. 可从代码直接获得的信息不污染长期记忆层。
 
 ---
 
