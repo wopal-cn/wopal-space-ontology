@@ -7,7 +7,7 @@
 - **Project Path**: .wopal
 - **Project Type**: ontology-worktree
 - **Created**: 2026-05-28
-- **Status**: executing
+- **Status**: verifying
 - **Depends On**: phase1-path-model-plan-discovery
 
 ## Scope Assessment
@@ -109,13 +109,13 @@ N/A — 无业务规则变更。
 
 ### Agent Verification
 
-1. [ ] `cd .wopal/skills/dev-flow && python -m pytest tests/python/unit -q` 全部 pass
-2. [ ] `cd .wopal/skills/dev-flow && python -m pytest tests/python/integration -q` 全部 pass 或记录需外部环境的跳过项
-3. [ ] 在临时 fixture repo 中验证：complete 阶段在 Plan 与代码同仓时产生单一提交，包含代码文件与 Plan status=verifying
-4. [ ] 在临时 fixture repo 中验证：archive 阶段在 Plan 所属 repo 内完成 `plans/<name>.md` → `plans/done/<date>-<name>.md` 的 git move/commit
-5. [ ] `flow.sh approve <plan> --confirm` 默认创建 WorktreeContext；`--no-worktree` 才跳过
-6. [ ] WorktreeContext 至少包含 branch、path、base_branch、merge_target、verify_mode、cleanup_policy
-7. [ ] ontology-worktree 项目的 complete 产生单次 `.wopal` 仓库 commit（含代码+Plan）
+1. [x] `cd .wopal/skills/dev-flow && python -m pytest tests/python/unit -q` 全部 pass
+2. [x] `cd .wopal/skills/dev-flow && python -m pytest tests/python/integration -q` 全部 pass 或记录需外部环境的跳过项
+3. [x] 在临时 fixture repo 中验证：complete 阶段在 Plan 与代码同仓时产生单一提交，包含代码文件与 Plan status=verifying
+4. [x] 在临时 fixture repo 中验证：archive 阶段在 Plan 所属 repo 内完成 `plans/<name>.md` → `plans/done/<date>-<name>.md` 的 git move/commit
+5. [x] `flow.sh approve <plan> --confirm` 默认创建 WorktreeContext；`--no-worktree` 才跳过
+6. [x] WorktreeContext 至少包含 branch、path、base_branch、merge_target、verify_mode、cleanup_policy
+7. [x] ontology-worktree 项目的 complete 产生单次 `.wopal` 仓库 commit（含代码+Plan）
 
 ### User Validation
 
