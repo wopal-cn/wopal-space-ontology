@@ -1,5 +1,5 @@
 ---
-name: <Project or Directory Module> AGENT RULES
+name: <Project or Module(dir)> AGENT RULES
 description: <One-line stable description of the current project or directory module responsibility>
 ---
 

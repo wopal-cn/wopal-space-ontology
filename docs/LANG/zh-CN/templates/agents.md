@@ -1,5 +1,5 @@
 ---
-name: <项目或目录模块> AGENT RULES
+name: <项目或模块目录> AGENT RULES
 description: <一句话稳定描述当前项目或目录模块职责>
 ---
 
