@@ -73,6 +73,7 @@ Generate commit messages following this exact structure:
 - Start one blank line after body
 - **Breaking Changes**: `BREAKING CHANGE: <description>`
 - **Issue References**: `(#N)` at end of first line, or `Refs: #N` in footer
+- **DO NOT fabricate Issue references** — only add `(#N)` or `Refs: #N` when an explicit Issue number is present in the provided git context
 
 ## Analysis Instructions
 
@@ -97,14 +98,17 @@ refactor(scheduler): refactor task scheduling engine
 test(db): add integration tests for connection pool
 ```
 
-With body (when the first line is too long):
+With body:
 ```
 chore: remove Wopal delegation plan documents
 
 Remove the non-blocking delegation related content
 from the skill documentation.
+```
 
-(#129)
+With Issue reference:
+```
+feat(api): add pagination to user list endpoint (#42)
 ```
 
 With breaking change:
