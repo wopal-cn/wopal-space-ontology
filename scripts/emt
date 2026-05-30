@@ -140,25 +140,29 @@ start_backend() {
 }
 
 stop_backend() {
-    if [ ! -f "$BACKEND_PID_FILE" ]; then
-        echo "后端服务未运行（找不到 PID 文件）"
-        return
-    fi
+    local pid="" start_dir="" has_pid_file=false
 
-    local pid start_dir
-    { read -r pid; read -r start_dir; } < "$BACKEND_PID_FILE"
+    if [ -f "$BACKEND_PID_FILE" ]; then
+        has_pid_file=true
+        { read -r pid; read -r start_dir; } < "$BACKEND_PID_FILE"
 
-    local current_dir="$(pwd)"
-    if [ "$current_dir" != "$start_dir" ]; then
-        echo "emt: 当前目录与启动目录不一致，无法停止后端" >&2
-        echo "  启动目录: $start_dir" >&2
-        echo "  当前目录: $current_dir" >&2
-        echo "  请 cd 到 $start_dir 后执行 emt stop" >&2
-        exit 1
+        local current_dir="$(pwd)"
+        if [ "$current_dir" != "$start_dir" ]; then
+            echo "emt: 当前目录与启动目录不一致，无法停止后端" >&2
+            echo "  启动目录: $start_dir" >&2
+            echo "  当前目录: $current_dir" >&2
+            echo "  请 cd 到 $start_dir 后执行 emt stop" >&2
+            exit 1
+        fi
     fi
 
     local port_pid
     port_pid="$(lsof -ti :$BACKEND_PORT 2>/dev/null)" || true
+
+    if [ -z "$pid" ] && [ -z "$port_pid" ]; then
+        echo "后端服务未运行"
+        return
+    fi
 
     rm -f "$BACKEND_PID_FILE" "$BACKEND_LOG" || true
 
