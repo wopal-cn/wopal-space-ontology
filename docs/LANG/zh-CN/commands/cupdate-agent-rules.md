@@ -18,7 +18,7 @@ description: 创建或更新项目 AGENTS.md
 - 项目级和模块级 `AGENTS.md` 是 agent 的必读上下文，必须高度精简、准确、无噪音；每条内容都应直接影响开发、测试或验证行为。
 - 它不是 README、DESIGN、PRD 或业务规则文档；产品意图、设计细节、业务行为只引用权威文档。
 - 项目级文档只写项目边界和跨模块规则；目录级文档只写该目录直接负责的规则。已有子目录 `AGENTS.md` 时，引用它，不复制细节。
-- 使用 `.wopal/templates/agents.md`。正式版 `AGENTS.md` 必须保留模板 frontmatter `name` 和 `description`；frontmatter 已有的信息不得在正文重复。
+- 使用 `.wopal/templates/agent-rules.md`。正式版 `AGENTS.md` 必须保留模板 frontmatter `name` 和 `description`；frontmatter 已有的信息不得在正文重复。
 - `name` 写当前项目或目录模块名称；`description` 单行、稳定、无 Markdown，描述当前项目或目录模块职责，并作为 `wopal space scan` 的受控描述来源。
 - `description` 不写 roadmap、临时状态、完成进度、营销口号或模糊愿景；无法可靠确定时在方案中标记“需确认”。
 - 正文只写项目特定技术实施规则；只写当前实现事实，不写路线猜测。
@@ -34,7 +34,8 @@ description: 创建或更新项目 AGENTS.md
 - 描述用正向事实说明“是什么 / 负责什么”；少写防御性解释和低信息否定句。
 - 用户偏好语言版本遵循 AGENTS 模板标题；模板规定的英文章节标题不得翻译。
 - 架构说明只保留一条执行链和必要目录表；禁止 README 式介绍、低信息适用范围句、PRD 愿景 / 用户叙事 / roadmap、业务规则复述、大段 DESIGN 原文、架构大图、目录百科、API / 命令 catalog、临时计划或命令记录链接（除非用户明确要求）。
-- `User-Supplied Rules` 是用户手工维护区；生成或更新时不得新增、修改、删除、重排本节内容。
+- **更新既有 `AGENTS.md` 时，所有未过时的原始规则必须保留。** 符合模板 1–5 节的规则归入对应节；不符合的规则逐条原样移入第 6 节（User-Supplied Rules）。删除原规则需在方案中逐条说明理由。代码示例、行内注释和操作说明是规则的有机部分，同样必须保留。
+- `User-Supplied Rules` 是用户手工维护区；生成或更新时不得新增、修改、删除、重排本节内容（从原规范移入的规则除外，且只允许追加）。
 
 ## Step 1: 定位目标
 
@@ -75,6 +76,7 @@ projects/<name>/docs/DESIGN.md
 2. 将引用的权威文档
 3. 拟写入或保留的 frontmatter `name` 和 `description`
 4. 拟保留 / 新增 / 删除 / 压缩的规则摘要
+4.5 拟移入第 6 节的原始规则（不符合 1–5 节的规则），以及拟删除规则及其逐条理由
 5. 架构 / 目录说明方案
 6. 开发、测试、验证要求
 7. `rules-context` 的并入位置
@@ -114,7 +116,8 @@ projects/<name>/docs/DESIGN.md
 - [ ] 未从 BUSINESS_RULES.md 提取任何规则写入正文
 - [ ] 测试节包含 TDD 要求
 - [ ] 用户偏好语言版本遵循 AGENTS 模板标题，未翻译模板规定的英文章节标题
-- [ ] `User-Supplied Rules` 保留不变，未新增、修改、删除或重排
+- [ ] `User-Supplied Rules` 保留不变，未新增、修改、删除或重排（原规范移入项除外）
+- [ ] 所有未过时的原始规则均已保留：符合 1–5 节的归入；其余原样移入第 6 节；删除项在方案中有逐条理由
 - [ ] 写入前已展示完整优化方案并获得用户确认
 - [ ] 用户确认后已同步更新正式英文版（如适用）
 
@@ -125,5 +128,4 @@ projects/<name>/docs/DESIGN.md
 1. 更新的文件路径
 2. 覆盖范围
 3. 关键新增 / 修改规则
-4. 被忽略的 `rules-context` 内容（如有）及原因
-5. 缺失的权威文档引用或假设
+4. 缺失的权威文档引用或假设

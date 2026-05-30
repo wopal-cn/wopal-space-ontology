@@ -18,7 +18,7 @@ Create or update project-level or directory-level `AGENTS.md`.
 - Project-level and module-level `AGENTS.md` files are required agent context. They must be highly concise, accurate, and noise-free; every line should directly affect development, testing, or verification behavior.
 - It is not a README, DESIGN, PRD, or business rules document. Product intent, design details, and business behavior must be referenced through canonical documents only.
 - Project-level documents define project boundaries and cross-module rules. Directory-level documents define only the rules directly owned by that directory. When a subdirectory already has `AGENTS.md`, reference it instead of copying its details.
-- Use `.wopal/templates/agents.md`. The formal `AGENTS.md` must preserve the template frontmatter `name` and `description`; information already present in frontmatter must not be repeated in the body.
+- Use `.wopal/templates/agent-rules.md`. The formal `AGENTS.md` must preserve the template frontmatter `name` and `description`; information already present in frontmatter must not be repeated in the body.
 - `name` identifies the current project or directory module. `description` must be single-line, stable, Markdown-free, describe the current project or directory module responsibility, and serve as the controlled description source for `wopal space scan`.
 - Do not write roadmap, temporary status, completion progress, marketing slogans, or vague vision in `description`. If the description cannot be determined reliably, mark it as "needs confirmation" in the plan.
 - The body must contain only project-specific technical implementation rules. Use current implementation facts, not roadmap speculation.
@@ -34,7 +34,8 @@ Create or update project-level or directory-level `AGENTS.md`.
 - Describe positive facts: what this scope is and owns. Avoid defensive explanations and low-information negative statements.
 - User-preferred language versions must follow the AGENTS template headings; English section headings defined by the template must not be translated.
 - Architecture descriptions should contain only one execution chain and the necessary directory table. Forbid README-style introductions, low-information applicability sentences, PRD vision / user narrative / roadmap, business rule restatements, large copied DESIGN prose, architecture diagrams, directory encyclopedias, API / command catalogs, and links to temporary plans or command logs unless the user explicitly asks for them.
-- `User-Supplied Rules` is user-maintained. When generating or updating, do not add, modify, delete, or reorder content in this section.
+- `User-Supplied Rules` is user-maintained. When generating or updating, do not add, modify, delete, or reorder content in this section (rules migrated from the original specification are excepted, and only appending is allowed).
+- **When updating an existing `AGENTS.md`, all non-obsolete original rules must be preserved.** Rules that fit sections 1-5 go into the corresponding section; rules that do not must be moved verbatim into section 6 (User-Supplied Rules). Deleting an original rule requires explicit, itemized justification in the plan. Code examples, inline comments, and procedural notes are organic parts of the rules and must also be preserved.
 
 ## Step 1: Resolve Target
 
@@ -75,6 +76,7 @@ Before writing, present the full plan and get explicit user confirmation. The pl
 2. Canonical documents to reference
 3. frontmatter `name` and `description` to write or preserve
 4. Summary of rules to preserve, add, remove, or compress
+4.5 Original rules to move to section 6 (rules not fitting sections 1-5), and any rules proposed for deletion with justification
 5. Architecture / directory summary plan
 6. Development, testing, and verification requirements
 7. Where `rules-context` will be merged
@@ -114,7 +116,8 @@ When updating an existing `AGENTS.md`, rules and specifications are immutable af
 - [ ] No rules were extracted from `BUSINESS_RULES.md` into the body
 - [ ] Testing section includes a TDD requirement
 - [ ] User-preferred language version follows the AGENTS template headings and does not translate template-defined English section headings
-- [ ] `User-Supplied Rules` remained unchanged: no additions, modifications, deletions, or reordering
+- [ ] `User-Supplied Rules` remained unchanged: no additions, modifications, deletions, or reordering (original specification migrations excepted)
+- [ ] All non-obsolete original rules were preserved: rules fitting sections 1-5 placed there, remaining rules moved verbatim to section 6; any deleted rule has explicit justification in the plan
 - [ ] The full plan was shown and confirmed before writing
 - [ ] The formal English version was updated after confirmation when applicable
 

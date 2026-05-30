@@ -39,3 +39,4 @@ Canonical references:
 ## 6. User-Supplied Rules
 
 - <user-supplied rules; commands must not modify this section>
+- <when updating: original rules that do not fit sections 1-5 should be preserved here verbatim>
