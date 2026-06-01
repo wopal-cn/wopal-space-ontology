@@ -1,7 +1,7 @@
 # Ontology — Distribution
 
 > **Status**: Active
-> **Updated**: 2026-05-30
+> **Updated**: 2026-06-01
 > **Parent Architecture**: `../../docs/products/wopal-space/DESIGN-wopalspace.md`
 > **Project Design**: `./DESIGN.md`
 
@@ -9,6 +9,7 @@
 
 | Date | Type | Summary |
 |---|---|---|
+| 2026-06-01 | Updated | 明确 `wopal-space-ontology` 作为 P1 canonical source identity 和 CLI release carrier。 |
 | 2026-05-30 | Updated | 优化语言表达，通顺自然。 |
 | 2026-05-30 | Updated | 精简为分发特有内容，避免与 `DESIGN.md` 重复。 |
 | 2026-05-30 | Created | 定义 ontology 的 Git source 分发、clone/fork/worktree 物化与 init/runtime handoff 契约。 |
@@ -45,6 +46,8 @@ ontology source repo
 3. 已存在于本地 ontology directory 下的 ontology name
 
 路径解析遵循"先复用本地已有 ontology，再按目标 source 补齐本地 repo"的原则。
+
+P1 canonical identity 是 `wopal-space-ontology`。同一个 identity 用于默认 local ontology directory、setup source metadata、初始化后的 `STRUCTURE.md` 记录，以及承载 CLI artifacts 的 public GitHub Release carrier。自定义 ontology URL 保持为显式 override。
 
 ---
 
