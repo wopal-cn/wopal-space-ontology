@@ -10,18 +10,16 @@
 #   1. Find Plan file (by issue number)
 #   2. Check Plan status is "done"
 #   2.5. Sync Plan to Issue (body + labels)
-#   3. Detect worktree / project changes and auto-handle
+#   3. Detect worktree and handle cleanup (never commits implementation code)
 #   4. Archive Plan file (move to done/)
 #   5. Update Issue Plan link
-#   6. Commit archived plan in space repo
+#   6. Commit archived plan in Plan's repo
 #   7. Close GitHub Issue
 
 from __future__ import annotations
 
 import argparse
 import subprocess
-import sys
-import os
 import re
 import glob as glob_mod
 from pathlib import Path
@@ -30,7 +28,7 @@ from datetime import date
 from lib.logging import log_info, log_success, log_error, log_warn, log_step
 from lib.workspace import find_workspace_root
 from workflow import guard_status, resolve_space_repo
-from plan import find_plan, find_plan_by_issue
+from plan import find_plan
 from plan import (
     get_plan_project,
     get_plan_type,
@@ -41,7 +39,6 @@ from plan import (
 )
 from plan import (
     resolve_project_path,
-    get_current_branch,
 )
 from workflow import parse_plan_status
 from plan import update_issue_plan_link
@@ -51,18 +48,14 @@ from issue import (
     ensure_issue_labels,
 )
 from lib.git import (
-    is_repo_dirty,
     merge_branch,
-    branch_exists,
-    delete_branch,
     push_branch,
     has_uncommitted_changes,
-    commit_all,
     commit_paths,
     push_repo,
     get_relative_path,
 )
-from plan import push_project_changes, push_ontology_worktree, commit_project_changes
+from plan import push_project_changes, push_ontology_worktree
 from lib.worktree import clean_worktree
 from lib.project import resolve_plan_location
 
@@ -411,17 +404,18 @@ def commit_archived_plan(
 def cmd_archive(args: argparse.Namespace) -> int:
     """Archive a completed Plan.
 
+    Plan-only archive: never commits implementation code.
     Steps:
     1. Find Plan file
     2. Check status is "done"
     2.5. Sync Plan to Issue
-    3. Detect worktree and handle project changes:
+    3. Detect worktree and handle cleanup:
        - Has worktree + PR path → cleanup worktree only
        - Has worktree + no PR → merge branch to main → push → cleanup
-       - No worktree → auto-commit project changes if any
-    4. Archive Plan file
+       - No worktree → push project changes (committed during complete)
+    4. Archive Plan file (move to done/)
     5. Update Issue Plan link
-    6. Commit + push space repo
+    6. Commit + push archived plan in Plan's repo
     7. Close Issue
     """
     input_ref = args.target
@@ -487,25 +481,23 @@ def cmd_archive(args: argparse.Namespace) -> int:
 
         log_success(f"Plan synced to Issue #{plan_issue}")
 
-    # 3. Detect worktree and handle project changes
-    #    Special handling for ontology-worktree projects (.wopal/)
-    #    Standard projects follow the existing worktree detection/merge/cleanup flow
+    # 3. Detect worktree and handle cleanup
+    #    Archive never commits implementation code — dirty trees block the command.
     worktree_handled = False
-    project_committed = False
-    ontology_committed = False
+    project_pushed = False
+    ontology_pushed = False
 
     # Read Project Type from Plan metadata
     project_type_str = get_plan_field(plan_path, "Project Type")
     is_ontology_worktree = project_type_str == "ontology-worktree"
 
     if is_ontology_worktree:
-        # Ontology worktree: push .wopal/ changes (committed during complete)
+        # Ontology worktree: push .wopal/ changes (committed during complete/verify)
         log_step("Ontology worktree project detected — pushing .wopal/ changes")
-        if push_ontology_worktree(workspace_root):
-            ontology_committed = True
-        else:
+        if not push_ontology_worktree(workspace_root):
             log_error("Failed to push ontology worktree changes")
             return 1
+        ontology_pushed = True
     elif project:
         project_path = resolve_project_path(plan_path, project, workspace_root)
 
@@ -550,14 +542,12 @@ def cmd_archive(args: argparse.Namespace) -> int:
             else:
                 # No worktree → push project changes (committed during complete)
                 if has_uncommitted_changes(str(project_path)):
-                    log_warn(f"Uncommitted changes found in {project} — should have been committed during complete")
-                    log_step(f"Committing uncommitted changes in {project}...")
-                    if not commit_project_changes(str(project_path), plan_type, plan_issue, plan_name, repo):
-                        log_error("Failed to commit project changes")
-                        return 1
+                    log_error(f"Project {project} has uncommitted changes — archive does not commit implementation code")
+                    log_error("Commit changes first, then re-run archive")
+                    return 1
                 log_step(f"Pushing project changes in {project}...")
                 if push_project_changes(str(project_path)):
-                    project_committed = True
+                    project_pushed = True
                 else:
                     log_error("Failed to push project changes")
                     return 1
@@ -609,10 +599,10 @@ def cmd_archive(args: argparse.Namespace) -> int:
         print(f"  Issue: #{plan_issue} (closed)")
     if worktree_handled:
         print(f"  Worktree: cleaned up")
-    if project_committed:
-        print(f"  Project: changes committed and pushed")
-    if ontology_committed:
-        print(f"  Ontology: .wopal/ changes committed and pushed")
+    if project_pushed:
+        print(f"  Project: changes pushed")
+    if ontology_pushed:
+        print(f"  Ontology: .wopal/ changes pushed")
 
     return 0
 

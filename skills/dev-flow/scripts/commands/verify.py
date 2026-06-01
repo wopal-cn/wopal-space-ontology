@@ -34,7 +34,7 @@ from plan import (
     get_plan_issue,
 )
 from lib.git import commit_paths
-from lib.project import resolve_plan_location
+from lib.worktree import resolve_active_plan, ResolveActivePlanError
 from validation import (
     ValidationError,
     check_user_validation,
@@ -270,7 +270,14 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
     # --confirm received: user authorization gate passed
 
-    # 7. HARD GATE: User Validation must pass
+    # 7. Resolve active Plan — enforce merged state (D-05)
+    try:
+        active = resolve_active_plan(plan_path, "verify", workspace_root)
+    except ResolveActivePlanError as e:
+        log_error(str(e))
+        return 1
+
+    # 8. HARD GATE: User Validation must pass
     try:
         check_user_validation(plan_path)
     except ValidationError as e:
@@ -286,24 +293,23 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
     log_success("User validation passed")
 
-    # 8. Validate state transition
+    # 9. Validate state transition
     target_status = "done"
 
     if not is_valid_transition(current_status, target_status):
         log_error(f"Invalid state transition: {current_status} -> {target_status}")
         return 1
 
-    # 9. Update Plan status to done
+    # 10. Update Plan status to done
     if update_plan_status(plan_path, target_status):
         log_success(f"Plan status updated: {target_status}")
     else:
         log_error("Failed to update Plan status")
         return 1
 
-    # 9.5. Commit Plan status=done to Plan's repo (D-05)
-    plan_location = resolve_plan_location(Path(plan_path), workspace_root)
-    plan_repo_root = str(plan_location.repo_root)
-    plan_rel = plan_location.repo_relative_path
+    # 11. Commit Plan status=done on integration branch (D-05)
+    plan_repo_root = str(active.commit_repo_root)
+    plan_rel = active.repo_relative_plan_path
     if plan_issue:
         plan_commit_msg = f"docs(plan): verify plan #{plan_issue}"
     else:
@@ -317,7 +323,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
     else:
         log_success("Plan status=done committed to Plan's repo")
 
-    # 10. Sync Issue if exists
+    # 12. Sync Issue if exists
     if effective_issue and repo:
         # Sync status label to status/done
         sync_status_label(effective_issue, target_status, repo)
@@ -335,7 +341,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         except (subprocess.CalledProcessError, FileNotFoundError):
             pass
 
-    # 11. Output confirmation
+    # 13. Output confirmation
     print("")
     print("Status: done")
     if is_pr_path and pr_merged:

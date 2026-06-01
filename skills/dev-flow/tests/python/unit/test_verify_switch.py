@@ -526,3 +526,249 @@ class TestErrorCases:
 
         result = run_verify_switch("42")
         assert result is False
+
+
+# -- Test: verify --confirm integration after merge -----------------------
+
+PLAN_VERIFYING = """\
+- **Status**: verifying
+- **Type**: feature
+- **Target Project**: gesp
+- **Project Type**: standard
+- **Issue**: #42
+- **Worktree**:
+  - enabled: true
+  - project_type: standard
+  - branch: feature/test-1-slug
+  - path: .worktrees/gesp-issue-1-slug
+  - repo_root: /workspace/projects/gesp
+  - base_branch: main
+  - merge_target: main
+  - verify_mode: direct
+  - cleanup_policy: archive
+"""
+
+PLAN_VERIFYING_NO_ISSUE = """\
+- **Status**: verifying
+- **Type**: refactor
+- **Target Project**: wopal-space
+- **Created**: 2026-05-13
+"""
+
+
+class TestVerifyConfirmDirectMerge:
+    """Test verify --confirm after verify-switch --merge succeeded."""
+
+    @patch("commands.verify.sync_plan_to_issue_body")
+    @patch("commands.verify.sync_status_label")
+    @patch("commands.verify.commit_paths", return_value=True)
+    @patch("commands.verify.update_plan_status", return_value=True)
+    @patch("commands.verify.check_user_validation")
+    @patch("commands.verify.resolve_active_plan")
+    @patch("commands.verify.find_workspace_root")
+    @patch("commands.verify.find_plan")
+    def test_direct_merge_verify_uses_resolve_active_plan(
+        self, mock_find_plan, mock_ws_root, mock_resolve, mock_check_uv,
+        mock_update_status, mock_commit, mock_sync_label, mock_sync_body,
+        tmp_path
+    ):
+        """verify --confirm uses resolve_active_plan to enforce merged state."""
+        from commands.verify import cmd_verify
+        from lib.worktree import ActivePlanInfo
+
+        plan_path = _write_plan(tmp_path, PLAN_VERIFYING)
+        mock_find_plan.return_value = str(plan_path)
+        mock_ws_root.return_value = tmp_path
+
+        # resolve_active_plan returns integration branch context (merged)
+        mock_resolve.return_value = ActivePlanInfo(
+            active_plan_path=Path(plan_path),
+            commit_repo_root=tmp_path,
+            repo_relative_plan_path=f"plans/{Path(plan_path).name}",
+            branch_context="integration",
+        )
+
+        args = MagicMock()
+        args.target = "42"
+        args.confirm = True
+
+        result = cmd_verify(args)
+        assert result == 0
+
+        # resolve_active_plan must have been called with "verify" phase
+        mock_resolve.assert_called_once_with(str(plan_path), "verify", tmp_path)
+
+    @patch("commands.verify.sync_plan_to_issue_body")
+    @patch("commands.verify.sync_status_label")
+    @patch("commands.verify.commit_paths", return_value=True)
+    @patch("commands.verify.update_plan_status", return_value=True)
+    @patch("commands.verify.check_user_validation")
+    @patch("commands.verify.resolve_active_plan")
+    @patch("commands.verify.find_workspace_root")
+    @patch("commands.verify.find_plan")
+    def test_direct_merge_commits_on_integration_branch(
+        self, mock_find_plan, mock_ws_root, mock_resolve, mock_check_uv,
+        mock_update_status, mock_commit, mock_sync_label, mock_sync_body,
+        tmp_path
+    ):
+        """verify --confirm commits Plan-only on the integration branch repo root."""
+        from commands.verify import cmd_verify
+        from lib.worktree import ActivePlanInfo
+
+        plan_path = _write_plan(tmp_path, PLAN_VERIFYING)
+        mock_find_plan.return_value = str(plan_path)
+        mock_ws_root.return_value = tmp_path
+
+        mock_resolve.return_value = ActivePlanInfo(
+            active_plan_path=Path(plan_path),
+            commit_repo_root=tmp_path,
+            repo_relative_plan_path=f"plans/{Path(plan_path).name}",
+            branch_context="integration",
+        )
+
+        args = MagicMock()
+        args.target = "42"
+        args.confirm = True
+
+        result = cmd_verify(args)
+        assert result == 0
+
+        # commit_paths should be called with the integration repo root
+        mock_commit.assert_called_once()
+        call_args = mock_commit.call_args
+        assert call_args[0][0] == str(tmp_path)  # commit_repo_root
+
+    @patch("commands.verify.resolve_active_plan")
+    @patch("commands.verify.find_workspace_root")
+    @patch("commands.verify.find_plan")
+    def test_unmerged_worktree_blocks_verify(
+        self, mock_find_plan, mock_ws_root, mock_resolve,
+        tmp_path
+    ):
+        """verify --confirm raises when feature branch not merged."""
+        from commands.verify import cmd_verify
+        from lib.worktree import ResolveActivePlanError
+
+        plan_path = _write_plan(tmp_path, PLAN_VERIFYING)
+        mock_find_plan.return_value = str(plan_path)
+        mock_ws_root.return_value = tmp_path
+
+        mock_resolve.side_effect = ResolveActivePlanError(
+            "Feature branch 'feature/test-1-slug' has not been merged. "
+            "Run verify-switch --merge first."
+        )
+
+        args = MagicMock()
+        args.target = "42"
+        args.confirm = True
+
+        result = cmd_verify(args)
+        assert result == 1
+
+
+class TestVerifyConfirmPRMerge:
+    """Test verify --confirm for PR-based flow (PR already merged)."""
+
+    @patch("commands.verify.sync_plan_to_issue_body")
+    @patch("commands.verify.sync_status_label")
+    @patch("commands.verify.commit_paths", return_value=True)
+    @patch("commands.verify.update_plan_status", return_value=True)
+    @patch("commands.verify.check_user_validation")
+    @patch("commands.verify.resolve_active_plan")
+    @patch("commands.verify._is_pr_merged", return_value=True)
+    @patch("commands.verify.find_workspace_root")
+    @patch("commands.verify.find_plan")
+    def test_pr_merged_verify_succeeds(
+        self, mock_find_plan, mock_ws_root, mock_pr_merged,
+        mock_resolve, mock_check_uv, mock_update_status,
+        mock_commit, mock_sync_label, mock_sync_body,
+        tmp_path
+    ):
+        """PR already merged: verify --confirm succeeds on integration branch."""
+        from commands.verify import cmd_verify
+        from lib.worktree import ActivePlanInfo
+
+        # Plan with PR URL in metadata
+        plan_content = PLAN_VERIFYING + "\n- **PR**: https://github.com/owner/repo/pull/99\n"
+        plan_path = _write_plan(tmp_path, plan_content)
+        mock_find_plan.return_value = str(plan_path)
+        mock_ws_root.return_value = tmp_path
+
+        mock_resolve.return_value = ActivePlanInfo(
+            active_plan_path=Path(plan_path),
+            commit_repo_root=tmp_path,
+            repo_relative_plan_path=f"plans/{Path(plan_path).name}",
+            branch_context="integration",
+        )
+
+        args = MagicMock()
+        args.target = "42"
+        args.confirm = True
+
+        result = cmd_verify(args)
+        assert result == 0
+
+    @patch("commands.verify._is_pr_merged", return_value=False)
+    @patch("commands.verify.find_workspace_root")
+    @patch("commands.verify.find_plan")
+    def test_pr_not_merged_blocks_verify(
+        self, mock_find_plan, mock_ws_root, mock_pr_merged,
+        tmp_path
+    ):
+        """PR not yet merged: verify --confirm returns error."""
+        from commands.verify import cmd_verify
+
+        plan_content = PLAN_VERIFYING + "\n- **PR**: https://github.com/owner/repo/pull/99\n"
+        plan_path = _write_plan(tmp_path, plan_content)
+        mock_find_plan.return_value = str(plan_path)
+        mock_ws_root.return_value = tmp_path
+
+        args = MagicMock()
+        args.target = "42"
+        args.confirm = True
+
+        result = cmd_verify(args)
+        assert result == 1
+
+
+class TestVerifyNoIssuePlan:
+    """Test verify --confirm for plans without Issue numbers."""
+
+    @patch("commands.verify.sync_plan_to_issue_body")
+    @patch("commands.verify.sync_status_label")
+    @patch("commands.verify.commit_paths", return_value=True)
+    @patch("commands.verify.update_plan_status", return_value=True)
+    @patch("commands.verify.check_user_validation")
+    @patch("commands.verify.resolve_active_plan")
+    @patch("commands.verify.find_workspace_root")
+    @patch("commands.verify.find_plan")
+    def test_no_issue_verify_uses_resolve_active_plan(
+        self, mock_find_plan, mock_ws_root, mock_resolve, mock_check_uv,
+        mock_update_status, mock_commit, mock_sync_label, mock_sync_body,
+        tmp_path
+    ):
+        """No-issue plan: verify --confirm still uses resolve_active_plan."""
+        from commands.verify import cmd_verify
+        from lib.worktree import ActivePlanInfo
+
+        plan_path = _write_plan(tmp_path, PLAN_VERIFYING_NO_ISSUE)
+        mock_find_plan.return_value = str(plan_path)
+        mock_ws_root.return_value = tmp_path
+
+        mock_resolve.return_value = ActivePlanInfo(
+            active_plan_path=Path(plan_path),
+            commit_repo_root=tmp_path,
+            repo_relative_plan_path=f"plans/{Path(plan_path).name}",
+            branch_context="integration",
+        )
+
+        args = MagicMock()
+        args.target = "test-no-issue-plan"
+        args.confirm = True
+
+        result = cmd_verify(args)
+        assert result == 0
+
+        # Should skip Issue sync
+        mock_sync_label.assert_not_called()
+        mock_sync_body.assert_not_called()
