@@ -9,7 +9,7 @@
 - **Product**: wopal-space
 - **Phase**: P1 — One-click Distribution
 - **Created**: 2026-06-01
-- **Status**: verifying
+- **Status**: done
 - **P1 Plan ID**: P1-01
 - **Depends On**: None — P1 ontology source contract foundation
 - **Unblocks**:
