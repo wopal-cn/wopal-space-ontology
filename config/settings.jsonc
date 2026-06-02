@@ -10,7 +10,7 @@
             "plan": { "disable": true },
             "build": { "disable": true },
             "general": {
-                "model": "wopal-ai/glm-5.1"
+                "model": "wopal-ai/glm-5-turbo"
             },
             "explore": {
                 "model": "wopal-ai/deepseek-v4-flash"
@@ -22,7 +22,7 @@
                 "model": "wopal-ai/glm-5.1"
             },            
             "fae": {
-              "model": "wopal-ai/glm-5.1"
+              "model": "wopal-ai/glm-5-turbo"
             },
             "rook": {
               "model": "github-copilot/gpt-5.4",
