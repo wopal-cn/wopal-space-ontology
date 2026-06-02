@@ -46,6 +46,8 @@ package.json
 # Logs
 *.log
 
+# config
+config/settings.jsonc
 
 # tmp
 wsf-file-manifest.json
