@@ -25,23 +25,23 @@
               "model": "wopal-ai/glm-5-turbo"
             },
             "rook": {
-              "model": "github-copilot/gpt-5.4",
+              "model": "openai/gpt-5.4",
               "variant": "xhigh"
             },
             "wsf-planner": {
-              "model": "github-copilot/gpt-5.4"
+              "model": "wopal-ai/glm-5.1"
             },
             "wsf-plan-checker": {
-              "model": "github-copilot/gpt-5.4"
+              "model": "openai/gpt-5.4"
             },
             "wsf-executor": {
-              "model": "wopal-ai/glm-5.1"
+              "model": "wopal-ai/glm-5-turbo"
             },
             "wsf-code-reviewer": {
-              "model": "github-copilot/gpt-5.4"
+              "model": "openai/gpt-5.4"
             },
             "wsf-code-fixer": {
-              "model": "wopal-ai/glm-5.1"
+              "model": "wopal-ai/glm-5-turbo"
             },
             "wsf-codebase-mapper": {
               "model": "wopal-ai/deepseek-v4-flash"

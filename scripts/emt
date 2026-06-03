@@ -17,7 +17,8 @@ SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 AUTO_APPROVE_SCRIPT="$SCRIPT_DIR/oc-auto-approve.py"
 
 CWD="$(pwd)"
-LOG_DIR="$CWD/.wopal-space/logs"
+SPACE_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+LOG_DIR="$SPACE_ROOT/.wopal-space/logs"
 SESSION_NAME="em-$(basename "$CWD")"
 
 BACKEND_PORT=4096
