@@ -137,51 +137,22 @@ def _run_switch_runtime_phase2(
     return True
 
 
-def _run_direct_phase1(
-    workspace_root: Path,
-    plan_path: str,
-    wt_ctx,
-) -> bool:
-    """Phase 1 for standard project: code is already in worktree, no switch needed."""
-    print(f"Code is already available in worktree at {wt_ctx.path}")
-    print(f"Branch: {wt_ctx.branch}")
-    print("No runtime switch needed — verify changes directly in the worktree.")
-    return True
+def _run_direct_guide(issue: str, wt_ctx) -> bool:
+    """Print guidance for standard project: verify-switch is ontology-only.
 
-
-def _run_direct_phase2(
-    workspace_root: Path,
-    plan_path: str,
-    issue: str,
-    wt_ctx,
-) -> bool:
-    """Phase 2 for standard project: merge worktree branch to main, then verify."""
-    repo_root = str(wt_ctx.repo_root)
+    Standard projects don't need verify-switch — the worktree is directly
+    accessible and merging is a manual git operation.
+    """
     branch = wt_ctx.branch
-    merge_target = wt_ctx.merge_target
-
-    success, conflicts = merge_branch(
-        repo_root,
-        branch,
-        target=merge_target,
-        no_ff=False,
-    )
-
-    if not success:
-        if conflicts:
-            print(f"ERROR: Merge conflicts in: {', '.join(conflicts)}")
-            print(f"Resolve conflicts manually, then re-run `flow.sh verify-switch {issue} --merge`")
-        else:
-            print("ERROR: Merge failed")
-        return False
-
-    print(f"Merged {branch} into {merge_target}")
-
-    # Run verify --confirm
-    if not _run_verify(workspace_root, issue):
-        print("WARNING: verify --confirm failed, check Plan state")
-        return False
-
+    print(f"verify-switch is for ontology-worktree only (standard project detected).")
+    print(f"Feature branch: {branch}")
+    print(f"Worktree: {wt_ctx.path}")
+    print()
+    print("To verify and complete this Plan:")
+    print(f"  1. cd {wt_ctx.path} && pnpm test:run")
+    print(f"  2. If satisfied, merge: cd <project> && git checkout main && git merge {branch}")
+    print(f"  3. flow.sh verify {issue} --confirm")
+    print(f"  4. flow.sh archive {issue}")
     return True
 
 
@@ -293,10 +264,7 @@ def run_verify_switch(issue: str, merge: bool = False) -> bool:
             else:
                 return _run_switch_runtime_phase2(workspace_root, plan_path, issue, wt_ctx)
         elif wt_ctx.verify_mode == "direct":
-            if not merge:
-                return _run_direct_phase1(workspace_root, plan_path, wt_ctx)
-            else:
-                return _run_direct_phase2(workspace_root, plan_path, issue, wt_ctx)
+            return _run_direct_guide(issue, wt_ctx)
         else:
             print(f"ERROR: Unknown verify_mode: {wt_ctx.verify_mode}")
             return False

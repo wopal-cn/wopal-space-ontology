@@ -123,15 +123,19 @@ flow.sh approve <issue> --confirm --no-worktree # 跳过 worktree
 flow.sh complete <issue> --pr    # PR 路径（默认不走 PR）
 ```
 
-### verify-switch（worktree 验证专用）
+### verify-switch（ontology-worktree 验证专用）
+
+verify-switch 仅用于 ontology-worktree 的 switch-runtime 模式。standard 项目直接在 worktree 目录验证，合并后走 verify --confirm。
 
 ```bash
-# Phase 1: 切换到 feature 分支供用户验证
+# Phase 1: 切换 .wopal/ 到 feature 分支供用户验证
 flow.sh verify-switch <issue>
 
-# Phase 2: 合并回主分支 + verify --confirm（用户确认后 Wopal 自动执行）
+# Phase 2: 合并回主分支 + verify --confirm（用户确认后执行）
 flow.sh verify-switch <issue> --merge
 ```
+
+standard 项目执行 verify-switch 时会打印验证指引，不执行任何 git 操作。
 
 ### decompose-prd
 

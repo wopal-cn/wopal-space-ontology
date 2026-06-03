@@ -324,19 +324,23 @@ class TestSwitchRuntimePhase2:
         assert result is False
 
 
-# -- Test: direct mode (standard) Phase 1 ------------------------------------
+# -- Test: direct mode (standard) — guidance only -----------------------------
 
-class TestDirectModePhase1:
-    """Test verify-switch Phase 1 for standard projects (verify_mode=direct)."""
+class TestDirectMode:
+    """Test verify-switch for standard projects (verify_mode=direct).
+
+    verify-switch is for ontology-worktree only. Standard projects receive
+    guidance about manual verification and merge steps.
+    """
 
     @patch("commands.verify_switch.parse_worktree_context")
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
-    def test_direct_mode_returns_true_no_switch(
+    def test_direct_mode_returns_true(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx,
         tmp_path
     ):
-        """Phase 1 direct: code is already in worktree, no runtime switch needed."""
+        """Direct: always returns True with guidance output."""
         from commands.verify_switch import run_verify_switch
 
         plan_path = _write_plan(tmp_path, PLAN_STANDARD_DIRECT)
@@ -348,16 +352,14 @@ class TestDirectModePhase1:
         result = run_verify_switch("42", merge=False)
         assert result is True
 
-    @patch("commands.verify_switch.subprocess.run")
     @patch("commands.verify_switch.parse_worktree_context")
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
-    def test_direct_mode_does_not_call_git_operations(
+    def test_direct_mode_phase1_no_git_calls(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx,
-        mock_subprocess,
         tmp_path
     ):
-        """Phase 1 direct: should not run any git commands."""
+        """Direct Phase 1: no git operations, just prints guidance."""
         from commands.verify_switch import run_verify_switch
 
         plan_path = _write_plan(tmp_path, PLAN_STANDARD_DIRECT)
@@ -369,26 +371,17 @@ class TestDirectModePhase1:
         result = run_verify_switch("42", merge=False)
         assert result is True
 
-        # No git subprocess calls for direct mode
-        mock_subprocess.assert_not_called()
-
-
-# -- Test: direct mode (standard) Phase 2 ------------------------------------
-
-class TestDirectModePhase2:
-    """Test verify-switch Phase 2 for standard projects (verify_mode=direct)."""
-
-    @patch("commands.verify_switch._run_verify", return_value=True)
-    @patch("commands.verify_switch.merge_branch", return_value=(True, []))
+    @patch("commands.verify_switch.merge_branch")
+    @patch("commands.verify_switch._run_verify")
     @patch("commands.verify_switch.parse_worktree_context")
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
-    def test_direct_phase2_merges_worktree_branch(
+    def test_direct_mode_merge_prints_guidance(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx,
-        mock_merge, mock_run_verify,
+        mock_run_verify, mock_merge,
         tmp_path
     ):
-        """Phase 2 direct: merge worktree branch to main, then verify --confirm."""
+        """Direct Phase 2 (--merge): prints guidance, does NOT call merge or verify."""
         from commands.verify_switch import run_verify_switch
 
         plan_path = _write_plan(tmp_path, PLAN_STANDARD_DIRECT)
@@ -400,34 +393,9 @@ class TestDirectModePhase2:
         result = run_verify_switch("42", merge=True)
         assert result is True
 
-        # Verify merge was called with correct target (base_branch)
-        mock_merge.assert_called_once()
-
-    @patch("commands.verify_switch._run_verify", return_value=True)
-    @patch("commands.verify_switch.merge_branch", return_value=(True, []))
-    @patch("commands.verify_switch.parse_worktree_context")
-    @patch("commands.verify_switch.find_plan")
-    @patch("commands.verify_switch.find_workspace_root")
-    def test_direct_phase2_uses_project_repo(
-        self, mock_ws_root, mock_find_plan, mock_parse_ctx,
-        mock_merge, mock_run_verify,
-        tmp_path
-    ):
-        """Phase 2 direct: merge runs in project repo_root, not .wopal/."""
-        from commands.verify_switch import run_verify_switch
-
-        plan_path = _write_plan(tmp_path, PLAN_STANDARD_DIRECT)
-        ws_root = tmp_path
-        mock_ws_root.return_value = ws_root
-        mock_find_plan.return_value = str(plan_path)
-        mock_parse_ctx.return_value = _make_standard_ctx()
-
-        result = run_verify_switch("42", merge=True)
-        assert result is True
-
-        # Merge should use repo_root for standard projects
-        merge_args = mock_merge.call_args
-        assert str(Path("/workspace/projects/gesp")) == merge_args[0][0]
+        # Must NOT call merge or verify for standard projects
+        mock_merge.assert_not_called()
+        mock_run_verify.assert_not_called()
 
 
 # -- Test: legacy fallback ---------------------------------------------------
