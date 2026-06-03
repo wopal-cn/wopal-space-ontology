@@ -74,9 +74,9 @@ def build_parser() -> argparse.ArgumentParser:
     register_reset_parser(subparsers)
 
     # Register verify-switch subcommand
-    vs_parser = subparsers.add_parser("verify-switch", help="Switch .wopal/ to feature branch for verification")
+    vs_parser = subparsers.add_parser("verify-switch", help="Switch workspace to feature branch for verification")
     vs_parser.add_argument("issue", help="Issue number or plan name")
-    vs_parser.add_argument("--merge", action="store_true", help="Phase 2: merge feature branch back to main")
+    vs_parser.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
 
     return parser
 
@@ -105,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         print("  approve         Approve a reviewed Plan (--confirm required)")
         print("  complete        Mark implementation complete")
         print("  verify          Verify and confirm completion")
-        print("  verify-switch   Switch .wopal/ for worktree verification")
+        print("  verify-switch   Switch workspace for worktree verification")
         print("  archive         Archive a completed Plan")
         print("")
         print("Utility commands:")
@@ -163,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Dispatch verify-switch
     if args.command == "verify-switch":
-        return 0 if run_verify_switch(args.issue, merge=args.merge) else 1
+        return 0 if run_verify_switch(args.issue, yes=args.yes) else 1
 
     return 0
 

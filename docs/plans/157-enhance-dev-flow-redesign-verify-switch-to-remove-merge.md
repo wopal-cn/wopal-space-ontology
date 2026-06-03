@@ -111,10 +111,10 @@ N/A — 无业务规则变更
 
 ### Agent Verification
 
-1. [ ] `cd .wopal/skills/dev-flow && rg -c '--merge' scripts/commands/verify_switch.py` = 0
-2. [ ] `cd .wopal/skills/dev-flow && rg -c 'verify_mode' scripts/commands/verify_switch.py` = 0
-3. [ ] `cd .wopal/skills/dev-flow && rg -c 'check.*merge\|verify.*merge\|branch.*merged' scripts/commands/verify.py` ≥ 1
-4. [ ] `cd .wopal/skills/dev-flow && python -m pytest tests/python/unit/ -v` 全部 pass（或新增回归 < 预存基线）
+1. [x] `cd .wopal/skills/dev-flow && rg -c '--merge' scripts/commands/verify_switch.py` = 0
+2. [x] `cd .wopal/skills/dev-flow && rg -c 'verify_mode' scripts/commands/verify_switch.py` = 0
+3. [x] `cd .wopal/skills/dev-flow && rg -c 'check.*merge\|verify.*merge\|branch.*merged' scripts/commands/verify.py` ≥ 1
+4. [x] `cd .wopal/skills/dev-flow && python -m pytest tests/python/unit/ -v` 全部 pass（或新增回归 < 预存基线）
 
 ### User Validation
 
@@ -179,7 +179,7 @@ N/A — 无业务规则变更
 
 **Done**:
 任务产出：verify-switch 移除 --merge，统一两种项目类型的切换逻辑
-- [ ] 实施 Agent 已完成上述功能开发和验证的所有步骤执行, 并确认结果符合预期（必须由实施 Agent 勾选）
+- [x] 实施 Agent 已完成上述功能开发和验证的所有步骤执行, 并确认结果符合预期（必须由实施 Agent 勾选）
 
 ---
 
@@ -212,7 +212,7 @@ N/A — 无业务规则变更
 
 **Done**:
 任务产出：verify --confirm 强制校验 merge 已完成
-- [ ] 实施 Agent 已完成上述功能开发和验证的所有步骤执行, 并确认结果符合预期（必须由实施 Agent 勾选）
+- [x] 实施 Agent 已完成上述功能开发和验证的所有步骤执行, 并确认结果符合预期（必须由实施 Agent 勾选）
 
 ---
 
@@ -249,7 +249,7 @@ SKILL.md 更新点：
 
 **Done**:
 任务产出：SKILL.md 验证流程描述与新 verify-switch 一致
-- [ ] 实施 Agent 已完成上述功能开发和验证的所有步骤执行, 并确认结果符合预期（必须由实施 Agent 勾选）
+- [x] 实施 Agent 已完成上述功能开发和验证的所有步骤执行, 并确认结果符合预期（必须由实施 Agent 勾选）
 
 ---
 

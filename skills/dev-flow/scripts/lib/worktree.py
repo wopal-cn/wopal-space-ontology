@@ -353,13 +353,13 @@ def resolve_active_plan(
             # Still on feature branch — definitely not merged
             raise ResolveActivePlanError(
                 f"Feature branch '{branch}' has not been merged. "
-                f"Run verify-switch --merge first."
+                f"Run verify-switch and merge manually before verify."
             )
         # Even on integration branch, verify feature is actually merged
         if branch and not _is_merged(branch, current_branch or "HEAD", str(main_loc.repo_root)):
             raise ResolveActivePlanError(
                 f"Feature branch '{branch}' has not been merged into '{current_branch}'. "
-                f"Run verify-switch --merge first."
+                f"Run verify-switch and merge manually before verify."
             )
         return ActivePlanInfo(
             active_plan_path=main_plan,

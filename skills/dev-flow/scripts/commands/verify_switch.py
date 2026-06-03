@@ -1,14 +1,10 @@
-"""verify_switch command — worktree verification switch for dev-flow.
+"""verify_switch command — unified verification switch for dev-flow.
 
-Handles the two-phase verification workflow using WorktreeContext:
-  Phase 1: Switch .wopal/ to feature branch (ontology) or inform ready (standard)
-  Phase 2: Merge feature back + verify --confirm
+Switches workspace to feature branch for verification:
+  - ontology-worktree: git checkout .wopal/ to feature branch
+  - standard: git checkout project repo to feature branch + remove worktree
 
-Behavior is driven by WorktreeContext.verify_mode:
-  - "switch-runtime" (ontology-worktree): Remove issue worktree → checkout feature
-  - "direct" (standard): Code already in worktree, no switch needed
-
-Falls back to legacy get_plan_worktree() when WorktreeContext is unavailable.
+User confirmation is required unless --yes is passed.
 """
 
 import subprocess
@@ -16,12 +12,75 @@ from pathlib import Path
 
 from lib.workspace import find_workspace_root
 from lib.worktree import parse_worktree_context
-from plan import find_plan
-from plan import get_plan_worktree, get_plan_field, set_plan_field
-from lib.git import merge_branch, get_current_branch
+from lib.logging import log_info, log_success, log_error, log_warn, log_step
+from plan import find_plan, get_plan_worktree, get_plan_field
 
 
-def _remove_worktree(repo_root: Path, worktree_path: str) -> bool:
+def _confirm_switch(branch: str, target_desc: str) -> bool:
+    """Prompt user to confirm switching to feature branch.
+
+    Args:
+        branch: Feature branch name
+        target_desc: Description of the target directory being switched
+
+    Returns:
+        True if user confirms, False otherwise
+    """
+    try:
+        answer = input(
+            f"Switch {target_desc} to '{branch}' for verification? [y/N] "
+        )
+        return answer.strip().lower() == "y"
+    except EOFError:
+        # Non-interactive environment without --yes
+        log_error("Non-interactive terminal. Use --yes to skip confirmation.")
+        return False
+
+
+def _git_fetch(cwd: str) -> bool:
+    """Run git fetch in the given directory.
+
+    Args:
+        cwd: Directory to run git fetch in
+
+    Returns:
+        True if fetch succeeded
+    """
+    result = subprocess.run(
+        ["git", "fetch"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        log_error(f"git fetch failed: {result.stderr.strip()}")
+        return False
+    return True
+
+
+def _git_checkout(branch: str, cwd: str) -> bool:
+    """Run git checkout in the given directory.
+
+    Args:
+        branch: Branch to checkout
+        cwd: Directory to run git checkout in
+
+    Returns:
+        True if checkout succeeded
+    """
+    result = subprocess.run(
+        ["git", "checkout", branch],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        log_error(f"git checkout {branch} failed: {result.stderr.strip()}")
+        return False
+    return True
+
+
+def _remove_worktree(repo_root: str, worktree_path: str) -> bool:
     """Remove a git worktree from the given repository.
 
     Args:
@@ -37,210 +96,171 @@ def _remove_worktree(repo_root: Path, worktree_path: str) -> bool:
 
     result = subprocess.run(
         ["git", "worktree", "remove", str(target), "--force"],
-        cwd=str(repo_root),
-        capture_output=True,
-        text=True,
-    )
-    return result.returncode == 0
-
-
-def _run_verify(workspace_root: Path, issue: str) -> bool:
-    """Run flow.sh verify <issue> --confirm."""
-    flow_sh = workspace_root / ".wopal" / "skills" / "dev-flow" / "scripts" / "flow.sh"
-    result = subprocess.run(
-        ["bash", str(flow_sh), "verify", issue, "--confirm"],
-        capture_output=True,
-        text=True,
-    )
-    print(result.stdout)
-    if result.stderr:
-        print(result.stderr, flush=True)
-    return result.returncode == 0
-
-
-def _run_switch_runtime_phase1(
-    workspace_root: Path,
-    plan_path: str,
-    wt_ctx,
-) -> bool:
-    """Phase 1 for ontology-worktree: remove worktree, checkout feature branch.
-
-    Uses wt_ctx.repo_root for worktree removal and wt_ctx.base_branch for
-    recording the main branch to return to in Phase 2.
-    """
-    wopal_dir = workspace_root / ".wopal"
-    branch = wt_ctx.branch
-    wt_path = wt_ctx.path
-
-    # Resolve worktree path: use absolute if already absolute, otherwise relative to workspace root
-    raw_path = Path(str(wt_path))
-    resolved_wt_path = raw_path if raw_path.is_absolute() else workspace_root / str(wt_path)
-
-    # Remove the issue worktree using repo_root (not get_ontology_main_repo)
-    repo_root = Path(str(wt_ctx.repo_root))
-    if not _remove_worktree(repo_root, str(resolved_wt_path)):
-        print(f"WARNING: Failed to remove worktree at {resolved_wt_path}")
-
-    # Record current branch as main (Phase 2 will return here)
-    main_branch = get_current_branch(str(wopal_dir)) or wt_ctx.base_branch
-    set_plan_field(plan_path, "MainBranch", main_branch)
-
-    # Checkout .wopal/ to feature branch
-    result = subprocess.run(
-        ["git", "checkout", branch],
-        cwd=str(wopal_dir),
+        cwd=repo_root,
         capture_output=True,
         text=True,
     )
     if result.returncode != 0:
-        print(f"ERROR: Failed to checkout {branch}: {result.stderr}")
+        log_warn(f"Failed to remove worktree at {target}: {result.stderr.strip()}")
         return False
-
-    print(f"Switched .wopal/ from {main_branch} to {branch}")
-    print("Restart ellamaka to verify the changes.")
     return True
 
 
-def _run_switch_runtime_phase2(
+def _resolve_wt_path(wt_path: Path | str, workspace_root: Path) -> Path:
+    """Resolve worktree path: absolute if already absolute, else relative to workspace root."""
+    raw = Path(str(wt_path))
+    return raw if raw.is_absolute() else workspace_root / str(wt_path)
+
+
+def _switch_ontology(
     workspace_root: Path,
-    plan_path: str,
-    issue: str,
     wt_ctx,
+    issue: str,
 ) -> bool:
-    """Phase 2 for ontology-worktree: checkout main, merge feature, verify."""
-    wopal_dir = workspace_root / ".wopal"
-    branch = wt_ctx.branch
-    merge_target = wt_ctx.merge_target
+    """Switch .wopal/ to feature branch for ontology-worktree.
 
-    success, conflicts = merge_branch(
-        str(wopal_dir),
-        branch,
-        target=merge_target,
-        no_ff=False,
-    )
+    Steps:
+    1. git fetch in .wopal/
+    2. git checkout <feature_branch> in .wopal/
+    3. Print verification guidance
 
-    if not success:
-        if conflicts:
-            print(f"ERROR: Merge conflicts in: {', '.join(conflicts)}")
-            print(f"Resolve conflicts manually, then re-run `flow.sh verify-switch {issue} --merge`")
-        else:
-            print("ERROR: Merge failed")
-        return False
+    Does NOT remove the worktree (ontology needs it).
 
-    print(f"Merged {branch} into {merge_target}")
-
-    # Run verify --confirm
-    if not _run_verify(workspace_root, issue):
-        print("WARNING: verify --confirm failed, check Plan state")
-        return False
-
-    return True
-
-
-def _run_direct_guide(issue: str, wt_ctx) -> bool:
-    """Print guidance for standard project: verify-switch is ontology-only.
-
-    Standard projects don't need verify-switch — the worktree is directly
-    accessible and merging is a manual git operation.
+    Args:
+        issue: Issue number or plan name (for guidance output)
+    Returns:
+        True if switch succeeded
     """
+    wopal_dir = workspace_root / ".wopal"
+    repo_root = str(wt_ctx.repo_root)
     branch = wt_ctx.branch
-    print(f"verify-switch is for ontology-worktree only (standard project detected).")
-    print(f"Feature branch: {branch}")
-    print(f"Worktree: {wt_ctx.path}")
+    merge_target = getattr(wt_ctx, "merge_target", "space/main")
+
+    # Fetch
+    if not _git_fetch(str(wopal_dir)):
+        return False
+
+    # Checkout
+    if not _git_checkout(branch, str(wopal_dir)):
+        return False
+
+    log_success(f"Switched .wopal/ to '{branch}'")
     print()
-    print("To verify and complete this Plan:")
-    print(f"  1. cd {wt_ctx.path} && pnpm test:run")
-    print(f"  2. If satisfied, merge: cd <project> && git checkout main && git merge {branch}")
-    print(f"  3. flow.sh verify {issue} --confirm")
-    print(f"  4. flow.sh archive {issue}")
+    log_step("Verification steps:")
+    print(f"  1. Restart ellamaka to verify ontology changes")
+    print(f"  2. Verify the feature branch: '{branch}'")
+    print(f"  3. After verification, merge manually:")
+    print(f"     cd {repo_root} && git checkout {merge_target} && git pull && git merge {branch}")
+    print(f"  4. Run: flow.sh verify {issue} --confirm")
     return True
 
 
-def _run_legacy_phase1(
+def _switch_standard(
     workspace_root: Path,
-    plan_path: str,
-    wt: dict,
-) -> bool:
-    """Phase 1 using legacy worktree metadata (backward compatibility)."""
-    from lib.workspace import get_ontology_main_repo
-
-    wopal_dir = workspace_root / ".wopal"
-    branch = wt.get("branch", "")
-    wt_path = wt.get("path", "")
-
-    ontology_git_dir = get_ontology_main_repo(workspace_root)
-    if ontology_git_dir:
-        if not _remove_worktree(ontology_git_dir, wt_path):
-            print(f"WARNING: Failed to remove worktree at {wt_path}")
-
-    # Record current branch as main (Phase 2 will return here)
-    main_branch = get_current_branch(str(wopal_dir)) or "space/main"
-    set_plan_field(plan_path, "MainBranch", main_branch)
-
-    # Checkout .wopal/ to feature branch
-    result = subprocess.run(
-        ["git", "checkout", branch],
-        cwd=str(wopal_dir),
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        print(f"ERROR: Failed to checkout {branch}: {result.stderr}")
-        return False
-
-    print(f"Switched .wopal/ from {main_branch} to {branch}")
-    print("Restart ellamaka to verify the changes.")
-    return True
-
-
-def _run_legacy_phase2(
-    workspace_root: Path,
-    plan_path: str,
+    wt_ctx,
     issue: str,
-    wt: dict,
 ) -> bool:
-    """Phase 2 using legacy worktree metadata (backward compatibility)."""
-    wopal_dir = workspace_root / ".wopal"
-    branch = wt.get("branch", "")
+    """Switch project repo to feature branch for standard project.
 
-    main_branch = get_plan_field(plan_path, "MainBranch") or "space/main"
+    Steps:
+    1. git fetch in project repo
+    2. git checkout <feature_branch> in project repo
+    3. git worktree remove <worktree_path>
+    4. Print verification guidance
 
-    success, conflicts = merge_branch(
-        str(wopal_dir),
-        branch,
-        target=main_branch,
-        no_ff=False,
-    )
+    Args:
+        issue: Issue number or plan name (for guidance output)
+    Returns:
+        True if switch succeeded
+    """
+    repo_root = str(wt_ctx.repo_root)
+    branch = wt_ctx.branch
+    wt_path = str(_resolve_wt_path(wt_ctx.path, workspace_root))
+    merge_target = getattr(wt_ctx, "merge_target", "main")
 
-    if not success:
-        if conflicts:
-            print(f"ERROR: Merge conflicts in: {', '.join(conflicts)}")
-            print(f"Resolve conflicts manually, then re-run `flow.sh verify-switch {issue} --merge`")
-        else:
-            print("ERROR: Merge failed")
+    # Fetch
+    if not _git_fetch(repo_root):
         return False
 
-    print(f"Merged {branch} into {main_branch}")
-
-    # Run verify --confirm
-    if not _run_verify(workspace_root, issue):
-        print("WARNING: verify --confirm failed, check Plan state")
+    # Checkout
+    if not _git_checkout(branch, repo_root):
         return False
 
+    # Remove worktree
+    _remove_worktree(repo_root, wt_path)
+
+    log_success(f"Switched project repo to '{branch}'")
+    print()
+    log_step("Verification steps:")
+    print(f"  1. Run tests in the project repo")
+    print(f"  2. After verification, merge manually:")
+    print(f"     cd {repo_root} && git checkout {merge_target} && git pull && git merge {branch}")
+    print(f"  3. Run: flow.sh verify {issue} --confirm")
     return True
 
 
-def run_verify_switch(issue: str, merge: bool = False) -> bool:
-    """Execute the verification switch workflow.
+def _switch_legacy(
+    workspace_root: Path,
+    wt: dict,
+    issue: str,
+    project_type: str | None = None,
+    target: str | None = None,
+) -> bool:
+    """Legacy fallback: switch workspace to feature branch.
 
-    Uses WorktreeContext as the primary source of truth for branch paths and
-    verify mode. Falls back to legacy get_plan_worktree() only when
-    WorktreeContext is unavailable (backward compatibility).
+    Used when WorktreeContext is unavailable. Target must be resolved
+    by the caller (from Project Path / Target Project metadata).
+
+    Args:
+        issue: Issue number or plan name (for guidance output)
+        project_type: Project type from Plan metadata (optional)
+        target: Resolved target directory for git operations (required for standard)
+    Returns:
+        True if switch succeeded
+    """
+    branch = wt.get("branch", "")
+
+    if not branch:
+        log_error("Incomplete worktree metadata: missing branch")
+        return False
+
+    if target is None:
+        log_error(
+            "Legacy Plan: no target directory resolved. "
+            "This should not happen — report as a bug."
+        )
+        return False
+
+    # Fetch
+    if not _git_fetch(target):
+        return False
+
+    # Checkout
+    if not _git_checkout(branch, target):
+        return False
+
+    log_success(f"Switched to '{branch}'")
+    print()
+    log_step("Verification steps:")
+    print(f"  1. Verify the feature branch: '{branch}'")
+    print(f"  2. After verification, merge manually")
+    print(f"  3. Run: flow.sh verify {issue} --confirm")
+    return True
+
+
+def run_verify_switch(issue: str, yes: bool = False) -> bool:
+    """Execute the unified verification switch workflow.
+
+    Switches workspace to feature branch for verification:
+    - Reads Plan Worktree metadata (WorktreeContext preferred, legacy fallback)
+    - Determines target directory based on project type
+    - Prompts user for confirmation (skipped with --yes)
+    - Executes git fetch + git checkout
+    - Standard: cleans up worktree after switch
 
     Args:
         issue: Issue number or plan name
-        merge: If True, execute Phase 2 (merge back + verify).
-               If False, execute Phase 1 (switch to feature for verification).
+        yes: If True, skip user confirmation prompt
 
     Returns:
         True if successful
@@ -250,54 +270,95 @@ def run_verify_switch(issue: str, merge: bool = False) -> bool:
     # Locate Plan
     plan_path = find_plan(issue, str(workspace_root))
     if not plan_path:
-        print(f"ERROR: Plan not found for issue {issue}")
+        log_error(f"Plan not found for issue {issue}")
         return False
 
     # Try WorktreeContext first (new path)
     wt_ctx = parse_worktree_context(plan_path)
 
+    # Treat legacy pipe-format as legacy: Path('') resolves to '.' which is unusable
+    if wt_ctx is not None and str(wt_ctx.repo_root) in ('', '.'):
+        wt_ctx = None  # Force fallthrough to legacy handling
+
     if wt_ctx is not None:
-        # WorktreeContext available — drive behavior from verify_mode
-        if wt_ctx.verify_mode == "switch-runtime":
-            if not merge:
-                return _run_switch_runtime_phase1(workspace_root, plan_path, wt_ctx)
-            else:
-                return _run_switch_runtime_phase2(workspace_root, plan_path, issue, wt_ctx)
-        elif wt_ctx.verify_mode == "direct":
-            return _run_direct_guide(issue, wt_ctx)
+        branch = wt_ctx.branch
+        project_type = wt_ctx.project_type
+
+        if project_type == "ontology-worktree":
+            target_desc = ".wopal/ (ontology-worktree)"
         else:
-            print(f"ERROR: Unknown verify_mode: {wt_ctx.verify_mode}")
+            target_desc = f"{wt_ctx.repo_root} (standard project)"
+
+        # User confirmation (skip with --yes)
+        if not yes and not _confirm_switch(branch, target_desc):
+            log_info("Switch cancelled by user.")
             return False
+
+        if project_type == "ontology-worktree":
+            return _switch_ontology(workspace_root, wt_ctx, issue)
+        else:
+            return _switch_standard(workspace_root, wt_ctx, issue)
 
     # Legacy fallback — WorktreeContext unavailable
     wt = get_plan_worktree(plan_path)
     if not wt:
-        print("ERROR: No worktree field in Plan metadata")
+        log_error("No worktree field in Plan metadata")
         return False
 
     branch = wt.get("branch", "")
     wt_path = wt.get("path", "")
 
     if not branch or not wt_path:
-        print("ERROR: Incomplete worktree metadata in Plan")
+        log_error("Incomplete worktree metadata in Plan")
         return False
 
-    if not merge:
-        return _run_legacy_phase1(workspace_root, plan_path, wt)
+    # Read Project Type from Plan for legacy path
+    legacy_project_type = get_plan_field(plan_path, "Project Type") or None
+
+    # Resolve target directory from Plan metadata
+    if legacy_project_type == "ontology-worktree":
+        legacy_target = str(workspace_root / ".wopal")
+        target_desc = ".wopal/ (ontology-worktree)"
     else:
-        return _run_legacy_phase2(workspace_root, plan_path, issue, wt)
+        # standard or unknown — default to standard, resolve from Project Path / Target Project
+        pp = get_plan_field(plan_path, "Project Path")
+        tp = get_plan_field(plan_path, "Target Project")
+        if pp:
+            legacy_target = str(workspace_root / pp)
+        elif tp:
+            legacy_target = str(workspace_root / "projects" / tp)
+        else:
+            log_error(
+                "Legacy Plan: cannot determine target directory. "
+                "Missing Project Path and Target Project in Plan metadata."
+            )
+            return False
+        target_desc = f"{legacy_target} (standard project)"
+
+    # User confirmation (skip with --yes)
+    if not yes and not _confirm_switch(branch, target_desc):
+        log_info("Switch cancelled by user.")
+        return False
+
+    return _switch_legacy(
+        workspace_root, wt, issue,
+        project_type=legacy_project_type, target=legacy_target,
+    )
 
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Worktree verification switch for dev-flow"
+        description="Unified verification switch for dev-flow"
     )
     parser.add_argument("issue", help="Issue number or plan name")
-    parser.add_argument("--merge", action="store_true",
-                        help="Phase 2: merge feature into main and verify")
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip confirmation prompt",
+    )
     args = parser.parse_args()
 
-    success = run_verify_switch(args.issue, merge=args.merge)
+    success = run_verify_switch(args.issue, yes=args.yes)
     exit(0 if success else 1)

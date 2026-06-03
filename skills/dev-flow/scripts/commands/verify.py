@@ -32,6 +32,8 @@ from plan import find_plan, find_plan_by_issue
 from plan import (
     get_plan_field,
     get_plan_issue,
+    get_plan_project_path,
+    get_plan_worktree,
 )
 from lib.git import commit_paths
 from lib.worktree import resolve_active_plan, ResolveActivePlanError
@@ -161,6 +163,78 @@ def _get_plan_name(plan_path: str) -> str:
     return Path(plan_path).stem
 
 
+def _check_feature_branch_merged(workspace_root: Path, plan_path: str) -> int:
+    """Check that the feature branch has been merged to the integration branch.
+
+    Reads Plan Worktree metadata to get the feature branch name,
+    determines the integration branch based on project type, and runs
+    git branch --merged to verify.
+
+    Args:
+        workspace_root: Workspace root path
+        plan_path: Path to the Plan file
+
+    Returns:
+        0 if merged (or no worktree metadata), 1 if not merged or on error
+    """
+    from pathlib import Path as _Path
+
+    wt_meta = get_plan_worktree(plan_path)
+    if not wt_meta or not wt_meta.get("branch"):
+        return 0
+
+    feature_branch = wt_meta["branch"]
+
+    # Determine integration branch based on project type
+    project_type = get_plan_field(plan_path, "Project Type")
+    if project_type == "ontology-worktree":
+        integration_branch = "space/main"
+    else:
+        integration_branch = "main"
+
+    # Determine repo root for git operations
+    project_path = get_plan_project_path(plan_path)
+    if project_path:
+        repo_root = str(_Path(workspace_root) / project_path)
+    else:
+        repo_root = str(workspace_root)
+
+    # Run git branch --merged <integration> and check for feature branch
+    try:
+        result = subprocess.run(
+            ["git", "branch", "--merged", integration_branch],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        log_error(
+            f"Failed to check merge status for branch '{feature_branch}'"
+        )
+        return 1
+
+    if result.returncode != 0:
+        log_error(
+            f"Failed to check merge status for branch '{feature_branch}'"
+        )
+        return 1
+
+    # Parse merged branches: strip "* " prefix, trim whitespace
+    merged_branches = [
+        b.strip().lstrip("* ") for b in result.stdout.strip().split("\n")
+        if b.strip()
+    ]
+
+    if feature_branch not in merged_branches:
+        log_error(
+            f"Feature branch '{feature_branch}' not yet merged to "
+            f"{integration_branch}. Please merge first."
+        )
+        return 1
+
+    return 0
+
+
 # ============================================
 # verify command
 # ============================================
@@ -270,7 +344,12 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
     # --confirm received: user authorization gate passed
 
-    # 7. Resolve active Plan — enforce merged state (D-05)
+    # 7. Check feature branch merged to integration (D-03)
+    merge_check = _check_feature_branch_merged(workspace_root, plan_path)
+    if merge_check != 0:
+        return merge_check
+
+    # 8. Resolve active Plan — enforce merged state (D-05)
     try:
         active = resolve_active_plan(plan_path, "verify", workspace_root)
     except ResolveActivePlanError as e:
