@@ -225,14 +225,48 @@ def _check_feature_branch_merged(workspace_root: Path, plan_path: str) -> int:
         if b.strip()
     ]
 
-    if feature_branch not in merged_branches:
-        log_error(
-            f"Feature branch '{feature_branch}' not yet merged to "
-            f"{integration_branch}. Please merge first."
-        )
-        return 1
+    if feature_branch in merged_branches:
+        return 0
 
-    return 0
+    # Branch not found in local merged list.
+    # Fallback 1: check remote merged branches (branch may exist remotely)
+    try:
+        result2 = subprocess.run(
+            ["git", "branch", "-r", "--merged", integration_branch],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+        )
+        remote_branches = [
+            b.strip() for b in result2.stdout.strip().split("\n") if b.strip()
+        ]
+        for rb in remote_branches:
+            if rb.endswith(f"/{feature_branch}"):
+                return 0
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    # Fallback 2: branch deleted everywhere, check if merge exists in history
+    # Works for both FF merge (branch name in commit messages) and
+    # non-FF merge ("Merge branch 'xxx'" commit)
+    try:
+        result3 = subprocess.run(
+            ["git", "log", "--oneline", integration_branch,
+             "--grep", feature_branch],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+        )
+        if result3.stdout.strip():
+            return 0
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    log_error(
+        f"Feature branch '{feature_branch}' not yet merged to "
+        f"{integration_branch}. Please merge first."
+    )
+    return 1
 
 
 # ============================================

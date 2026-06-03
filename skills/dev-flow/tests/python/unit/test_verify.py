@@ -104,13 +104,12 @@ class TestCheckFeatureBranchMerged:
         proj_dir.mkdir(parents=True)
         (proj_dir / ".git").mkdir()
 
-        merged_output = "  main\n"  # feature branch missing
+        # Three subprocess.run calls: local merged, remote merged, git log --grep
+        not_merged_result = MagicMock(returncode=0, stdout="  main\n")
+        empty_result = MagicMock(returncode=0, stdout="")
 
         with patch("commands.verify.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout=merged_output,
-            )
+            mock_run.side_effect = [not_merged_result, empty_result, empty_result]
             with patch("commands.verify.log_error") as mock_log:
                 result = _check_feature_branch_merged(tmp_path, str(plan_path))
 
@@ -149,13 +148,12 @@ class TestCheckFeatureBranchMerged:
         wopal_dir.mkdir(parents=True)
         (wopal_dir / ".git").mkdir()
 
-        merged_output = "  space/main\n"  # feature branch missing
+        # Three subprocess.run calls: local merged, remote merged, git log --grep
+        not_merged_result = MagicMock(returncode=0, stdout="  space/main\n")
+        empty_result = MagicMock(returncode=0, stdout="")
 
         with patch("commands.verify.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout=merged_output,
-            )
+            mock_run.side_effect = [not_merged_result, empty_result, empty_result]
             with patch("commands.verify.log_error") as mock_log:
                 result = _check_feature_branch_merged(tmp_path, str(plan_path))
 
@@ -212,7 +210,7 @@ class TestCheckFeatureBranchMerged:
         """Verify git branch --merged is called with correct integration branch."""
         from commands.verify import _check_feature_branch_merged
 
-        # Standard → main
+        # Standard → main (branch in merged list → fallback not triggered)
         plan_path_std = _write_plan(
             tmp_path, PLAN_VERIFYING_STANDARD, name="42-std.md"
         )
@@ -221,7 +219,9 @@ class TestCheckFeatureBranchMerged:
         (proj_dir / ".git").mkdir()
 
         with patch("commands.verify.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout="  main\n")
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout="  main\n* feature/test-1-slug\n"
+            )
             _check_feature_branch_merged(tmp_path, str(plan_path_std))
 
         cmd = mock_run.call_args[0][0]
@@ -238,7 +238,9 @@ class TestCheckFeatureBranchMerged:
         (wopal_dir / ".git").mkdir()
 
         with patch("commands.verify.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout="  space/main\n")
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout="  space/main\n* issue-10-slug\n"
+            )
             _check_feature_branch_merged(tmp_path, str(plan_path_ont))
 
         cmd = mock_run.call_args[0][0]

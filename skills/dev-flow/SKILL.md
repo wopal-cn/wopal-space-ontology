@@ -146,7 +146,7 @@ flow.sh sync <issue> --body-only       # 同步 Issue body（如需）
 统一流程：
 1. `flow.sh verify-switch <issue>` — 确认后切换工作空间到 feature 分支
 2. 用户验证功能（重启 ellamaka / 运行测试 / 体验流程）
-3. 用户手动 merge（feature → 集成分支）
+3. 用户手动 merge（feature → 集成分支，**不删 feature 分支**，留给 archive 清理）
 4. `flow.sh verify <issue> --confirm` — 校验 merge 已完成 → done
 5. `flow.sh archive <issue>`
 
@@ -215,6 +215,7 @@ flow.sh archive <issue>
 - **grep/glob 搜索 Plan** — 使用 `flow.sh plan <name>` 或 `flow.sh plan status <name>`
 - **`approve` 不带 `--confirm`** — 报错退出，使用 `submit` 提审
 - **`verify-switch` 用于 standard 项目以外的场景** — standard 直接在 worktree 目录验证
+- **合并后手动删除 feature 分支** — 保留到 `archive` 自动清理，确保 `verify --confirm` 能检测 merge 状态
 
 ## 参考
 
