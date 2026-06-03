@@ -24,7 +24,6 @@ PLAN_STANDARD = """\
 - **Issue**: #42
 - **Worktree**:
   - enabled: true
-  - project_type: standard
   - branch: feature/test-1-slug
   - path: .worktrees/gesp-issue-1-slug
   - repo_root: /workspace/projects/gesp
@@ -42,7 +41,6 @@ PLAN_ONTOLOGY = """\
 - **Issue**: #10
 - **Worktree**:
   - enabled: true
-  - project_type: ontology-worktree
   - branch: issue-10-slug
   - path: .worktrees/ontology-issue-10-slug
   - repo_root: /home/.wopal/ontologies/wopal-space-ontology
@@ -808,7 +806,6 @@ PLAN_VERIFYING = """\
 - **Issue**: #42
 - **Worktree**:
   - enabled: true
-  - project_type: standard
   - branch: feature/test-1-slug
   - path: .worktrees/gesp-issue-1-slug
   - repo_root: /workspace/projects/gesp
@@ -1045,3 +1042,72 @@ class TestVerifyNoIssuePlan:
 
         mock_sync_label.assert_not_called()
         mock_sync_body.assert_not_called()
+
+
+# -- Test: real Plan parsing + dispatch (no parse_worktree_context mock) --------
+
+class TestDispatchFromRealPlan:
+    """Verify that real Plan files dispatch to correct project type path.
+
+    These tests deliberately do NOT mock parse_worktree_context — they verify
+    the full parse→dispatch chain: Plan metadata → WorktreeContext → switch function.
+    """
+
+    @patch("commands.verify_switch.subprocess.run")
+    @patch("commands.verify_switch.find_plan")
+    @patch("commands.verify_switch.find_workspace_root")
+    def test_ontology_plan_dispatches_via_metadata_project_type(
+        self, mock_ws_root, mock_find_plan, mock_subprocess, tmp_path
+    ):
+        """PLAN_ONTOLOGY has Project Type in Metadata, NOT in Worktree block.
+        verify_switch must read it from Metadata and dispatch to ontology path."""
+        from commands.verify_switch import run_verify_switch
+
+        plan_path = _write_plan(tmp_path, PLAN_ONTOLOGY)
+        ws_root = tmp_path
+        mock_ws_root.return_value = ws_root
+        mock_find_plan.return_value = str(plan_path)
+        mock_subprocess.return_value = MagicMock(returncode=0)
+
+        result = run_verify_switch("10", yes=True)
+        assert result is True
+
+        # Ontology path: git commands run in .wopal/
+        calls = mock_subprocess.call_args_list
+        assert len(calls) == 2  # fetch + checkout (no worktree remove)
+        for call in calls:
+            assert call[1]["cwd"] == str(ws_root / ".wopal")
+
+    @patch("commands.verify_switch.subprocess.run")
+    @patch("commands.verify_switch.find_plan")
+    @patch("commands.verify_switch.find_workspace_root")
+    def test_standard_plan_dispatches_with_worktree_cleanup(
+        self, mock_ws_root, mock_find_plan, mock_subprocess, tmp_path
+    ):
+        """PLAN_STANDARD has Project Type in Metadata, NOT in Worktree block.
+        verify_switch must read it from Metadata, dispatch to standard path,
+        and include worktree removal."""
+        from commands.verify_switch import run_verify_switch
+
+        plan_path = _write_plan(tmp_path, PLAN_STANDARD)
+        ws_root = tmp_path
+        mock_ws_root.return_value = ws_root
+        mock_find_plan.return_value = str(plan_path)
+        mock_subprocess.return_value = MagicMock(returncode=0)
+
+        # Create worktree dir so _remove_worktree triggers
+        wt_dir = tmp_path / ".worktrees" / "gesp-issue-1-slug"
+        wt_dir.mkdir(parents=True, exist_ok=True)
+
+        result = run_verify_switch("42", yes=True)
+        assert result is True
+
+        # Standard path: fetch + checkout + worktree remove
+        calls = mock_subprocess.call_args_list
+        assert len(calls) == 3
+        # fetch + checkout in project repo
+        for call in calls[:2]:
+            assert call[1]["cwd"] == "/workspace/projects/gesp"
+        # worktree remove in project repo
+        assert "worktree" in calls[2][0][0]
+        assert calls[2][1]["cwd"] == "/workspace/projects/gesp"

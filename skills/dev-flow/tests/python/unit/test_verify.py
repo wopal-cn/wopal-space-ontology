@@ -23,7 +23,6 @@ PLAN_VERIFYING_STANDARD = """\
 - **Issue**: #42
 - **Worktree**:
   - enabled: true
-  - project_type: standard
   - branch: feature/test-1-slug
   - path: .worktrees/gesp-issue-1-slug
   - repo_root: /workspace/projects/gesp
@@ -42,7 +41,6 @@ PLAN_VERIFYING_ONTOLOGY = """\
 - **Issue**: #10
 - **Worktree**:
   - enabled: true
-  - project_type: ontology-worktree
   - branch: issue-10-slug
   - path: .worktrees/ontology-issue-10-slug
   - repo_root: /home/.wopal/ontologies/wopal-space-ontology

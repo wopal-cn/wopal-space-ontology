@@ -120,6 +120,26 @@ class TestParseStructuredWorktree:
         ctx = parse_worktree_context(str(tmp_path / "nonexistent.md"))
         assert ctx is None
 
+    def test_reads_project_type_from_plan_metadata(self, tmp_path):
+        content = PLAN_TEMPLATE_ONTOLOGY + """\
+- **Worktree**:
+  - branch: feature/ont-42-slug
+  - path: .worktrees/ontology-issue-42-slug
+"""
+        plan = _write_plan(tmp_path, content)
+        ctx = parse_worktree_context(str(plan))
+
+        assert ctx is not None
+        assert ctx.project_type == "ontology-worktree"
+
+    def test_legacy_format_reads_project_type_from_metadata(self, tmp_path):
+        content = PLAN_TEMPLATE_ONTOLOGY + "- **Worktree**: feature/legacy-slug | .worktrees/legacy-path\n"
+        plan = _write_plan(tmp_path, content)
+        ctx = parse_worktree_context(str(plan))
+
+        assert ctx is not None
+        assert ctx.project_type == "ontology-worktree"
+
 
 class TestParseLegacyWorktree:
     """Test parsing legacy '- **Worktree**: branch | path' format."""
