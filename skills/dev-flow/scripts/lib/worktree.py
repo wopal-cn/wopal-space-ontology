@@ -81,10 +81,54 @@ def parse_worktree_context(plan_path: str) -> WorktreeContext | None:
     # Try new structured format first
     ctx = _parse_structured_worktree(content)
     if ctx is not None:
+        if ctx.project_type == 'standard':
+            meta_type = _read_plan_project_type(content)
+            if meta_type and meta_type != 'standard':
+                ctx = WorktreeContext(
+                    enabled=ctx.enabled,
+                    project_type=meta_type,
+                    branch=ctx.branch,
+                    path=ctx.path,
+                    repo_root=ctx.repo_root,
+                    base_branch=ctx.base_branch,
+                    merge_target=ctx.merge_target,
+                    verify_mode=ctx.verify_mode,
+                    cleanup_policy=ctx.cleanup_policy,
+                )
         return ctx
 
     # Fallback to legacy format: "- **Worktree**: branch | path"
-    return _parse_legacy_worktree(content)
+    ctx = _parse_legacy_worktree(content)
+    if ctx is not None:
+        meta_type = _read_plan_project_type(content)
+        if meta_type:
+            ctx = WorktreeContext(
+                enabled=ctx.enabled,
+                project_type=meta_type,
+                branch=ctx.branch,
+                path=ctx.path,
+                repo_root=ctx.repo_root,
+                base_branch=ctx.base_branch,
+                merge_target=ctx.merge_target,
+                verify_mode=ctx.verify_mode,
+                cleanup_policy=ctx.cleanup_policy,
+            )
+        return ctx
+
+    return None
+
+
+def _read_plan_project_type(content: str) -> str | None:
+    """Read Project Type from Plan Metadata section.
+
+    Looks for '- **Project Type**: <value>' in the Metadata block.
+    Returns None if not found.
+    """
+    pattern = r'^\- \*\*Project Type\*\*:\s*(.+)$'
+    match = re.search(pattern, content, re.MULTILINE)
+    if match:
+        return match.group(1).strip()
+    return None
 
 
 def _parse_structured_worktree(content: str) -> WorktreeContext | None:
