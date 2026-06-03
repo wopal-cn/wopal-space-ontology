@@ -8,7 +8,7 @@
 - **Project Path**: .wopal
 - **Project Type**: ontology-worktree
 - **Created**: 2026-06-03
-- **Status**: executing
+- **Status**: verifying
 - **Worktree**:
   - branch: issue-157-flow-redesign-verify-switch-to-remove-merge
   - path: /Users/sam/coding/wopal/wopal-workspace/.worktrees/ontology-issue-157-flow-redesign-verify-switch-to-remove-merge
