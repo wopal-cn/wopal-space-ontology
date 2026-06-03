@@ -85,7 +85,7 @@ class TestUpdatePhaseDocPlanStatus(unittest.TestCase):
             self.ws_root, "feat-cli-publish-p1", "wopal-space", "p1",
         )
 
-        self.assertTrue(result)
+        self.assertIsNotNone(result)
         mock_ok.assert_called_once()
         content = doc.read_text()
         self.assertIn("| wopal-cli | feat-cli-publish-p1 | done |", content)
@@ -102,7 +102,7 @@ class TestUpdatePhaseDocPlanStatus(unittest.TestCase):
         result = _update_phase_doc_plan_status(
             self.ws_root, "some-plan", "", "p1",
         )
-        self.assertFalse(result)
+        self.assertIsNone(result)
         mock_info.assert_called_once_with(
             "No Product/Phase metadata, skipping phase doc update"
         )
@@ -118,7 +118,7 @@ class TestUpdatePhaseDocPlanStatus(unittest.TestCase):
         result = _update_phase_doc_plan_status(
             self.ws_root, "some-plan", "wopal-space", "",
         )
-        self.assertFalse(result)
+        self.assertIsNone(result)
         mock_info.assert_called_once_with(
             "No Product/Phase metadata, skipping phase doc update"
         )
@@ -135,7 +135,7 @@ class TestUpdatePhaseDocPlanStatus(unittest.TestCase):
         result = _update_phase_doc_plan_status(
             self.ws_root, "some-plan", "wopal-space", "p99",
         )
-        self.assertFalse(result)
+        self.assertIsNone(result)
         mock_warn.assert_called_once()
         warn_msg = str(mock_warn.call_args[0][0])
         self.assertIn("p99", warn_msg)
@@ -157,7 +157,7 @@ class TestUpdatePhaseDocPlanStatus(unittest.TestCase):
             self.ws_root, "missing-plan", "wopal-space", "p1",
         )
 
-        self.assertFalse(result)
+        self.assertIsNone(result)
         mock_warn.assert_called_once()
         warn_msg = str(mock_warn.call_args[0][0])
         self.assertIn("missing-plan", warn_msg)
@@ -174,7 +174,7 @@ class TestUpdatePhaseDocPlanStatus(unittest.TestCase):
         result = _update_phase_doc_plan_status(
             self.ws_root, "some-plan", "nonexistent-product", "p1",
         )
-        self.assertFalse(result)
+        self.assertIsNone(result)
         mock_warn.assert_called_once()
         warn_msg = str(mock_warn.call_args[0][0])
         self.assertIn("Phases directory not found", warn_msg)
@@ -194,7 +194,7 @@ class TestUpdatePhaseDocPlanStatus(unittest.TestCase):
             self.ws_root, "some-plan", "wopal-space", "p1",
         )
 
-        self.assertFalse(result)
+        self.assertIsNone(result)
         mock_warn.assert_called_once()
         warn_msg = str(mock_warn.call_args[0][0])
         self.assertIn("No Related Plans table found", warn_msg)

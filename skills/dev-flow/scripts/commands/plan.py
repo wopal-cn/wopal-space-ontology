@@ -792,8 +792,8 @@ def _cmd_plan_status(input_ref: str) -> int:
             worktree_path = ""
             if project:
                 try:
-                    from plan import ProjectType, detect_project_type
-                    project_type_str = detect_project_type(project)
+                    from plan import ProjectType, resolve_project_type
+                    project_type_str = resolve_project_type(project, workspace_root).value
                     if project_type_str == ProjectType.ONTOLOGY_WORKTREE.value:
                         worktree_path = str(workspace_root / ".worktrees" / f"ontology-{branch}")
                     else:

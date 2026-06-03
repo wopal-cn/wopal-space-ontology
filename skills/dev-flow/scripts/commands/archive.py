@@ -81,39 +81,27 @@ def _update_phase_doc_plan_status(
     product: str,
     phase: str,
     new_status: str = "done",
-) -> bool:
+) -> str | None:
     """Update Plan status in a product phase doc's Related Plans table.
 
-    Searches ``docs/products/<product>/phases/*<phase>*.md`` for a Related
-    Plans table and sets the Status column to *new_status* for the row whose
-    Plan column matches *plan_name*.
-
-    Args:
-        workspace_root: Workspace root path.
-        plan_name: Plan slug to match in the table.
-        product: Product name from Plan metadata.
-        phase: Phase name from Plan metadata.
-        new_status: Status value to write (default ``"done"``).
-
-    Returns:
-        True if the file was updated, False otherwise (silently skipped or
-        warned).
+    Returns the updated file path on success, None otherwise (silently skipped
+    or warned).
     """
     if not product or not phase:
         log_info("No Product/Phase metadata, skipping phase doc update")
-        return False
+        return None
 
     phases_dir = workspace_root / "docs" / "products" / product / "phases"
     if not phases_dir.exists():
         log_warn(f"Phases directory not found: {phases_dir}")
-        return False
+        return None
 
     # Find matching phase doc(s) — prefer exact match, then glob
     candidates = sorted(phases_dir.glob(f"*{phase}*.md"))
 
     if not candidates:
         log_warn(f"No phase doc found for product={product}, phase={phase}")
-        return False
+        return None
 
     phase_doc_path = candidates[0]
 
@@ -128,7 +116,7 @@ def _update_phase_doc_plan_status(
 
     if header_idx is None:
         log_warn(f"No Related Plans table found in {phase_doc_path.name}")
-        return False
+        return None
 
     # Walk rows after separator
     updated = False
@@ -150,7 +138,6 @@ def _update_phase_doc_plan_status(
         plan_cell = cells[1]
         if plan_cell == plan_name:
             # Replace Status column (last cell) with new_status
-            # Rebuild the line preserving original spacing style
             old_status = cells[2]
             lines[i] = raw.replace(old_status, new_status, 1)
             updated = True
@@ -158,11 +145,11 @@ def _update_phase_doc_plan_status(
 
     if not updated:
         log_warn(f"Plan '{plan_name}' not found in phase doc Related Plans table")
-        return False
+        return None
 
     phase_doc_path.write_text("".join(lines))
     log_success(f"Updated phase doc {phase_doc_path.name}: {plan_name} → {new_status}")
-    return True
+    return str(phase_doc_path)
 
 
 # ============================================
@@ -685,13 +672,13 @@ def cmd_archive(args: argparse.Namespace) -> int:
     )
 
     # 8. Update phase doc Related Plans table and commit in workspace root
-    phase_doc_updated = _update_phase_doc_plan_status(
+    phase_doc_path = _update_phase_doc_plan_status(
         workspace_root, plan_name, product_meta, phase_meta,
     )
-    if phase_doc_updated and product_meta and phase_meta:
-        # Commit phase doc change in workspace root (separate from plan repo commit)
-        phase_doc_rel = f"docs/products/{product_meta}/phases/"
+    if phase_doc_path and product_meta and phase_meta:
+        # Stage only the modified phase doc file, commit in workspace root
         ws_root_str = str(workspace_root)
+        phase_doc_rel = os.path.relpath(phase_doc_path, ws_root_str)
         subprocess.run(
             ["git", "add", phase_doc_rel],
             cwd=ws_root_str,
@@ -706,7 +693,6 @@ def cmd_archive(args: argparse.Namespace) -> int:
         )
         if result.returncode == 0:
             log_success(f"Phase doc Related Plans updated: {product_meta}/{phase_meta}")
-            # Push workspace root changes
             push_result = subprocess.run(
                 ["git", "push"],
                 cwd=ws_root_str,
@@ -714,7 +700,7 @@ def cmd_archive(args: argparse.Namespace) -> int:
                 text=True,
             )
             if push_result.returncode != 0:
-                log_warn(f"Failed to push phase doc commit: {push_result.stderr.strip()}")
+                log_warn(f"Failed to push phase doc: {push_result.stderr.strip()}")
         else:
             log_warn(f"Failed to commit phase doc: {result.stderr.strip()}")
 
