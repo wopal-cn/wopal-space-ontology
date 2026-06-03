@@ -462,7 +462,7 @@ commands.md 更新：
 
 **Done**:
 任务产出：SKILL.md 含 submit/reviewing/plan 子命令/Plan 定位规则，commands.md 同步
-- [ ] 实施 Agent 已完成上述功能开发和验证的所有步骤执行, 并确认结果符合预期（必须由实施 Agent 勾选）
+- [x] 实施 Agent 已完成上述功能开发和验证的所有步骤执行, 并确认结果符合预期（必须由实施 Agent 勾选）
 
 ---
 
