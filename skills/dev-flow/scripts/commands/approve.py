@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 # approve.py - Approve command for dev-flow
 #
-# Ported from scripts/cmd/approve.sh
-#
-# Command:
+# Command (requires --confirm):
 #   approve <issue> --confirm - Approve Plan and transition to executing phase
 #   approve <plan-name> --confirm - Approve Plan (no-issue mode)
 #   approve <issue> --confirm --no-worktree - Skip worktree creation
 #
-# Flow:
+# Flow (--confirm required):
 #   1. Find Plan file (by issue number OR plan name)
 #   2. Run check_doc validation
-#   3. If no --confirm: snapshot commit/push + await approval
-#   4. If --confirm: preflight checks + status transition + Issue sync
+#   3. Preflight checks + status transition (reviewing/planning → executing)
+#   4. Issue sync + worktree creation
 #
 # Preflight checks (--confirm mode):
 #   - check_doc validation
@@ -20,7 +18,7 @@
 #   - Worktree creation (default; skip with --no-worktree)
 #
 # Issue sync (--confirm mode):
-#   - Sync status label (planning -> in-progress)
+#   - Sync status label (reviewing -> in-progress)
 #   - Sync plan content to Issue body
 #   - Ensure Issue labels (type, project)
 
@@ -33,11 +31,10 @@ from pathlib import Path
 
 from lib.logging import log_info, log_success, log_error, log_warn, log_step
 from lib.workspace import find_workspace_root, detect_space_repo, get_ontology_main_repo
-from workflow import update_plan_status
+from workflow import update_plan_status, parse_plan_status, STATUS_PLANNING, STATUS_REVIEWING
 from plan import find_plan
 from plan import get_plan_project, get_plan_issue, get_plan_status, get_plan_field
 from plan import resolve_project_path, ProjectType
-from workflow import parse_plan_status
 from validation import check_doc_plan, ValidationError
 from issue import (
     sync_status_label,
@@ -46,12 +43,9 @@ from issue import (
 )
 from lib.git import (
     is_repo_dirty,
-    is_commit_in_remote,
     get_current_branch,
-    commit_paths,
-    push_repo,
 )
-from lib.project import resolve_plan_location
+from lib.plan_commit import commit_and_push_plan
 from lib.worktree import create_worktree, write_worktree_context
 
 
@@ -89,71 +83,6 @@ def _extract_slug(plan_name: str) -> str:
         parts = parts[1:]
     
     return '-'.join(parts) if parts else name
-
-
-# ============================================
-# Git Operations
-# ============================================
-
-def _commit_and_push_plan(plan_path: str, issue_number: int | None, workspace_root: Path) -> bool:
-    """Commit and push Plan file after status transition.
-
-    Repo-aware: resolves Plan's repo via resolve_plan_location() and
-    commits/pushes in that repo instead of always using workspace_root.
-
-    Args:
-        plan_path: Absolute path to Plan file
-        issue_number: Issue number (for commit message), or None
-        workspace_root: Workspace root path
-
-    Returns:
-        True if commit/push succeeded, False if failed
-    """
-    # Resolve Plan's owning repo
-    plan_location = resolve_plan_location(Path(plan_path), workspace_root)
-    repo_root = str(plan_location.repo_root)
-    plan_relative = plan_location.repo_relative_path
-
-    # Check if plan file has uncommitted changes
-    status_result = subprocess.run(
-        ["git", "status", "--porcelain", "--", plan_relative],
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-    )
-
-    if status_result.stdout.strip():
-        log_step("Auto-committing Plan file...")
-
-        if issue_number:
-            commit_msg = f"docs(plan): approve plan #{issue_number}"
-        else:
-            plan_filename = Path(plan_path).stem
-            commit_msg = f"docs(plan): approve plan {plan_filename}"
-            # Enforce commit-msg hook limits: description ≤ 60, total ≤ 72
-            max_total = 72
-            if len(commit_msg) > max_total:
-                prefix = "docs(plan): approve plan "
-                max_name = max_total - len(prefix)
-                commit_msg = prefix + plan_filename[:max_name]
-
-        if not commit_paths(repo_root, [plan_relative], commit_msg):
-            log_error("Auto-commit failed. Please commit manually")
-            return False
-
-        log_success(f"Plan file committed: {commit_msg}")
-
-    # Push if not already in remote
-    current_branch = plan_location.branch
-
-    if not is_commit_in_remote(repo_root, "origin", current_branch):
-        log_step(f"Auto-pushing Plan file to origin/{current_branch}...")
-        if not push_repo(repo_root, current_branch):
-            log_error(f"Auto-push failed. Please push manually: cd {repo_root} && git push")
-            return False
-        log_success("Plan file pushed successfully")
-
-    return True
 
 
 def _has_unmerged_files(repo_path: str) -> bool:
@@ -208,12 +137,11 @@ def _create_worktree(project_dir: Path, branch: str, workspace_root: Path) -> Pa
 # ============================================
 
 def cmd_approve(args: argparse.Namespace) -> int:
-    """Approve Plan and transition to executing phase.
+    """Approve Plan and transition to executing phase (--confirm required).
     
     Modes:
-    1. approve <issue-or-plan> - validate + snapshot commit/push for review
-    2. approve <issue-or-plan> --confirm - preflight + status transition + Issue sync
-    3. approve <issue-or-plan> --confirm --no-worktree - skip worktree creation
+    1. approve <issue-or-plan> --confirm - preflight + status transition + Issue sync
+    2. approve <issue-or-plan> --confirm --no-worktree - skip worktree creation
     
     Returns:
         0 on success, 1 on error
@@ -241,14 +169,22 @@ def cmd_approve(args: argparse.Namespace) -> int:
     # Get plan name (for output)
     plan_name = Path(plan_path).stem
     
-    # 2. Check Plan status is "planning"
+    # ============================================
+    # --confirm is required
+    # ============================================
+    if not confirm:
+        log_error("submit command replaces approve without --confirm")
+        log_error("Use: flow.sh submit <plan>")
+        return 1
+    
+    # 2. Check Plan status is "planning" or "reviewing"
     current_status = parse_plan_status(plan_path)
     
     if not current_status:
         current_status = get_plan_status(plan_path)
     
-    if current_status != "planning":
-        log_error(f"Plan must be in planning state to approve (current: {current_status})")
+    if current_status not in (STATUS_PLANNING, STATUS_REVIEWING):
+        log_error(f"Plan must be in planning or reviewing state to approve (current: {current_status})")
         log_error("")
         
         if current_status == "executing":
@@ -268,22 +204,11 @@ def cmd_approve(args: argparse.Namespace) -> int:
     except ValidationError as e:
         log_error("Plan failed check-doc validation")
         print(str(e))
-        log_error(f"Fix the issues and retry: flow.sh approve {input_ref}")
+        log_error(f"Fix the issues and retry: flow.sh submit {input_ref}")
         return 1
     
     # 4. Extract Issue number (if plan has Issue link)
     issue_number = get_plan_issue(plan_path)
-    
-    # ============================================
-    # Non --confirm mode: validate + await approval (no auto-commit)
-    # ============================================
-    if not confirm:
-        print("Status: awaiting approval")
-        print(f"Plan validated. Next: flow.sh approve {input_ref} --confirm")
-        print("")
-        print("收到用户审批授权后，由 agent 执行:")
-        print(f"  flow.sh approve {input_ref} --confirm")
-        return 0
     
     # ============================================
     # --confirm mode: preflight checks + state transition
@@ -377,7 +302,7 @@ def cmd_approve(args: argparse.Namespace) -> int:
     # STATE TRANSITION (commit Plan BEFORE worktree creation)
     # ============================================
     
-    log_step("Transitioning state: planning -> executing")
+    log_step(f"Transitioning state: {current_status} -> executing")
     
     # Update Plan status to executing
     if not update_plan_status(plan_path, "executing"):
@@ -387,7 +312,7 @@ def cmd_approve(args: argparse.Namespace) -> int:
     log_success("Plan status updated to: executing")
     
     # Commit/push the Plan baseline (executing + Worktree metadata) on integration branch
-    if not _commit_and_push_plan(plan_path, issue_number, workspace_root):
+    if not commit_and_push_plan(plan_path, issue_number, workspace_root, message_prefix="approve"):
         log_error("Failed to commit/push Plan baseline")
         return 1
     
