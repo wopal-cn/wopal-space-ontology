@@ -786,12 +786,20 @@ def _cmd_plan_status(input_ref: str) -> int:
         if wt_meta and wt_meta.get('path'):
             worktree_path = str(workspace_root / wt_meta['path'])
         else:
-            # Legacy fallback: reconstruct from slug
+            # Legacy fallback: reconstruct from slug (same naming as approve.py)
             slug = _extract_slug(plan_name)
             branch = f"issue-{plan_issue_num}-{slug}"
             worktree_path = ""
             if project:
-                worktree_path = str(workspace_root / ".worktrees" / f"{project}-{branch}")
+                try:
+                    from plan import ProjectType, detect_project_type
+                    project_type_str = detect_project_type(project)
+                    if project_type_str == ProjectType.ONTOLOGY_WORKTREE.value:
+                        worktree_path = str(workspace_root / ".worktrees" / f"ontology-{branch}")
+                    else:
+                        worktree_path = str(workspace_root / ".worktrees" / f"{project}-{branch}")
+                except Exception:
+                    worktree_path = str(workspace_root / ".worktrees" / f"{project}-{branch}")
 
         if worktree_path and os.path.isdir(worktree_path):
             print("")

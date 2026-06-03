@@ -684,19 +684,39 @@ def cmd_archive(args: argparse.Namespace) -> int:
         capture_output=True,
     )
 
-    # 8. Update phase doc Related Plans table (before commit, so changes are included)
+    # 8. Update phase doc Related Plans table and commit in workspace root
     phase_doc_updated = _update_phase_doc_plan_status(
         workspace_root, plan_name, product_meta, phase_meta,
     )
     if phase_doc_updated and product_meta and phase_meta:
-        # Stage the phase doc so it's included in the archive commit
+        # Commit phase doc change in workspace root (separate from plan repo commit)
         phase_doc_rel = f"docs/products/{product_meta}/phases/"
+        ws_root_str = str(workspace_root)
         subprocess.run(
             ["git", "add", phase_doc_rel],
-            cwd=str(workspace_root),
+            cwd=ws_root_str,
             capture_output=True,
         )
-        log_success(f"Phase doc Related Plans updated: {product_meta}/{phase_meta}")
+        commit_msg = f"chore: archive plan {plan_name} — update phase doc {product_meta}/{phase_meta}"
+        result = subprocess.run(
+            ["git", "commit", "-m", commit_msg],
+            cwd=ws_root_str,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            log_success(f"Phase doc Related Plans updated: {product_meta}/{phase_meta}")
+            # Push workspace root changes
+            push_result = subprocess.run(
+                ["git", "push"],
+                cwd=ws_root_str,
+                capture_output=True,
+                text=True,
+            )
+            if push_result.returncode != 0:
+                log_warn(f"Failed to push phase doc commit: {push_result.stderr.strip()}")
+        else:
+            log_warn(f"Failed to commit phase doc: {result.stderr.strip()}")
 
     # 9. Commit archived plan (and phase doc if updated)
     commit_archived_plan(archived_file, plan_issue, workspace_root)

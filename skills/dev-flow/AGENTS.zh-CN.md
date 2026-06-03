@@ -21,7 +21,7 @@ description: Issue/Plan-driven development workflow CLI — state-machine comman
 |---|---|
 | `scripts/flow.sh` | CLI 入口，路由到 Python |
 | `scripts/flow.py` | argparse 主程序、子命令分发 |
-| `scripts/commands/` | 子命令实现 (approve, complete, verify, plan, issue, sync, archive, roadmap, decompose, reset, query) |
+| `scripts/commands/` | 子命令实现 (submit, approve, complete, verify, plan, issue, sync, archive, roadmap, decompose, reset) |
 | `scripts/lib/` | 共享库 (git, github, project, workspace, worktree, logging) |
 | `templates/` | Plan 和 Issue 模板 |
 | `references/` | 命令参考、Plan 校验规则、TDD 指南、故障处理 |
@@ -47,7 +47,7 @@ description: Issue/Plan-driven development workflow CLI — state-machine comman
 
 ### State Machine
 
-`planning → executing → verifying → done`
+`planning → reviewing → executing → verifying → done`
 
 每个命令有前置状态要求，非法转换报错。新增命令必须声明前置/后置状态。
 
