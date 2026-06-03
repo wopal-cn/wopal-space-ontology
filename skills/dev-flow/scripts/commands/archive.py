@@ -651,7 +651,11 @@ def cmd_archive(args: argparse.Namespace) -> int:
                     log_error("Failed to push project changes")
                     return 1
 
-    # 4. Archive Plan file
+    # 4. Cache Product/Phase metadata before Plan is moved
+    product_meta = get_plan_field(plan_path, "Product")
+    phase_meta = get_plan_field(plan_path, "Phase")
+
+    # 5. Archive Plan file
     try:
         archived_file = archive_plan_file(plan_path, workspace_root)
         log_success(f"Plan archived: {archived_file}")
@@ -659,7 +663,7 @@ def cmd_archive(args: argparse.Namespace) -> int:
         log_error(f"Failed to archive plan: {e}")
         return 1
 
-    # 5. Update Issue Plan link (only if Issue exists)
+    # 6. Update Issue Plan link (only if Issue exists)
     if plan_issue:
         update_issue_plan_link(
             issue_number=plan_issue,
@@ -668,7 +672,7 @@ def cmd_archive(args: argparse.Namespace) -> int:
             workspace_root=str(workspace_root),
         )
 
-    # 6. Stage archived plan in Plan's repo (rename is already staged by git mv)
+    # 7. Stage archived plan in Plan's repo (rename is already staged by git mv)
     #    If git mv was used, the rename is already staged. For safety, also
     #    stage the archived file path.
     plan_location = resolve_plan_location(Path(archived_file), workspace_root)
@@ -680,22 +684,29 @@ def cmd_archive(args: argparse.Namespace) -> int:
         capture_output=True,
     )
 
-    # 7. Commit archived plan
+    # 8. Update phase doc Related Plans table (before commit, so changes are included)
+    phase_doc_updated = _update_phase_doc_plan_status(
+        workspace_root, plan_name, product_meta, phase_meta,
+    )
+    if phase_doc_updated and product_meta and phase_meta:
+        # Stage the phase doc so it's included in the archive commit
+        phase_doc_rel = f"docs/products/{product_meta}/phases/"
+        subprocess.run(
+            ["git", "add", phase_doc_rel],
+            cwd=str(workspace_root),
+            capture_output=True,
+        )
+        log_success(f"Phase doc Related Plans updated: {product_meta}/{phase_meta}")
+
+    # 9. Commit archived plan (and phase doc if updated)
     commit_archived_plan(archived_file, plan_issue, workspace_root)
 
-    # 8. Close Issue
+    # 10. Close Issue
     if plan_issue:
         if close_issue(plan_issue, repo, "Plan archived. Closing issue."):
             log_success(f"Issue #{plan_issue} closed")
         else:
             log_warn(f"Failed to close Issue #{plan_issue}")
-
-    # 9. Update phase doc Related Plans table (if Product + Phase metadata present)
-    product_meta = get_plan_field(plan_path, "Product")
-    phase_meta = get_plan_field(plan_path, "Phase")
-    _update_phase_doc_plan_status(
-        workspace_root, plan_name, product_meta, phase_meta,
-    )
 
     # Output summary
     print("")

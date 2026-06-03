@@ -184,7 +184,8 @@ def _print_existing_plan_info(plan_file: str, target_ref: str) -> None:
     print(f"Status: {current_status}")
     
     status_to_next = {
-        "planning": f"Next: flow.sh approve {target_ref}",
+        "planning": f"Next: flow.sh submit {target_ref}",
+        "reviewing": f"Next: flow.sh approve {target_ref} --confirm",
         "executing": f"Next: flow.sh complete {target_ref}",
         "verifying": f"Next: flow.sh verify {target_ref} --confirm",
         "done": f"Next: flow.sh archive {target_ref}",
@@ -775,12 +776,22 @@ def _cmd_plan_status(input_ref: str) -> int:
     print(f"  Created: {created}")
 
     if plan_issue_num:
-        slug = _extract_slug(plan_name)
-        branch = f"issue-{plan_issue_num}-{slug}"
-        worktree_path = ""
+        # Read Worktree metadata from Plan (written by approve --confirm)
+        try:
+            from plan import get_plan_worktree
+            wt_meta = get_plan_worktree(plan_file)
+        except Exception:
+            wt_meta = None
 
-        if project:
-            worktree_path = str(workspace_root / ".worktrees" / f"{project}-{branch}")
+        if wt_meta and wt_meta.get('path'):
+            worktree_path = str(workspace_root / wt_meta['path'])
+        else:
+            # Legacy fallback: reconstruct from slug
+            slug = _extract_slug(plan_name)
+            branch = f"issue-{plan_issue_num}-{slug}"
+            worktree_path = ""
+            if project:
+                worktree_path = str(workspace_root / ".worktrees" / f"{project}-{branch}")
 
         if worktree_path and os.path.isdir(worktree_path):
             print("")

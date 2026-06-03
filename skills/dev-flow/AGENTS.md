@@ -21,7 +21,7 @@ description: Issue/Plan-driven development workflow CLI — state-machine comman
 |---|---|
 | `scripts/flow.sh` | CLI entry point, routes to Python |
 | `scripts/flow.py` | argparse main program, subcommand dispatch |
-| `scripts/commands/` | Subcommand implementations (approve, complete, verify, plan, issue, sync, archive, roadmap, decompose, reset, query) |
+| `scripts/commands/` | Subcommand implementations (submit, approve, complete, verify, plan, issue, sync, archive, roadmap, decompose, reset) |
 | `scripts/lib/` | Shared libraries (git, github, project, workspace, worktree, logging) |
 | `templates/` | Plan and Issue templates |
 | `references/` | Command reference, plan validation rules, TDD guide, troubleshooting |
@@ -47,7 +47,7 @@ Runtime dependencies: bash 3.x+, `gh` CLI, `jq`, Python 3
 
 ### State Machine
 
-`planning → executing → verifying → done`
+`planning → reviewing → executing → verifying → done`
 
 Each command requires a prerequisite state; invalid transitions error out. New commands must declare their prerequisite and resulting states.
 

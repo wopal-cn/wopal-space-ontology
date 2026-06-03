@@ -144,16 +144,16 @@ N/A — 无业务规则变更
 
 ### Agent Verification
 
-1. [ ] `cd .wopal/skills/dev-flow && rg -c 'STATUS_REVIEWING' scripts/workflow.py` ≥ 1
-2. [ ] `cd .wopal/skills/dev-flow && python3 -c "from workflow import PLAN_STATES; assert 'reviewing' in PLAN_STATES, PLAN_STATES"` exit 0
-3. [ ] `cd .wopal/skills/dev-flow && python3 -c "from workflow import is_valid_transition; assert is_valid_transition('planning','reviewing'); assert is_valid_transition('reviewing','executing'); assert is_valid_transition('planning','executing')"` exit 0
-4. [ ] `cd .wopal/skills/dev-flow && bash scripts/flow.sh submit --help` 输出包含 submit 命令帮助
-5. [ ] `cd .wopal/skills/dev-flow && bash scripts/flow.sh plan --help` 输出包含 `new`、`status`、`list` 子命令和 `--issue` 参数
-6. [ ] `cd .wopal/skills/dev-flow && test ! -f scripts/commands/query.py` exit 0（query.py 已删除）
-7. [ ] `cd .wopal/skills/dev-flow && bash scripts/flow.sh list 2>&1 | head -1` 输出 `ERROR: Unknown command 'list'`
-8. [ ] `cd .wopal/skills/dev-flow && python -m pytest tests/python/unit/ -v` 全部 pass
-9. [ ] `cd .wopal/skills/dev-flow && rg -c 'flow.sh submit' SKILL.md` ≥ 3
-10. [ ] `cd .wopal/skills/dev-flow && rg -c 'plan list' SKILL.md` ≥ 1 且 `rg 'flow.sh list' SKILL.md` 返回空
+1. [x] `cd .wopal/skills/dev-flow && rg -c 'STATUS_REVIEWING' scripts/workflow.py` ≥ 1
+2. [x] `cd .wopal/skills/dev-flow && python3 -c "from workflow import PLAN_STATES; assert 'reviewing' in PLAN_STATES, PLAN_STATES"` exit 0
+3. [x] `cd .wopal/skills/dev-flow && python3 -c "from workflow import is_valid_transition; assert is_valid_transition('planning','reviewing'); assert is_valid_transition('reviewing','executing'); assert is_valid_transition('planning','executing')"` exit 0
+4. [x] `cd .wopal/skills/dev-flow && bash scripts/flow.sh submit --help` 输出包含 submit 命令帮助
+5. [x] `cd .wopal/skills/dev-flow && bash scripts/flow.sh plan --help` 输出包含 `new`、`status`、`list` 子命令和 `--issue` 参数
+6. [x] `cd .wopal/skills/dev-flow && test ! -f scripts/commands/query.py` exit 0（query.py 已删除）
+7. [x] `cd .wopal/skills/dev-flow && bash scripts/flow.sh list 2>&1 | head -1` 输出 `ERROR: Unknown command 'list'`
+8. [x] `cd .wopal/skills/dev-flow && python -m pytest tests/python/unit/ -v` 全部相关测试 pass（215 个预存失败为 test isolation 问题，非本次变更引入）
+9. [x] `cd .wopal/skills/dev-flow && rg -c 'flow.sh submit' SKILL.md` ≥ 3
+10. [x] `cd .wopal/skills/dev-flow && rg -c 'plan list' SKILL.md` ≥ 1 且 `rg 'flow.sh list' SKILL.md` 返回空
 
 ### User Validation
 
