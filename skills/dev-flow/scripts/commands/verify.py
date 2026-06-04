@@ -219,9 +219,9 @@ def _check_feature_branch_merged(workspace_root: Path, plan_path: str) -> int:
         )
         return 1
 
-    # Parse merged branches: strip "* " prefix, trim whitespace
+    # Parse merged branches: strip "* " / "+ " prefix, trim whitespace
     merged_branches = [
-        b.strip().lstrip("* ") for b in result.stdout.strip().split("\n")
+        b.strip().lstrip("*+ ") for b in result.stdout.strip().split("\n")
         if b.strip()
     ]
 
