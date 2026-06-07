@@ -116,7 +116,7 @@ git push origin space/main
 
 fork main 与 space/main 的关系、同步铁律、能力下放与裁剪流程见 `references/capability-layers.md`。
 
-**核心铁律**：禁止 `space/main → fork main` 直接 merge（会破坏用户级能力栈）。能力下放用 `git checkout space/main -- <files>` + 新 commit。
+**核心铁律**：保持 `space/main → fork main` 可直接 merge。若 space/main 删除了 fork main 上的用户级能力，先从 main 放回 space/main，再向上 merge。
 
 ---
 
