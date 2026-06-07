@@ -18,7 +18,7 @@ dev-flow 管理两类产物，它们在 git 中独立演化：
 | **Plan 文件** | 状态、checkbox、元数据 | `flow.sh` 脚本自动提交 | 状态推进时（submit/approve/complete/verify/archive） |
 | **实施代码** | 源码、测试、文档变更 | agent（Wopal 或 fae）手动提交 | rook PASS 后、`complete` 之前 |
 
-**铁律：脚本永远不碰代码。** `flow.sh` 的所有命令只操作 Plan 文件，不会 add、commit、merge、push 任何实施代码。代码的提交、合并、推送 100% 由 agent 或用户负责。
+**铁律：脚本永远不碰代码。** `flow.sh` 的所有命令只操作 Plan 文件，不会 add、commit、merge、push 任何实施代码。代码的 commit 和 feature → 集成分支的 merge 由 agent 负责；push 由用户独占。
 
 **实施产物 = 原子单元。** 实施代码变更 + Task Done checkbox + Agent Verification checkbox 是一个原子单元，同一次 commit 提交。禁止拆成多次 commit。
 
@@ -48,7 +48,7 @@ dev-flow 管理两类产物，它们在 git 中独立演化：
 4. agent 提交实施产物           → 一次 commit：代码 + Task Done + AC checkbox（feature 分支）
 5. flow.sh complete             → 脚本自动提交 Plan status → verifying（feature 分支）
 6. verify-switch → 用户验证    → 用户操作，无脚本提交
-7. 用户手动 merge               → 用户操作，脚本不碰
+7. agent merge feature → 集成分支  → agent 操作（不删 feature 分支，留给 archive 清理）
 8. flow.sh verify --confirm    → 脚本自动提交 Plan status → done（集成分支）
 9. flow.sh archive              → 脚本自动提交 Plan 归档（集成分支）
 ```
@@ -139,6 +139,15 @@ flow.sh sync <issue> --body-only       # 同步 Issue body（如需）
 
 `complete` 硬门控：所有 Task Done ✓ + Agent Verification ✓ + rook PASS ✓ + 实施代码已提交。
 
+**⚠️ complete 时序铁律（严格约束）**：
+实施代码提交 → rook PASS 后，Wopal **必须**立即执行 `flow.sh complete <issue>` 将 Plan 状态推进至 `verifying`，然后才能进入用户验证环节。
+
+违反模式：实施代码提交 → 跳过 `complete` → 直接邀约用户"验证/验收/测试" → 用户确认后才发现 Plan 还在 `executing`。
+
+正确模式：实施代码提交 → rook PASS → **`flow.sh complete`**（`executing→verifying`） → 再向用户发出任何验证邀约。
+
+Plan 状态未达 `verifying` 之前，Wopal 不得以任何形式（口头提示、命令行建议、checkbox 勾选邀请）请求用户进行功能验证。此规则是 Wopal 的自主执行义务，不依赖用户提醒。违反 = 严重失职。
+
 ### D. 验证（verifying）
 
 `complete` 后 Plan 状态为 `verifying`，代码和 Plan 都在 feature 分支上。
@@ -146,12 +155,12 @@ flow.sh sync <issue> --body-only       # 同步 Issue body（如需）
 统一流程：
 1. `flow.sh verify-switch <issue>` — 确认后切换工作空间到 feature 分支
 2. 用户验证功能（重启 ellamaka / 运行测试 / 体验流程）
-3. 用户手动 merge（feature → 集成分支，**不删 feature 分支**，留给 archive 清理）
-4. `flow.sh verify <issue> --confirm` — 校验 merge 已完成 → done
-5. `flow.sh archive <issue>`
+3. agent merge（feature → 集成分支，**不删 feature 分支**，留给 archive 清理）
+4. agent 在集成分支执行 `flow.sh verify <issue> --confirm` — 校验 merge 已完成 → done
+5. agent 执行 `flow.sh archive <issue>`
 
-**standard 项目**：verify-switch 清理 worktree 后，用户在项目目录验证、手动 merge。
-**ontology-worktree**：verify-switch 切换 `.wopal/` 到 feature 分支，用户重启 ellamaka 验证后手动 merge。
+**standard 项目**：verify-switch 清理 worktree 后，用户在项目目录验证，agent 在集成分支上 merge feature。
+**ontology-worktree**：verify-switch 切换 `.wopal/` 到 feature 分支，用户重启 ellamaka 验证后，agent 在 `space/main` 分支上 merge feature。
 
 ### E. Done
 
@@ -188,7 +197,7 @@ flow.sh archive <issue>
 | `planning` / `submit` / `approve` | 集成分支 | 脚本 | Plan 文件状态变更 |
 | `executing`（实施代码） | feature 分支 | agent | 实施产物（代码 + checkbox） |
 | `complete` | feature 分支 | 脚本 | Plan status → verifying |
-| `用户手动 merge` | 集成分支 | 用户 | 代码 merge（不脚本化） |
+| `agent merge feature → 集成分支` | 集成分支 | agent | 代码 merge（不脚本化、不删 feature 分支） |
 | `verify --confirm` | 集成分支 | 脚本 | Plan status → done |
 | `archive` | 集成分支 | 脚本 | Plan 归档 + worktree 清理 |
 
@@ -216,6 +225,7 @@ flow.sh archive <issue>
 - **`approve` 不带 `--confirm`** — 报错退出，使用 `submit` 提审
 - **`verify-switch` 用于 standard 项目以外的场景** — standard 直接在 worktree 目录验证
 - **合并后手动删除 feature 分支** — 保留到 `archive` 自动清理，确保 `verify --confirm` 能检测 merge 状态
+- **跳过 `complete` 直接邀用户验证** — 代码提交 + rook PASS 后必须先 `flow.sh complete` 推进到 `verifying`，然后才能进入用户验证。未达 `verifying` 前请求用户验收 = 严重失职
 
 ## 参考
 
