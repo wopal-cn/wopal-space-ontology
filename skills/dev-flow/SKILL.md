@@ -2,48 +2,182 @@
 name: dev-flow
 description: |
   Issue/Plan 驱动的开发工作流。⚠️ 任务需以 GitHub Issue 或 Plan 为执行载体。
-
-  🔴 Trigger: "#14"、"这个 issue"、"出个计划"、"开始开发"、"执行计划"、Plan 生命周期推进（approve/complete/verify/archive）、从 PRD 拆分 Issue。
+  🔴 Trigger: "#14"、"创建 issue"、"出个计划"、"实施 plan"、"执行计划"、Plan 生命周期推进（approve/complete/verify/archive）、从 PRD 拆分 Issue。
   ❌ Skip: spec 驱动流程、单纯研究/讨论/解释、不需 Issue/Plan 的临时小改动。
-compatibility:
-  - bash 3.x+
-  - gh CLI
-  - jq
 ---
 
 # dev-flow — Issue / Plan 驱动开发流程
 
-统一状态机：`planning → executing → verifying → done`
+## 心智模型
 
-统一命令链：`plan → approve → approve --confirm → complete → verify --confirm → archive`
+dev-flow 管理两类产物，它们在 git 中独立演化：
+
+| 产物 | 什么 | 谁提交 | 何时提交 |
+|------|------|--------|----------|
+| **Plan 文件** | 状态、checkbox、元数据 | `flow.sh` 脚本自动提交 | 状态推进时（submit/approve/complete/verify/archive） |
+| **实施代码** | 源码、测试、文档变更 | agent（Wopal 或 fae）手动提交 | rook PASS 后、`complete` 之前 |
+
+**铁律：脚本永远不碰代码。** `flow.sh` 的所有命令只操作 Plan 文件，不会 add、commit、merge、push 任何实施代码。代码的 commit 和 feature → 集成分支的 merge 由 agent 负责；push 由用户独占。
+
+**实施产物 = 原子单元。** 实施代码变更 + Task Done checkbox + Agent Verification checkbox 是一个原子单元，同一次 commit 提交。禁止拆成多次 commit。
+
+## 状态机
+
+`planning → reviewing → executing → verifying → done`
+
+| 命令 | 前置状态 | 后置状态 | Plan 操作 | 代码操作 |
+|------|---------|---------|-----------|----------|
+| `plan` | 无 | `planning` | 脚本提交 Plan | — |
+| `submit` | `planning` | `reviewing` | 脚本提交 Plan status | — |
+| `approve --confirm` | `reviewing`/`planning` | `executing` | 脚本提交 Plan status + worktree 元数据 | — |
+| `complete` | `executing` | `verifying` | 脚本提交 Plan status | **脏树报错退出** |
+| `verify --confirm` | `verifying` | `done` | 脚本提交 Plan status | — |
+| `archive` | `done` | 归档 | 脚本提交 Plan 归档 + worktree 清理 | — |
+
+命令顺序不合法时，回到正确状态顺序执行，不要强行推进。
+
+## 提交序列
+
+一次完整 Plan 的 git 提交序列（feature 分支视角）：
+
+```
+1. plan / submit / approve     → 脚本自动提交 Plan 文件（集成分支）
+2. fae 实施                     → 变更留在 working tree，不提交
+3. rook PASS                    → 触发下一步
+4. agent 提交实施产物           → 一次 commit：代码 + Task Done + AC checkbox（feature 分支）
+5. flow.sh complete             → 脚本自动提交 Plan status → verifying（feature 分支）
+6. verify-switch → 用户验证    → 用户操作，无脚本提交
+7. agent merge feature → 集成分支  → agent 操作（不删 feature 分支，留给 archive 清理）
+8. flow.sh verify --confirm    → 脚本自动提交 Plan status → done（集成分支）
+9. flow.sh archive              → 脚本自动提交 Plan 归档（集成分支）
+```
+
+**常见错误**：在步骤 4 之前执行 `complete`（代码未提交 → 报错）；步骤 4 拆成多次 commit（碎片化历史）；checkbox 单独 commit（多余 commit）。
 
 ## 核心原则
 
-1. 先进入 Plan 生命周期，再开始实施。
-2. `approve --confirm` 和 `verify --confirm` 都是人类授权门。
-3. `complete` 表示"实施完成，代码已提交，进入用户验证阶段"，不代表"用户已验证通过"。
-4. `archive` 只做 push + 归档收尾，不承担验证职责。
-5. **Plan 必须先通过 `flow.sh plan ...` 生成或定位 stub**；禁止手写创建 Plan 文件，禁止自行猜测 Plan 路径。
+1. **Plan 先行**：先进入 Plan 生命周期，再开始实施。Plan 必须通过 `flow.sh plan ...` 创建或定位，禁止手写创建。
+2. **人类授权门**：`approve --confirm` 和 `verify --confirm` 都需要用户明确授权，禁止未经授权执行。
+3. **脚本不碰代码**：`flow.sh` 所有命令只操作 Plan 文件，不提交实施代码。`complete` 遇脏树报错退出。
+4. **实施产物原子提交**：代码变更 + Task Done checkbox + Agent Verification checkbox 在一次 commit 中提交，不可拆分。
+5. **活动 Plan 路径**：委派实施时，Plan 路径必须使用 feature 分支 worktree 中的活动副本，禁止使用 main 分支路径。
+6. **rook 门禁**：Plan 审查（submit 前）和实施审查（complete 前）必须委派 rook，rook PASS 才能推进。最多 3 轮修订。
 
-## 最容易遗漏的两步
+## Plan 定位
 
-1. **Plan 写完后**：`--check` → 必要时 `sync <issue> --body-only` → `approve` → 等用户审批。
-2. **实施完成后**：每个 Task 运行 Verify 通过后立即勾选 Done → 完成 Agent Verification → `complete` → 再等用户验证。
+当用户提到某个 Plan 名称（如 `155-enhance-dev-flow`）时，**必须**用脚本定位，**严禁** `grep`、`glob`、`read` 在空间内盲目搜索。
 
-**Done 勾选范围**：Implementation 中每个 Task 的 `- [ ]` checkbox，以及 `### Agent Verification` 中的所有 checkbox。`complete` 强制校验全部勾选。
+- `flow.sh plan <name>` — 快速定位 Plan 文件路径（O(1)）
+- `flow.sh plan status <name>` — 查看 Plan 完整状态，含状态机位置、关联 Issue、worktree 信息
+- `flow.sh plan list` — 浏览所有活跃 Plan（含 `--issue` 模式查看 GitHub Issues）
 
-## 状态机与命令映射
+## 验证纪律
 
-| 命令 | 前置状态 | 后置状态 | 作用 |
-|------|---------|---------|------|
-| `plan` | 无 | `planning` | 创建或定位 Plan |
-| `approve` | `planning` | `planning` | 校验 Plan，提交方案评审 |
-| `approve --confirm` | `planning` | `executing` | 用户审批通过，开始实施 |
-| `complete` | `executing` | `verifying` | 实施完成，提交代码 |
-| `verify --confirm` | `verifying` | `done` | 用户验证通过 |
-| `archive` | `done` | 归档 | push 代码，归档 Plan，关闭 Issue |
+验证分三层，每层的责任人和规则不同。
 
-命令顺序不合法时，回到正确状态顺序执行，不要强行推进。
+### 第一层：Task Done（fae 即时勾选）
+
+每个 Task 完成 → 运行 Task 内的 Verify 命令 → 通过后**立即勾选** Done checkbox。
+
+- 委派 fae 的 prompt 必须包含"完成后勾选 Plan 中对应 Task 的 Done checkbox"指令
+- 禁止积压到阶段末尾统一补勾
+
+### 第二层：Agent Verification（Wopal 实证勾选）
+
+rook 审查 PASS 后，Wopal **必须逐项真实验证** Agent Verification 的每个 AC。
+
+验证方法：按 AC 描述**运行命令、检查输出、确认结果**。不能凭记忆或推测打勾，不能被 `complete` 脚本报错催着补勾。
+
+AC 全部通过 → 勾选 Agent Verification checkbox → 与代码一起提交（见提交序列步骤 4）。
+
+### 第三层：User Validation（用户独占）
+
+用户验证功能是否符合预期。checkbox 勾选权在用户，Agent **绝对禁止**代勾。
+
+Agent 可以执行验证动作、展示结果，但必须等用户明确确认。
+
+## 标准流程
+
+### A. Planning
+
+```bash
+flow.sh plan <issue>                    # Issue 驱动
+flow.sh plan --title "..." --project <name> --type <type>  # 无 Issue
+```
+
+完整命令链：`plan → submit → approve --confirm → complete → verify --confirm → archive`。
+
+**Plan 目录**：标准项目 `projects/<project>/docs/plans/`；ontology-worktree `.wopal/docs/plans/`。`--project` 必填。
+
+### B. Plan 审查与提交
+
+```bash
+flow.sh plan <issue> --check           # 校验 Plan 质量
+flow.sh sync <issue> --body-only       # 同步 Issue body（如需）
+```
+
+1. 委派 rook 审 Plan（强制）— prompt 契约见 agents-collab
+2. rook PASS → `flow.sh submit <issue>`（planning → reviewing）
+3. rook REVISE/BLOCK → 修订后重审（最多 3 轮）
+4. 等用户审批后：`flow.sh approve <issue> --confirm`（reviewing/planning → executing）
+
+### C. Executing
+
+1. `flow.sh approve <issue> --confirm`（默认创建 worktree）
+2. 委派 fae 实施（prompt 含活动 Plan 路径 + Done checkbox 指令）
+3. fae 完成 Task → Verify 通过 → 即时勾选 Done checkbox
+4. 全部 Task 完成 → Wopal **逐项实证** Agent Verification AC
+5. AC 通过 → 勾选 checkbox，**与代码一起一次 commit**（提交序列步骤 4）
+6. 委派 rook 审查实施（强制）
+7. rook PASS → `flow.sh complete <issue>`（脚本提交 Plan status → verifying）
+
+**委派要点**：
+- 实施 → fae；审查 → rook
+- fae 保留策略：rook 审查未完成前不 finish fae task（上下文 >50% 例外）
+- rook 契约格式见 agents-collab；rook 自行加载 df-plan-review / df-implement-review
+
+`complete` 硬门控：所有 Task Done ✓ + Agent Verification ✓ + rook PASS ✓ + 实施代码已提交。
+
+**⚠️ complete 时序铁律（严格约束）**：
+实施代码提交 → rook PASS 后，Wopal **必须**立即执行 `flow.sh complete <issue>` 将 Plan 状态推进至 `verifying`，然后才能进入用户验证环节。
+
+违反模式：实施代码提交 → 跳过 `complete` → 直接邀约用户"验证/验收/测试" → 用户确认后才发现 Plan 还在 `executing`。
+
+正确模式：实施代码提交 → rook PASS → **`flow.sh complete`**（`executing→verifying`） → 再向用户发出任何验证邀约。
+
+Plan 状态未达 `verifying` 之前，Wopal 不得以任何形式（口头提示、命令行建议、checkbox 勾选邀请）请求用户进行功能验证。此规则是 Wopal 的自主执行义务，不依赖用户提醒。违反 = 严重失职。
+
+### D. 验证（verifying）
+
+`complete` 后 Plan 状态为 `verifying`，代码和 Plan 都在 feature 分支上。
+
+统一流程：
+1. `flow.sh verify-switch <issue>` — 确认后切换工作空间到 feature 分支
+2. 用户验证功能（重启 ellamaka / 运行测试 / 体验流程）
+3. agent merge（feature → 集成分支，**不删 feature 分支**，留给 archive 清理）
+4. agent 在集成分支执行 `flow.sh verify <issue> --confirm` — 校验 merge 已完成 → done
+5. agent 执行 `flow.sh archive <issue>`
+
+**standard 项目**：verify-switch 清理 worktree 后，用户在项目目录验证，agent 在集成分支上 merge feature。
+**ontology-worktree**：verify-switch 切换 `.wopal/` 到 feature 分支，用户重启 ellamaka 验证后，agent 在 `space/main` 分支上 merge feature。
+
+### E. Done
+
+```bash
+flow.sh verify <issue> --confirm
+```
+
+前置：Plan 状态 = `verifying`，User Validation checkbox 已勾选，feature 分支已合并到集成分支。
+
+脚本在集成分支提交 Plan-only commit（`verifying` → `done`）。
+
+### F. Archive
+
+```bash
+flow.sh archive <issue>
+```
+
+前置：Plan 状态 = `done`。脚本归档 Plan、清理 worktree、更新 Issue 链接。
 
 ## 人类授权门
 
@@ -53,229 +187,55 @@ compatibility:
 | `verify --confirm` | "验证通过"、"没问题"、"validation passed" |
 | `reset` | "重置"、"reset" |
 
-禁止未经授权执行任何 `--confirm`；禁止跳过 `approve` 直接开工。
-
-## 标准流程
-
-### A. 进入 planning
-
-Issue 驱动：`flow.sh plan <issue>`。无 Issue：`flow.sh plan --title "..." --project <name> --type <type>`。
-
-#### Plan 目录规则
-
-- 先执行 `flow.sh plan ...` 生成或定位 stub，再编辑内容。
-- Plan 目录由 `--project` 决定；`--project` 是必填参数。
-- **标准项目**：`projects/<project>/docs/plans/`
-- **ontology-worktree**：`.wopal/docs/plans/`
-- `docs/projects/<project>/plans/` 是 **DEPRECATED** 只读回退，禁止新写入。
-
-#### --project 必填
-
-`--project` 是 `plan` 命令的必填参数。不存在"空间级 Plan"——每个 Plan 必须归属一个项目。
-
-### A+. Plan 编写要点
-
-**业务规则影响评估**：
-
-Plan 编写时，读取产品已有 `projects/<project>/docs/BUSINESS_RULES.md`，判断本次改动是否影响业务规则：
-
-| 场景 | Plan 中标注 |
-|------|-----------|
-| 引入新业务约束 | `## Business Rules Impact → 新增: BR-NNN 规则描述` |
-| 改变已有规则判定条件 | `## Business Rules Impact → 修改: BR-NNN 旧→新（原因）` |
-| 系统设计变更使规则不再适用 | `## Business Rules Impact → 废弃: BR-NNN 废弃原因` |
-| 纯技术重构、bug 修复（无新约束） | `N/A — 无业务规则变更` |
-
-**同步时机**：`complete` 前 Wopal 负责将 `## Business Rules Impact` 中非 N/A 的变更同步到 `BUSINESS_RULES.md`，然后勾选同步确认 checkbox。
-
----
-
-### B. Plan 写完后，方案评审
-
-1. 完成 Plan 编写，运行 `flow.sh plan <issue> --check`
-2. Issue 驱动时若 Plan 影响 Issue body，执行 `flow.sh sync <issue> --body-only`
-3. **委派 rook 审 Plan**（强制）—— prompt 契约格式见 agents-collab
-4. 根据 rook 判定：PASS → 继续；REVISE/BLOCK → 修订后重审（最多 3 轮）
-5. 通过后：`flow.sh approve <issue>`，停止推进，等用户审批
-6. 用户授权后：`flow.sh approve <issue> --confirm`（默认创建 worktree 隔离）
-
-禁止：跳过 rook 审查直接 approve、rook BLOCK 后强行 approve。
-
-### C. 进入 executing 后实施
-
-每完成一个 Task 立即勾选 Done checkbox，不积压。
-
-**委派体系**：
-
-- 实施 Task → 委派 fae。Wopal 职责：切片 → 委派 → 验证 → 推进下一 Wave
-- 审查 Task → 委派 rook。rook 返回 PASS/REVISE/BLOCK
-
-```text
-Plan 切片 → 委派 fae 实施 → 委派 rook 审查 → 根据结果推进/修正 → 下一 Wave
-```
-
-**fae 保留策略**：rook 审查未完成前不 finish fae task（上下文 >50% 例外）。rook REVISE/BLOCK 时 reply 同一 fae 修复，不新开 task。
-
-**rook 委派时机**：
-1. Plan 写完后（approve 前）— 审方案质量
-2. fae 最终交付后（complete 前）— 最终审查
-
-rook 契约格式见 agents-collab。委派 rook 前不预加载 df-plan-review / df-implement-review —— rook 自行加载。
-
-**委派 prompt 必须**：末尾附加 Done checkbox 更新指令（格式见 `references/plan-authoring.md`）。
-
-### D. 实施完成后，进入用户验证
-
-1. 确认所有 Task Done 已勾选
-2. **委派 rook 审 fae 实施结果**（强制，prompt 格式见 agents-collab）
-3. 根据 rook 判定：PASS → 继续；REVISE/BLOCK → fix + re-review（最多 3 轮）
-4. 通过后勾选 `### Agent Verification`
-5. **同步业务规则**：如 Plan 的 `## Business Rules Impact` 非 N/A，将变更同步到 `projects/<project>/docs/BUSINESS_RULES.md`，勾选 Plan 中的同步确认 checkbox
-6. `flow.sh complete <issue>`
-
-`complete` 硬门控：所有 Task Done ✓ + Agent Verification ✓ + rook PASS ✓。
-
-### worktree 隔离下的验证切换
-
-`complete` 后代码在 feature 分支。用户验证需切换运行时环境：
-
-**Phase 1 — 切换验证**：
-```bash
-flow.sh verify-switch <issue>
-```
-自动完成：移除隔离 worktree → 检出 feature 分支 → 记录主分支。提示用户重启验证。
-
-**Phase 2 — 合并回主分支**（用户确认验证通过后，Wopal 自动执行）：
-```bash
-flow.sh verify-switch <issue> --merge
-```
-自动完成：检出主分支 → merge feature 分支 → `flow.sh verify <issue> --confirm`。
-
-**⚠️ 硬约束**：合并（Phase 2）**必须**在用户明确确认验证通过后执行。禁止手动 merge，统一使用本命令。
-
-### E. 用户验证通过后进入 done
-
-用户确认后：`flow.sh verify <issue> --confirm`。前置：Plan 状态 = `verifying`，User Validation 最终 checkbox 已勾选。
-
-### F. 最后归档
-
-`flow.sh archive <issue>`。前置：Plan 状态 = `done`。
-
-## Roadmap
-
-产品阶段规划前置工作流。从 PRD/DESIGN 文档生成 phase 文档和 Issue。
-
-```bash
-flow.sh roadmap <prd-path> [--product <name>] [--project <name>] [--yes] [--dry-run]
-```
-
-**四阶段流程**：
-1. **Analyze**（全自动）：解析 PRD，提取 Phase 定义
-2. **Discuss**（交互式）：逐 Phase 与用户确认目标、范围、退出条件（`--yes` 跳过）
-3. **Produce**（全自动）：按模板写入 phase 定义文档到 `phases/` 目录
-4. **Decompose**（全自动）：为每个涉及项目创建 Issue，注入 Product/Phase 元信息
-
-**Issue 标题格式**：`feat({scope}): {phase-id} — {goal-summary}`（≤72 chars）
-
-## Issue 编写
-
-### 创建 Issue
-
-以 `--body-file` 为主路径——agent 直接写 markdown 文件，不需要通过 CLI 参数拼装 body：
-
-```bash
-flow.sh issue create --title "feat(scope): desc" --project <name> --body-file body.md
-```
-
-`--type` 可选覆盖（默认从标题自动推断），`--body-file` 指向包含完整五段结构的 markdown 文件。
-
-### 写入 Issue body
-
-```bash
-flow.sh issue write <issue> --body-file <path>    # 全量替换 body
-flow.sh issue write <issue> --append <path>       # 追加到 body 末尾
-```
-
-- `--body-file`：用文件内容替换整个 Issue body
-- `--append`：在现有 body 末尾追加文件内容，用 `\n\n` 分隔，保留已有内容
-
-### decompose --from ROADMAP.md
-
-从 ROADMAP.md 的 Slices 表生成 Slice Issues：
-
-```bash
-flow.sh decompose-prd --from ROADMAP.md [--product <name>] [--dry-run]
-```
-
-Slices 表格式见 ROADMAP.md Slices 语法规范。
-
-## 主流路径
-
-| 场景 | 命令路径 |
-|------|----------|
-| Issue 驱动 | `plan → --check → sync(如需) → approve → approve --confirm → complete → verify --confirm → archive` |
-| Plan 驱动 | `plan → approve → approve --confirm → complete → verify --confirm → archive` |
-
-## worktree 隔离（默认）
-
-worktree 是默认执行策略。`approve --confirm` 自动创建 worktree 隔离环境；只有 `--no-worktree` 才跳过。
-
-```bash
-flow.sh approve <issue> --confirm              # 默认创建 worktree
-flow.sh approve <issue> --confirm --no-worktree # 跳过 worktree
-```
-
-WorktreeContext 结构化元数据（9 字段）自动写入 Plan metadata：
-
-```yaml
-- **Worktree**:
-  - enabled: true
-  - project_type: standard
-  - branch: feature/test-1-slug
-  - path: .worktrees/project-issue-1-slug
-  - repo_root: /path/to/project/repo
-  - base_branch: main
-  - merge_target: main
-  - verify_mode: direct          # standard=direct, ontology=switch-runtime
-  - cleanup_policy: archive
-```
-
-验证目录结构：`ls .worktrees/<project>-issue-<N>-*/`
-
-禁止在主工作空间编辑——所有变更在 worktree 内进行。
-
-## Git 语义（repo-aware）
-
-Plan 文件在其所属 repo 中提交和推送：
-
-| 阶段 | Git 行为 |
-|------|---------|
-| `approve --confirm` | Plan-only 提交到 `PlanLocation.repo_root`（planning → executing） |
-| `complete` | 同仓（Plan 与代码同一 repo）：代码+Plan status=verifying 单次提交；不同仓：分别提交 |
-| `verify --confirm` | Plan status=done 提交到 Plan 所属 repo |
-| `archive` | git mv/commit/push 在 Plan 所属 repo 内完成 |
-| ontology-worktree complete | `.wopal` 内代码+Plan 单次提交 |
+`submit` 不需要用户授权——Plan 审阅通过后 agent 可直接执行。`approve` 不带 `--confirm` 直接报错，提示使用 `submit`。
+
+## 分支归属
+
+| 阶段 | 归属分支 | 提交者 | 内容 |
+|------|---------|--------|------|
+| `planning` / `submit` / `approve` | 集成分支 | 脚本 | Plan 文件状态变更 |
+| `executing`（实施代码） | feature 分支 | agent | 实施产物（代码 + checkbox） |
+| `complete` | feature 分支 | 脚本 | Plan status → verifying |
+| `agent merge feature → 集成分支` | 集成分支 | agent | 代码 merge（不脚本化、不删 feature 分支） |
+| `verify --confirm` | 集成分支 | 脚本 | Plan status → done |
+| `archive` | 集成分支 | 脚本 | Plan 归档 + worktree 清理 |
+
+## 委派规则
+
+| 原则 | 说明 |
+|------|------|
+| 优先 `wopal_task` | 委派时必须优先用 `wopal_task`，不可用时才用 Task |
+| 委派前检查 | 加载记忆"委派"、检查路径（基于空间根的相对路径）、确认项目上下文 |
+| 活动 Plan 路径 | 委派 prompt 使用 feature 分支 worktree 中的 Plan 路径 |
+| Done checkbox 指令 | 委派 fae 的 prompt 必须包含"完成后勾选对应 Task 的 Done checkbox" |
+| 树交接失败 | complete 因脏树报错 → 要求 fae 提交代码后重试 |
 
 ## 不要这样做
 
-- Task 完成但不勾选 Done checkbox
-- Agent Verification 未完成就推进
-- 忘记执行 `complete`
-- 跳过 rook 审查直接 complete
-- rook BLOCK 后强行 complete
-- 用户验证通过前 merge feature 分支到主分支——提前 merge 留下 revert 补丁，后续 merge 产生大量冲突
+- **跳过 dev-flow 直接手动操作** — Issue/Plan 驱动的任务必须走 `flow.sh` 命令链
+- **跳过 rook 审查直接 submit 或 complete** — Plan 审查和实施审查都是强制门禁
+- **rook BLOCK 后强行 submit 或 complete** — 必须修订后重审，最多 3 轮
+- **fae 实施期间逐 Task 提交代码** — 所有变更留在 working tree，rook PASS 后一次提交
+- **checkbox 单独 commit** — 实施产物 = 代码 + checkbox，同一次 commit
+- **未实际验证就勾选 AC** — 必须运行命令、检查输出，凭记忆打勾 = 严重失职
+- **被 `complete` 报错催着补勾** — 应在 rook PASS 后立即实证，不是等到 `complete` 才发现
+- **User Validation 越权代勾** — checkbox 勾选权在用户
+- **grep/glob 搜索 Plan** — 使用 `flow.sh plan <name>` 或 `flow.sh plan status <name>`
+- **`approve` 不带 `--confirm`** — 报错退出，使用 `submit` 提审
+- **`verify-switch` 用于 standard 项目以外的场景** — standard 直接在 worktree 目录验证
+- **合并后手动删除 feature 分支** — 保留到 `archive` 自动清理，确保 `verify --confirm` 能检测 merge 状态
+- **跳过 `complete` 直接邀用户验证** — 代码提交 + rook PASS 后必须先 `flow.sh complete` 推进到 `verifying`，然后才能进入用户验证。未达 `verifying` 前请求用户验收 = 严重失职
 
 ## 参考
 
-对所有命令，使用 `flow.sh <cmd> --help` 获取完整参数。以下文档补充使用模式和边缘场景：
-
 | 文件 | 用途 |
 |------|------|
-| `references/commands.md` | 命令概览与使用模式 |
+| `references/commands.md` | 命令完整参数与使用模式 |
 | `references/plan-authoring.md` | Plan 质量门、AC、TDD、委派 prompt 格式 |
+| `references/plan-branch-ownership.md` | Plan 分支归属完整说明 |
 | `references/troubleshooting.md` | 错误处理、边缘场景、PR 工作流 |
 | `templates/plan.md` | Plan 骨架模板 |
 | `templates/issue*.md` | 各类型 Issue 模板 |
 | `references/plan-validation.md` | Plan 校验规则 |
 | `references/tdd-guide.md` | TDD Task 编写指南 |
-| `references/issue-format.md` | Issue 标题、Plan 命名规范与 Issue body 五段结构 |
+| `references/issue-format.md` | Issue 标题、Plan 命名规范 |

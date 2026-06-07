@@ -32,9 +32,11 @@ from plan import find_plan, find_plan_by_issue
 from plan import (
     get_plan_field,
     get_plan_issue,
+    get_plan_project_path,
+    get_plan_worktree,
 )
 from lib.git import commit_paths
-from lib.project import resolve_plan_location
+from lib.worktree import resolve_active_plan, ResolveActivePlanError
 from validation import (
     ValidationError,
     check_user_validation,
@@ -161,6 +163,112 @@ def _get_plan_name(plan_path: str) -> str:
     return Path(plan_path).stem
 
 
+def _check_feature_branch_merged(workspace_root: Path, plan_path: str) -> int:
+    """Check that the feature branch has been merged to the integration branch.
+
+    Reads Plan Worktree metadata to get the feature branch name,
+    determines the integration branch based on project type, and runs
+    git branch --merged to verify.
+
+    Args:
+        workspace_root: Workspace root path
+        plan_path: Path to the Plan file
+
+    Returns:
+        0 if merged (or no worktree metadata), 1 if not merged or on error
+    """
+    from pathlib import Path as _Path
+
+    wt_meta = get_plan_worktree(plan_path)
+    if not wt_meta or not wt_meta.get("branch"):
+        return 0
+
+    feature_branch = wt_meta["branch"]
+
+    # Determine integration branch based on project type
+    project_type = get_plan_field(plan_path, "Project Type")
+    if project_type == "ontology-worktree":
+        integration_branch = "space/main"
+    else:
+        integration_branch = "main"
+
+    # Determine repo root for git operations
+    project_path = get_plan_project_path(plan_path)
+    if project_path:
+        repo_root = str(_Path(workspace_root) / project_path)
+    else:
+        repo_root = str(workspace_root)
+
+    # Run git branch --merged <integration> and check for feature branch
+    try:
+        result = subprocess.run(
+            ["git", "branch", "--merged", integration_branch],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        log_error(
+            f"Failed to check merge status for branch '{feature_branch}'"
+        )
+        return 1
+
+    if result.returncode != 0:
+        log_error(
+            f"Failed to check merge status for branch '{feature_branch}'"
+        )
+        return 1
+
+    # Parse merged branches: strip "* " / "+ " prefix, trim whitespace
+    merged_branches = [
+        b.strip().lstrip("*+ ") for b in result.stdout.strip().split("\n")
+        if b.strip()
+    ]
+
+    if feature_branch in merged_branches:
+        return 0
+
+    # Branch not found in local merged list.
+    # Fallback 1: check remote merged branches (branch may exist remotely)
+    try:
+        result2 = subprocess.run(
+            ["git", "branch", "-r", "--merged", integration_branch],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+        )
+        remote_branches = [
+            b.strip() for b in result2.stdout.strip().split("\n") if b.strip()
+        ]
+        for rb in remote_branches:
+            if rb.endswith(f"/{feature_branch}"):
+                return 0
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    # Fallback 2: branch deleted everywhere, check if merge exists in history
+    # Works for both FF merge (branch name in commit messages) and
+    # non-FF merge ("Merge branch 'xxx'" commit)
+    try:
+        result3 = subprocess.run(
+            ["git", "log", "--oneline", integration_branch,
+             "--grep", feature_branch],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+        )
+        if result3.stdout.strip():
+            return 0
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    log_error(
+        f"Feature branch '{feature_branch}' not yet merged to "
+        f"{integration_branch}. Please merge first."
+    )
+    return 1
+
+
 # ============================================
 # verify command
 # ============================================
@@ -270,9 +378,21 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
     # --confirm received: user authorization gate passed
 
-    # 7. HARD GATE: User Validation must pass
+    # 7. Check feature branch merged to integration (D-03)
+    merge_check = _check_feature_branch_merged(workspace_root, plan_path)
+    if merge_check != 0:
+        return merge_check
+
+    # 8. Resolve active Plan — enforce merged state (D-05)
     try:
-        check_user_validation(plan_path)
+        active = resolve_active_plan(plan_path, "verify", workspace_root)
+    except ResolveActivePlanError as e:
+        log_error(str(e))
+        return 1
+
+    # 8. HARD GATE: User Validation must pass — check active Plan
+    try:
+        check_user_validation(str(active.active_plan_path))
     except ValidationError as e:
         log_error("")
         log_error(f"User Validation gate failed - cannot proceed with verify --confirm")
@@ -286,38 +406,37 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
     log_success("User validation passed")
 
-    # 8. Validate state transition
+    # 9. Validate state transition
     target_status = "done"
 
     if not is_valid_transition(current_status, target_status):
         log_error(f"Invalid state transition: {current_status} -> {target_status}")
         return 1
 
-    # 9. Update Plan status to done
-    if update_plan_status(plan_path, target_status):
+    # 10. Update Plan status to done (use active Plan path)
+    if update_plan_status(str(active.active_plan_path), target_status):
         log_success(f"Plan status updated: {target_status}")
     else:
         log_error("Failed to update Plan status")
         return 1
 
-    # 9.5. Commit Plan status=done to Plan's repo (D-05)
-    plan_location = resolve_plan_location(Path(plan_path), workspace_root)
-    plan_repo_root = str(plan_location.repo_root)
-    plan_rel = plan_location.repo_relative_path
+    # 11. Commit Plan status=done on integration branch (D-05)
+    plan_repo_root = str(active.commit_repo_root)
+    plan_rel = active.repo_relative_plan_path
     if plan_issue:
         plan_commit_msg = f"docs(plan): verify plan #{plan_issue}"
     else:
-        plan_commit_msg = f"docs(plan): verify plan {_get_plan_name(plan_path)}"
+        plan_commit_msg = f"docs(plan): verify plan {_get_plan_name(str(active.active_plan_path))}"
         max_total = 72
         if len(plan_commit_msg) > max_total:
             prefix = "docs(plan): verify plan "
-            plan_commit_msg = prefix + _get_plan_name(plan_path)[:max_total - len(prefix)]
+            plan_commit_msg = prefix + _get_plan_name(str(active.active_plan_path))[:max_total - len(prefix)]
     if not commit_paths(plan_repo_root, [plan_rel], plan_commit_msg):
         log_warn("Failed to commit Plan status=done in Plan's repo")
     else:
         log_success("Plan status=done committed to Plan's repo")
 
-    # 10. Sync Issue if exists
+    # 12. Sync Issue if exists
     if effective_issue and repo:
         # Sync status label to status/done
         sync_status_label(effective_issue, target_status, repo)
@@ -335,7 +454,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         except (subprocess.CalledProcessError, FileNotFoundError):
             pass
 
-    # 11. Output confirmation
+    # 13. Output confirmation
     print("")
     print("Status: done")
     if is_pr_path and pr_merged:

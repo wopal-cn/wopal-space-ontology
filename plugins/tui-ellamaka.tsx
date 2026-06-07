@@ -1122,7 +1122,7 @@ function AnimatedLogo(props: {
 
 // ─── Plugin Registration ─────────────────────────────────────────────
 
-const branding = (theme: ThemeLike): TuiSlotPlugin => ({
+const branding = (theme: ThemeLike, label?: string): TuiSlotPlugin => ({
   slots: {
     home_logo() {
       return <AnimatedLogo theme={theme} idle />;
@@ -1131,7 +1131,7 @@ const branding = (theme: ThemeLike): TuiSlotPlugin => ({
       const s = extractTheme(ctx.theme.current);
       return (
         <text fg={s.textMuted}>
-          <span style={{ fg: s.primary }}>ELLAMAKA</span>
+          <span style={{ fg: s.primary }}>{label ?? "ELLAMAKA"}</span>
         </text>
       );
     },
@@ -1139,7 +1139,7 @@ const branding = (theme: ThemeLike): TuiSlotPlugin => ({
       const s = extractTheme(ctx.theme.current);
       return (
         <text fg={s.textMuted}>
-          <span style={{ fg: s.primary }}>ELLAMAKA</span>:
+          <span style={{ fg: s.primary }}>{label ?? "ELLAMAKA"}</span>:
           {value.session_id.slice(0, 8)}
         </text>
       );
@@ -1152,7 +1152,7 @@ const tui: TuiPlugin = async (api, options) => {
   await api.theme.install("./ellamaka-theme.json");
   api.theme.set("ellamaka-theme");
   const theme = extractTheme(api.theme.current);
-  api.slots.register(branding(theme));
+  api.slots.register(branding(theme, options?.label));
 };
 
 const plugin: TuiPluginModule & { id: string } = {

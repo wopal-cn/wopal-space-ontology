@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_SCRIPT="$SCRIPT_DIR/flow.py"
 
 # Commands routed to Python implementation
-PYTHON_COMMANDS="issue|plan|query|sync|archive|approve|complete|verify|verify-switch|help|status|list|decompose-prd|decompose|roadmap|reset"
+PYTHON_COMMANDS="issue|plan|sync|archive|approve|submit|complete|verify|verify-switch|help|decompose-prd|decompose|roadmap|reset"
 
 # Get the command from arguments
 CMD="${1:-}"
@@ -18,6 +18,6 @@ if [[ "$CMD" =~ ^($PYTHON_COMMANDS)$ ]]; then
     exec python3 "$PYTHON_SCRIPT" "$@"
 else
     echo "ERROR: Unknown command '$CMD'" >&2
-    echo "Available commands: issue plan query sync archive approve complete verify verify-switch help status list decompose-prd roadmap reset" >&2
+    echo "Available commands: issue plan sync archive approve submit complete verify verify-switch help decompose-prd roadmap reset" >&2
     exit 1
 fi

@@ -1,19 +1,12 @@
 #!/usr/bin/env python3
 # complete.py - Complete command for dev-flow
 #
-# Ported from scripts/cmd/complete.sh
+# Plan-only complete: transitions active Plan to verifying.
+# Never commits implementation code — dirty working tree blocks the command.
+# Only the active Plan file is committed via commit_paths.
 #
 # Command:
 #   complete <issue> [--pr] - Mark implementation complete, transition to verifying
-#
-# Flow:
-#   1. Find Plan file (by issue number)
-#   2. Check Plan status is "executing"
-#   3. Check Agent Verification Acceptance Criteria (hard gate)
-#   4. Validate state transition (executing -> verifying)
-#   5. [--pr] Create Pull Request
-#   6. Update Plan status to "verifying"
-#   7. Sync Issue (status label + body)
 
 from __future__ import annotations
 
@@ -37,10 +30,9 @@ from plan import (
     set_plan_field,
     get_plan_field,
 )
-from plan import commit_project_changes, commit_ontology_worktree
-from lib.git import has_uncommitted_changes, get_common_git_dir, commit_paths
+from lib.git import is_repo_dirty, commit_paths
 from plan import resolve_project_path
-from lib.project import resolve_plan_location
+from lib.worktree import resolve_active_plan, ResolveActivePlanError
 from validation import (
     ValidationError,
     check_acceptance_criteria,
@@ -123,18 +115,16 @@ def _get_plan_name(plan_path: str) -> str:
     return Path(plan_path).stem
 
 
-def _build_complete_message(
-    plan_type: str,
-    issue_number: int | None,
-    plan_name: str,
-    repo: str | None,
-) -> str:
-    """Build commit message for same-repo merge commit (code + Plan status).
-
-    Uses plan.py's build_commit_message for Issue-aware messages.
-    """
-    from plan import build_commit_message
-    return build_commit_message(plan_name, plan_type, issue_number, repo)
+def _build_plan_only_commit_msg(plan_issue: int | None, plan_name: str) -> str:
+    """Build Plan-only commit message for complete."""
+    if plan_issue:
+        return f"docs(plan): complete plan #{plan_issue}"
+    msg = f"docs(plan): complete plan {plan_name}"
+    max_total = 72
+    if len(msg) > max_total:
+        prefix = "docs(plan): complete plan "
+        msg = prefix + plan_name[:max_total - len(prefix)]
+    return msg
 
 
 # ============================================
@@ -142,7 +132,11 @@ def _build_complete_message(
 # ============================================
 
 def cmd_complete(args: argparse.Namespace) -> int:
-    """Mark implementation complete and transition to verifying."""
+    """Mark implementation complete and transition to verifying.
+
+    Plan-only commit: only the active Plan file is committed.
+    Dirty implementation tree blocks the command with an error.
+    """
     input_ref = args.target
     create_pr = getattr(args, 'pr', False)
 
@@ -167,116 +161,71 @@ def cmd_complete(args: argparse.Namespace) -> int:
     # Extract Issue number from Plan metadata
     plan_issue = get_plan_issue(plan_path)
 
-    # 2. Check current Plan status
-    current_status = parse_plan_status(plan_path)
-
-    if not current_status:
-        log_error("Cannot parse Plan status")
+    # 2. Resolve active Plan path early — validation gates must use the
+    #    worktree Plan (where Done checkboxes are actually ticked),
+    #    not the main branch Plan.
+    try:
+        active = resolve_active_plan(plan_path, "complete", workspace_root)
+    except ResolveActivePlanError as e:
+        log_error(str(e))
         return 1
 
-    # 3. Validate state is "executing"
+    active_plan_path = str(active.active_plan_path)
+
+    # 4. Validate state is "executing" — check active Plan
+    current_status = parse_plan_status(active_plan_path)
     if not guard_status(current_status, "executing", input_ref):
         return 1
 
-    # 4. Check Done/Step checkboxes in Implementation (hard gate)
+    # 5. Check Done/Step checkboxes in Implementation (hard gate) — active Plan
     try:
-        check_step_completion(plan_path)
+        check_step_completion(active_plan_path)
     except ValidationError as e:
         log_error("")
         log_error(f"Cannot complete: {e}")
         log_error("")
         log_error("Please check the completed steps and update the Plan file:")
-        log_error(f"  {plan_path}")
+        log_error(f"  {active_plan_path}")
         log_error("")
         log_error(f"After completing, run: flow.sh complete {input_ref}")
         return 1
 
-    # 5. Check Agent Verification Acceptance Criteria (hard gate)
+    # 6. Check Agent Verification Acceptance Criteria (hard gate) — active Plan
     try:
-        check_acceptance_criteria(plan_path)
+        check_acceptance_criteria(active_plan_path)
     except ValidationError as e:
         log_error("")
         log_error(f"Cannot complete: {e}")
         log_error("")
         log_error(f"Please complete the remaining items and update the Plan file:")
-        log_error(f"  {plan_path}")
+        log_error(f"  {active_plan_path}")
         log_error("")
         log_error(f"After completing, run: flow.sh complete {input_ref}")
         return 1
 
-    # 6. Resolve repo lazily for Issue sync
+    # 7. Dirty working tree check — block if uncommitted changes exist
+    if is_repo_dirty(str(active.commit_repo_root)):
+        log_error("实施工作树有未提交的变更 — complete 不提交实施代码")
+        log_error("")
+        log_error("请先提交或储藏未提交的变更:")
+        log_error(f"  cd {active.commit_repo_root} && git status")
+        log_error("")
+        log_error("实施代码提交是实施 agent (fae) 的职责，complete 只提交 Plan 状态变更")
+        return 1
+
+    # 8. Resolve repo lazily for Issue sync
     repo = resolve_space_repo(plan_issue, workspace_root)
 
-    # Extract Target Project from Plan
-    project = get_plan_project(plan_path)
-
-    # 6. Resolve Plan location and determine same-repo condition
-    project_type_str = get_plan_field(plan_path, "Project Type")
-    plan_type = get_plan_type(plan_path) or "chore"
-
-    plan_location = resolve_plan_location(Path(plan_path), workspace_root)
-    plan_repo_root = str(plan_location.repo_root)
-
-    # Determine code repo root (where code changes will be committed)
-    code_repo_root = None
-    if project_type_str == "ontology-worktree":
-        code_repo_root = str((workspace_root / ".wopal").resolve())
-    elif project:
-        project_path_obj = resolve_project_path(plan_path, project, workspace_root)
-        if project_path_obj:
-            wt = get_plan_worktree(plan_path)
-            wt_path = wt.get('path') if wt else None
-            if wt_path and Path(wt_path).exists():
-                code_repo_root = str(Path(wt_path).resolve())
-            else:
-                code_repo_root = str(project_path_obj.resolve())
-
-    # Same repo = Plan file and code share the same underlying git repository.
-    # This is the condition for merge commit (D-03, D-07).
-    # We compare git common dirs so that worktrees (different working dirs
-    # but same repo) are correctly identified as same-repo.
-    same_repo = False
-    if code_repo_root is not None:
-        plan_git_dir = get_common_git_dir(plan_repo_root)
-        code_git_dir = get_common_git_dir(code_repo_root)
-        same_repo = bool(plan_git_dir and code_git_dir and plan_git_dir == code_git_dir)
-
-    if not same_repo:
-        # Different repos or worktree: commit code now, Plan status later.
-        # This preserves the existing behavior for separate-repo scenarios.
-        if project_type_str == "ontology-worktree":
-            if not commit_ontology_worktree(workspace_root, plan_type, plan_issue, plan_name, repo):
-                log_error("Failed to commit ontology changes")
-                return 1
-        elif project:
-            project_path_obj = resolve_project_path(plan_path, project, workspace_root)
-            if project_path_obj:
-                wt = get_plan_worktree(plan_path)
-                wt_path = wt.get('path') if wt else None
-                if wt_path and Path(wt_path).exists():
-                    # Worktree: commit on worktree branch
-                    wt_path = wt['path']
-                    if has_uncommitted_changes(wt_path):
-                        if not commit_project_changes(wt_path, plan_type, plan_issue, plan_name, repo):
-                            log_error("Failed to commit worktree changes")
-                            return 1
-                else:
-                    # No worktree: commit directly in project dir
-                    if has_uncommitted_changes(str(project_path_obj)):
-                        if not commit_project_changes(str(project_path_obj), plan_type, plan_issue, plan_name, repo):
-                            log_error("Failed to commit project changes")
-                            return 1
-    # else: same_repo — defer commit until after Plan status update (merge commit)
-
-    # 6. Validate state transition
+    # 9. Validate state transition
     target_status = "verifying"
 
     if not is_valid_transition(current_status, target_status):
         log_error(f"Invalid state transition: {current_status} -> {target_status}")
         return 1
 
-    # 7. Two paths: with PR or without PR
+    # 10. Two paths: with PR or without PR
     if create_pr:
+        project = get_plan_project(plan_path)
         if not project:
             log_error("Cannot create PR: no Target Project in plan")
             return 1
@@ -288,59 +237,37 @@ def cmd_complete(args: argparse.Namespace) -> int:
             return 1
 
         pr_url = ""
-        effective_issue = plan_issue
 
-        if effective_issue:
-            # With Issue: create PR referencing Issue
-            pr_url = _create_pr(effective_issue, project_path)
-            if not pr_url:
-                return 1
-
-            log_success(f"PR created: {pr_url}")
-
-            # State transition
-            if update_plan_status(plan_path, target_status):
-                log_success(f"Plan status updated: {target_status}")
-            else:
-                log_error("Failed to update Plan status")
-                return 1
-
-            # Persist PR URL in Plan metadata
-            set_plan_field(plan_path, "PR", pr_url)
-
-            # Sync Issue status label to verifying
-            if repo:
-                status_label = plan_status_to_issue_label(target_status)
-                if status_label:
-                    sync_status_label(effective_issue, target_status, repo)
-
-                # Sync Agent Verification AC to Issue body
-                sync_plan_to_issue_body(effective_issue, plan_path, repo, str(workspace_root))
+        if plan_issue:
+            pr_url = _create_pr(plan_issue, project_path)
         else:
-            # No Issue: create PR without Issue reference
             pr_url = _create_pr_for_plan(plan_name, project_path)
-            if not pr_url:
-                return 1
 
-            log_success(f"PR created: {pr_url}")
+        if not pr_url:
+            return 1
 
-            # State transition
-            if update_plan_status(plan_path, target_status):
-                log_success(f"Plan status updated: {target_status}")
-            else:
-                log_error("Failed to update Plan status")
-                return 1
+        log_success(f"PR created: {pr_url}")
 
-            # Persist PR URL in Plan metadata
-            set_plan_field(plan_path, "PR", pr_url)
+        # State transition on active Plan
+        if not update_plan_status(str(active.active_plan_path), target_status):
+            log_error("Failed to update Plan status")
+            return 1
+        log_success(f"Plan status updated: {target_status}")
 
-        effective_issue = plan_issue
+        # Persist PR URL in Plan metadata
+        set_plan_field(str(active.active_plan_path), "PR", pr_url)
 
-        if effective_issue:
-            next_ref = str(effective_issue)
-        else:
-            next_ref = plan_name
+        # Plan-only commit
+        commit_msg = _build_plan_only_commit_msg(plan_issue, plan_name)
+        if not commit_paths(str(active.commit_repo_root), [active.repo_relative_plan_path], commit_msg):
+            log_warn("Failed to commit Plan status change")
 
+        # Sync Issue
+        if plan_issue and repo:
+            sync_status_label(plan_issue, target_status, repo)
+            sync_plan_to_issue_body(plan_issue, plan_path, repo, str(workspace_root))
+
+        next_ref = str(plan_issue) if plan_issue else plan_name
         print("")
         print("Status: verifying (PR opened)")
         print("")
@@ -348,59 +275,35 @@ def cmd_complete(args: argparse.Namespace) -> int:
         print(f"  flow.sh verify {next_ref} --confirm")
 
     else:
-        # Without PR path: state transition + sync
-        if update_plan_status(plan_path, target_status):
-            log_success(f"Plan status updated: {target_status}")
-        else:
+        # Without PR path: state transition + Plan-only commit + sync
+
+        # State transition on active Plan
+        if not update_plan_status(str(active.active_plan_path), target_status):
             log_error("Failed to update Plan status")
             return 1
+        log_success(f"Plan status updated: {target_status}")
 
-        effective_issue = plan_issue
+        # Plan-only commit
+        commit_msg = _build_plan_only_commit_msg(plan_issue, plan_name)
+        if not commit_paths(str(active.commit_repo_root), [active.repo_relative_plan_path], commit_msg):
+            log_warn("Failed to commit Plan status change")
 
         # Sync Issue if exists
-        if effective_issue and repo:
-            status_label = plan_status_to_issue_label(target_status)
-            if status_label:
-                sync_status_label(effective_issue, target_status, repo)
+        if plan_issue and repo:
+            sync_status_label(plan_issue, target_status, repo)
+            sync_plan_to_issue_body(plan_issue, plan_path, repo, str(workspace_root))
 
-            # Sync Agent Verification AC to Issue body
-            sync_plan_to_issue_body(effective_issue, plan_path, repo, str(workspace_root))
-
+        next_ref = str(plan_issue) if plan_issue else plan_name
         print("")
         print("Status: verifying")
         print("")
         print("Implementation complete. Waiting for user verification.")
         print("")
         print("After user confirms, run:")
-        next_ref = plan_issue or plan_name
         print(f"  flow.sh verify {next_ref} --confirm")
-        if effective_issue:
-            print("")
-            print(f"Issue: #{effective_issue}")
-
-    # 8. Final commit: same-repo merge commit or Plan-only commit
-    if same_repo:
-        # D-03 / D-07: code changes + Plan status=verifying in one commit
-        if has_uncommitted_changes(plan_repo_root):
-            commit_msg = _build_complete_message(plan_type, plan_issue, plan_name, repo)
-            from lib.git import commit_all as _commit_all
-            if not _commit_all(plan_repo_root, commit_msg):
-                log_error("Failed to commit combined code + Plan changes")
-                return 1
-            log_success(f"Same-repo merge commit: {commit_msg}")
-    else:
-        # Different repos: commit Plan status change in Plan's repo
-        plan_rel = plan_location.repo_relative_path
         if plan_issue:
-            plan_commit_msg = f"docs(plan): complete plan #{plan_issue}"
-        else:
-            plan_commit_msg = f"docs(plan): complete plan {plan_name}"
-            max_total = 72
-            if len(plan_commit_msg) > max_total:
-                prefix = "docs(plan): complete plan "
-                plan_commit_msg = prefix + plan_name[:max_total - len(prefix)]
-        if not commit_paths(plan_repo_root, [plan_rel], plan_commit_msg):
-            log_warn("Failed to commit Plan status change in Plan's repo")
+            print("")
+            print(f"Issue: #{plan_issue}")
 
     return 0
 

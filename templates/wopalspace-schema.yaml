@@ -15,11 +15,9 @@ runtime:
     - path: memory/diary
       keep: [.gitkeep]
     - path: logs
-      keep: [.gitkeep]
     - path: .tmp
     - path: INBOX
     - path: backup
-      keep: [.gitkeep]
 
 space:
   files:
@@ -29,8 +27,5 @@ space:
       target: .gitignore
   dirs:
     - path: projects
-      keep: [.gitkeep]
     - path: contents
-      keep: [.gitkeep]
     - path: docs
-      keep: [.gitkeep]

@@ -20,6 +20,7 @@ ensure_scripts_path()
 
 from commands.complete import cmd_complete
 from commands.verify import cmd_verify
+from lib.worktree import ActivePlanInfo
 
 
 def _create_no_issue_plan(tmp_dir: str, status: str = "executing") -> str:
@@ -133,17 +134,25 @@ class TestNoIssueVerify(unittest.TestCase):
 
     @patch("commands.verify.sync_plan_to_issue_body")
     @patch("commands.verify.sync_status_label")
+    @patch("commands.verify.commit_paths", return_value=True)
     @patch("commands.verify.update_plan_status", return_value=True)
     @patch("commands.verify.check_user_validation")
+    @patch("commands.verify.resolve_active_plan")
     @patch("commands.verify.find_workspace_root")
     @patch("commands.verify.find_plan")
     def test_verify_no_issue_succeeds(
-        self, mock_find_plan, mock_workspace, mock_check_uv,
-        mock_update_status, mock_sync_label, mock_sync_body
+        self, mock_find_plan, mock_workspace, mock_resolve, mock_check_uv,
+        mock_update_status, mock_commit, mock_sync_label, mock_sync_body
     ):
         """verify on no-issue plan should succeed without repo resolution."""
         mock_find_plan.return_value = self.plan_path
         mock_workspace.return_value = Path(self.tmp_dir)
+        mock_resolve.return_value = ActivePlanInfo(
+            active_plan_path=Path(self.plan_path),
+            commit_repo_root=Path(self.tmp_dir),
+            repo_relative_plan_path=f"plans/{Path(self.plan_path).name}",
+            branch_context="integration",
+        )
 
         args = MagicMock()
         args.target = self.plan_name
@@ -155,17 +164,25 @@ class TestNoIssueVerify(unittest.TestCase):
 
     @patch("commands.verify.sync_plan_to_issue_body")
     @patch("commands.verify.sync_status_label")
+    @patch("commands.verify.commit_paths", return_value=True)
     @patch("commands.verify.update_plan_status", return_value=True)
     @patch("commands.verify.check_user_validation")
+    @patch("commands.verify.resolve_active_plan")
     @patch("commands.verify.find_workspace_root")
     @patch("commands.verify.find_plan")
     def test_verify_no_issue_skips_issue_sync(
-        self, mock_find_plan, mock_workspace, mock_check_uv,
-        mock_update_status, mock_sync_label, mock_sync_body
+        self, mock_find_plan, mock_workspace, mock_resolve, mock_check_uv,
+        mock_update_status, mock_commit, mock_sync_label, mock_sync_body
     ):
         """verify should skip Issue sync when there's no issue."""
         mock_find_plan.return_value = self.plan_path
         mock_workspace.return_value = Path(self.tmp_dir)
+        mock_resolve.return_value = ActivePlanInfo(
+            active_plan_path=Path(self.plan_path),
+            commit_repo_root=Path(self.tmp_dir),
+            repo_relative_plan_path=f"plans/{Path(self.plan_path).name}",
+            branch_context="integration",
+        )
 
         args = MagicMock()
         args.target = self.plan_name

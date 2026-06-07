@@ -5,11 +5,7 @@
 
 set -e
 
-# 禁用 Claude Code 配置加载（启用 wopal-space 模式）
-export OPENCODE_DISABLE_EXTERNAL_SKILLS=1
-# export OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1
-# export OPENCODE_DISABLE_AGENTS_SKILLS=1
-export OPENCODE_DISABLE_CLAUDE_CODE_PROMPT=1
+# wopal-space 模式下自动屏蔽 .claude/.agents（由 Flag getter 处理）
 
 # 启用实验性功能（包括 EventSystem，确保 AgentSwitched 等事件生效）
 export OPENCODE_EXPERIMENTAL=true
@@ -21,7 +17,8 @@ SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 AUTO_APPROVE_SCRIPT="$SCRIPT_DIR/oc-auto-approve.py"
 
 CWD="$(pwd)"
-LOG_DIR="$CWD/.wopal-space/logs"
+SPACE_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+LOG_DIR="$SPACE_ROOT/.wopal-space/logs"
 SESSION_NAME="em-$(basename "$CWD")"
 
 BACKEND_PORT=4096

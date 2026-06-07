@@ -10,18 +10,16 @@
 #   1. Find Plan file (by issue number)
 #   2. Check Plan status is "done"
 #   2.5. Sync Plan to Issue (body + labels)
-#   3. Detect worktree / project changes and auto-handle
+#   3. Detect worktree and handle cleanup (never commits implementation code)
 #   4. Archive Plan file (move to done/)
 #   5. Update Issue Plan link
-#   6. Commit archived plan in space repo
+#   6. Commit archived plan in Plan's repo
 #   7. Close GitHub Issue
 
 from __future__ import annotations
 
 import argparse
 import subprocess
-import sys
-import os
 import re
 import glob as glob_mod
 from pathlib import Path
@@ -30,7 +28,7 @@ from datetime import date
 from lib.logging import log_info, log_success, log_error, log_warn, log_step
 from lib.workspace import find_workspace_root
 from workflow import guard_status, resolve_space_repo
-from plan import find_plan, find_plan_by_issue
+from plan import find_plan
 from plan import (
     get_plan_project,
     get_plan_type,
@@ -41,7 +39,6 @@ from plan import (
 )
 from plan import (
     resolve_project_path,
-    get_current_branch,
 )
 from workflow import parse_plan_status
 from plan import update_issue_plan_link
@@ -51,18 +48,14 @@ from issue import (
     ensure_issue_labels,
 )
 from lib.git import (
-    is_repo_dirty,
     merge_branch,
-    branch_exists,
-    delete_branch,
     push_branch,
     has_uncommitted_changes,
-    commit_all,
     commit_paths,
     push_repo,
     get_relative_path,
 )
-from plan import push_project_changes, push_ontology_worktree, commit_project_changes
+from plan import push_project_changes, push_ontology_worktree
 from lib.worktree import clean_worktree
 from lib.project import resolve_plan_location
 
@@ -72,6 +65,91 @@ from lib.project import resolve_plan_location
 # ============================================
 
 
+
+
+# ============================================
+# Phase Doc Plan Status Update
+# ============================================
+
+_PHASE_TABLE_HEADER = "| Project | Plan | Status |"
+_PHASE_TABLE_SEP = "|---------|------|--------|"
+
+
+def _update_phase_doc_plan_status(
+    workspace_root: Path,
+    plan_name: str,
+    product: str,
+    phase: str,
+    new_status: str = "done",
+) -> str | None:
+    """Update Plan status in a product phase doc's Related Plans table.
+
+    Returns the updated file path on success, None otherwise (silently skipped
+    or warned).
+    """
+    if not product or not phase:
+        log_info("No Product/Phase metadata, skipping phase doc update")
+        return None
+
+    phases_dir = workspace_root / "docs" / "products" / product / "phases"
+    if not phases_dir.exists():
+        log_warn(f"Phases directory not found: {phases_dir}")
+        return None
+
+    # Find matching phase doc(s) — prefer exact match, then glob
+    candidates = sorted(phases_dir.glob(f"*{phase}*.md"))
+
+    if not candidates:
+        log_warn(f"No phase doc found for product={product}, phase={phase}")
+        return None
+
+    phase_doc_path = candidates[0]
+
+    content = phase_doc_path.read_text()
+    lines = content.splitlines(keepends=True)
+
+    header_idx = None
+    for i, line in enumerate(lines):
+        if line.strip() == _PHASE_TABLE_HEADER:
+            header_idx = i
+            break
+
+    if header_idx is None:
+        log_warn(f"No Related Plans table found in {phase_doc_path.name}")
+        return None
+
+    # Walk rows after separator
+    updated = False
+    for i in range(header_idx + 2, len(lines)):
+        raw = lines[i]
+        # Stop at blank line or next non-table line
+        stripped = raw.strip()
+        if not stripped or not stripped.startswith("|"):
+            break
+
+        # Parse table row cells
+        cells = [c.strip() for c in stripped.split("|")]
+        # cells from split on "| a | b | c |" → ['', ' a ', ' b ', ' c ', '']
+        # Filter empty edge cells
+        cells = [c for c in cells if c != ""]
+        if len(cells) < 3:
+            continue
+
+        plan_cell = cells[1]
+        if plan_cell == plan_name:
+            # Replace Status column (last cell) with new_status
+            old_status = cells[2]
+            lines[i] = raw.replace(old_status, new_status, 1)
+            updated = True
+            break
+
+    if not updated:
+        log_warn(f"Plan '{plan_name}' not found in phase doc Related Plans table")
+        return None
+
+    phase_doc_path.write_text("".join(lines))
+    log_success(f"Updated phase doc {phase_doc_path.name}: {plan_name} → {new_status}")
+    return str(phase_doc_path)
 
 
 # ============================================
@@ -89,6 +167,11 @@ def _detect_worktree(
     1. Plan Worktree field (set by approve --confirm --worktree)
     2. Fallback: glob match .worktrees/<project>-issue-<N>-*
 
+    Plan metadata is returned even when the worktree directory has been
+    cleaned up (e.g. by verify-switch). The branch recorded there still
+    needs to be deleted by archive. Path-existence checks belong to the
+    caller.
+
     Args:
         plan_path: Path to Plan file
         project: Project name
@@ -97,16 +180,13 @@ def _detect_worktree(
     Returns:
         Dict with 'branch' and 'path' keys, or None
     """
-    # Try Plan metadata first
+    # Plan metadata always wins — even if path is gone the branch still
+    # needs cleanup
     wt = get_plan_worktree(plan_path)
     if wt:
-        # Verify the path actually exists
-        if Path(wt['path']).exists():
-            return wt
-        # Path gone — metadata stale
-        return None
+        return wt
 
-    # Fallback: glob match
+    # Fallback: glob match (only when Plan metadata is absent)
     plan_issue = get_plan_issue(plan_path)
     if not plan_issue:
         return None
@@ -411,17 +491,18 @@ def commit_archived_plan(
 def cmd_archive(args: argparse.Namespace) -> int:
     """Archive a completed Plan.
 
+    Plan-only archive: never commits implementation code.
     Steps:
     1. Find Plan file
     2. Check status is "done"
     2.5. Sync Plan to Issue
-    3. Detect worktree and handle project changes:
+    3. Detect worktree and handle cleanup:
        - Has worktree + PR path → cleanup worktree only
        - Has worktree + no PR → merge branch to main → push → cleanup
-       - No worktree → auto-commit project changes if any
-    4. Archive Plan file
+       - No worktree → push project changes (committed during complete)
+    4. Archive Plan file (move to done/)
     5. Update Issue Plan link
-    6. Commit + push space repo
+    6. Commit + push archived plan in Plan's repo
     7. Close Issue
     """
     input_ref = args.target
@@ -487,25 +568,23 @@ def cmd_archive(args: argparse.Namespace) -> int:
 
         log_success(f"Plan synced to Issue #{plan_issue}")
 
-    # 3. Detect worktree and handle project changes
-    #    Special handling for ontology-worktree projects (.wopal/)
-    #    Standard projects follow the existing worktree detection/merge/cleanup flow
+    # 3. Detect worktree and handle cleanup
+    #    Archive never commits implementation code — dirty trees block the command.
     worktree_handled = False
-    project_committed = False
-    ontology_committed = False
+    project_pushed = False
+    ontology_pushed = False
 
     # Read Project Type from Plan metadata
     project_type_str = get_plan_field(plan_path, "Project Type")
     is_ontology_worktree = project_type_str == "ontology-worktree"
 
     if is_ontology_worktree:
-        # Ontology worktree: push .wopal/ changes (committed during complete)
+        # Ontology worktree: push .wopal/ changes (committed during complete/verify)
         log_step("Ontology worktree project detected — pushing .wopal/ changes")
-        if push_ontology_worktree(workspace_root):
-            ontology_committed = True
-        else:
+        if not push_ontology_worktree(workspace_root):
             log_error("Failed to push ontology worktree changes")
             return 1
+        ontology_pushed = True
     elif project:
         project_path = resolve_project_path(plan_path, project, workspace_root)
 
@@ -522,47 +601,71 @@ def cmd_archive(args: argparse.Namespace) -> int:
                     _cleanup_worktree(str(project_path), branch, wt_path, workspace_root)
                     worktree_handled = True
                 else:
-                    # Has worktree + no PR → merge branch to main
-                    # Check worktree for uncommitted changes first
-                    if has_uncommitted_changes(wt_path):
-                        log_error(f"Worktree has uncommitted changes: {wt_path}")
-                        log_error("Commit changes in worktree first, then re-run archive")
-                        return 1
+                    # Has worktree + no PR
+                    # Resolve wt_path (may be absolute or workspace-relative)
+                    wt_path_resolved = Path(wt_path)
+                    if not wt_path_resolved.is_absolute():
+                        wt_path_resolved = workspace_root / wt_path_resolved
 
-                    success, conflicts = _merge_worktree_branch(
-                        str(project_path), branch, wt_path,
-                    )
-
-                    if not success:
-                        if conflicts:
-                            log_error("Resolve merge conflicts before archiving")
-                        return 1
-
-                    # Push merged main
-                    if push_branch(str(project_path), 'main'):
-                        log_success("Merged main pushed to origin")
+                    if not wt_path_resolved.exists():
+                        # Worktree directory was cleaned up earlier (typically
+                        # by verify-switch). The feature branch may still be
+                        # present in the project repo. Skip merge — by this
+                        # point the branch has either been merged into the
+                        # integration branch (verify --confirm ensures this)
+                        # or is intentionally orphaned.
+                        log_info(f"Worktree path no longer exists: {wt_path_resolved}")
+                        log_info("Skipping merge; cleaning up feature branch only")
                     else:
-                        log_warn("Failed to push merged main")
+                        # Worktree directory present → normal flow
+                        if has_uncommitted_changes(str(wt_path_resolved)):
+                            log_error(f"Worktree has uncommitted changes: {wt_path_resolved}")
+                            log_error("Commit changes in worktree first, then re-run archive")
+                            return 1
 
-                    # Cleanup worktree
-                    _cleanup_worktree(str(project_path), branch, wt_path, workspace_root)
+                        success, conflicts = _merge_worktree_branch(
+                            str(project_path), branch, str(wt_path_resolved),
+                        )
+
+                        if not success:
+                            if conflicts:
+                                log_error("Resolve merge conflicts before archiving")
+                            return 1
+
+                        # Push merged main
+                        if push_branch(str(project_path), 'main'):
+                            log_success("Merged main pushed to origin")
+                        else:
+                            log_warn("Failed to push merged main")
+
+                    # Always cleanup — clean_worktree is safe when the
+                    # worktree directory is gone; it still deletes the
+                    # feature branch.
+                    _cleanup_worktree(
+                        str(project_path),
+                        branch,
+                        str(wt_path_resolved),
+                        workspace_root,
+                    )
                     worktree_handled = True
             else:
                 # No worktree → push project changes (committed during complete)
                 if has_uncommitted_changes(str(project_path)):
-                    log_warn(f"Uncommitted changes found in {project} — should have been committed during complete")
-                    log_step(f"Committing uncommitted changes in {project}...")
-                    if not commit_project_changes(str(project_path), plan_type, plan_issue, plan_name, repo):
-                        log_error("Failed to commit project changes")
-                        return 1
+                    log_error(f"Project {project} has uncommitted changes — archive does not commit implementation code")
+                    log_error("Commit changes first, then re-run archive")
+                    return 1
                 log_step(f"Pushing project changes in {project}...")
                 if push_project_changes(str(project_path)):
-                    project_committed = True
+                    project_pushed = True
                 else:
                     log_error("Failed to push project changes")
                     return 1
 
-    # 4. Archive Plan file
+    # 4. Cache Product/Phase metadata before Plan is moved
+    product_meta = get_plan_field(plan_path, "Product")
+    phase_meta = get_plan_field(plan_path, "Phase")
+
+    # 5. Archive Plan file
     try:
         archived_file = archive_plan_file(plan_path, workspace_root)
         log_success(f"Plan archived: {archived_file}")
@@ -570,7 +673,7 @@ def cmd_archive(args: argparse.Namespace) -> int:
         log_error(f"Failed to archive plan: {e}")
         return 1
 
-    # 5. Update Issue Plan link (only if Issue exists)
+    # 6. Update Issue Plan link (only if Issue exists)
     if plan_issue:
         update_issue_plan_link(
             issue_number=plan_issue,
@@ -579,7 +682,7 @@ def cmd_archive(args: argparse.Namespace) -> int:
             workspace_root=str(workspace_root),
         )
 
-    # 6. Stage archived plan in Plan's repo (rename is already staged by git mv)
+    # 7. Stage archived plan in Plan's repo (rename is already staged by git mv)
     #    If git mv was used, the rename is already staged. For safety, also
     #    stage the archived file path.
     plan_location = resolve_plan_location(Path(archived_file), workspace_root)
@@ -591,10 +694,43 @@ def cmd_archive(args: argparse.Namespace) -> int:
         capture_output=True,
     )
 
-    # 7. Commit archived plan
+    # 8. Update phase doc Related Plans table and commit in workspace root
+    phase_doc_path = _update_phase_doc_plan_status(
+        workspace_root, plan_name, product_meta, phase_meta,
+    )
+    if phase_doc_path and product_meta and phase_meta:
+        # Stage only the modified phase doc file, commit in workspace root
+        ws_root_str = str(workspace_root)
+        phase_doc_rel = os.path.relpath(phase_doc_path, ws_root_str)
+        subprocess.run(
+            ["git", "add", phase_doc_rel],
+            cwd=ws_root_str,
+            capture_output=True,
+        )
+        commit_msg = f"chore: archive plan {plan_name} — update phase doc {product_meta}/{phase_meta}"
+        result = subprocess.run(
+            ["git", "commit", "-m", commit_msg],
+            cwd=ws_root_str,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            log_success(f"Phase doc Related Plans updated: {product_meta}/{phase_meta}")
+            push_result = subprocess.run(
+                ["git", "push"],
+                cwd=ws_root_str,
+                capture_output=True,
+                text=True,
+            )
+            if push_result.returncode != 0:
+                log_warn(f"Failed to push phase doc: {push_result.stderr.strip()}")
+        else:
+            log_warn(f"Failed to commit phase doc: {result.stderr.strip()}")
+
+    # 9. Commit archived plan (and phase doc if updated)
     commit_archived_plan(archived_file, plan_issue, workspace_root)
 
-    # 8. Close Issue
+    # 10. Close Issue
     if plan_issue:
         if close_issue(plan_issue, repo, "Plan archived. Closing issue."):
             log_success(f"Issue #{plan_issue} closed")
@@ -609,10 +745,10 @@ def cmd_archive(args: argparse.Namespace) -> int:
         print(f"  Issue: #{plan_issue} (closed)")
     if worktree_handled:
         print(f"  Worktree: cleaned up")
-    if project_committed:
-        print(f"  Project: changes committed and pushed")
-    if ontology_committed:
-        print(f"  Ontology: .wopal/ changes committed and pushed")
+    if project_pushed:
+        print(f"  Project: changes pushed")
+    if ontology_pushed:
+        print(f"  Ontology: .wopal/ changes pushed")
 
     return 0
 

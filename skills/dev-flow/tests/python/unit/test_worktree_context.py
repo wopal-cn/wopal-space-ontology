@@ -10,7 +10,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from support.bootstrap import ensure_scripts_path
 ensure_scripts_path()
 
-from lib.worktree import WorktreeContext, parse_worktree_context, write_worktree_context
+from lib.worktree import (
+    WorktreeContext,
+    parse_worktree_context,
+    parse_worktree_meta,
+    write_worktree_context,
+    ActivePlanInfo,
+    ResolveActivePlanError,
+    resolve_active_plan,
+)
 
 
 # -- Fixtures -----------------------------------------------------------------
@@ -112,6 +120,26 @@ class TestParseStructuredWorktree:
         ctx = parse_worktree_context(str(tmp_path / "nonexistent.md"))
         assert ctx is None
 
+    def test_reads_project_type_from_plan_metadata(self, tmp_path):
+        content = PLAN_TEMPLATE_ONTOLOGY + """\
+- **Worktree**:
+  - branch: feature/ont-42-slug
+  - path: .worktrees/ontology-issue-42-slug
+"""
+        plan = _write_plan(tmp_path, content)
+        ctx = parse_worktree_context(str(plan))
+
+        assert ctx is not None
+        assert ctx.project_type == "ontology-worktree"
+
+    def test_legacy_format_reads_project_type_from_metadata(self, tmp_path):
+        content = PLAN_TEMPLATE_ONTOLOGY + "- **Worktree**: feature/legacy-slug | .worktrees/legacy-path\n"
+        plan = _write_plan(tmp_path, content)
+        ctx = parse_worktree_context(str(plan))
+
+        assert ctx is not None
+        assert ctx.project_type == "ontology-worktree"
+
 
 class TestParseLegacyWorktree:
     """Test parsing legacy '- **Worktree**: branch | path' format."""
@@ -160,40 +188,42 @@ class TestParseLegacyWorktree:
         assert ctx.verify_mode == "switch-runtime"
 
 
-# -- Write tests --------------------------------------------------------------
+# -- Write tests (new 2-field format) -----------------------------------------
 
 class TestWriteWorktreeContext:
-    """Test writing WorktreeContext to Plan metadata."""
+    """Test writing Worktree metadata in the new 2-field format."""
 
     def test_write_to_new_plan(self, tmp_path):
         plan = _write_plan(tmp_path, PLAN_TEMPLATE)
-        ctx = WorktreeContext(
-            enabled=True,
-            project_type="standard",
-            branch="issue-42-slug",
-            path=Path(".worktrees/gesp-issue-42-slug"),
-            repo_root=Path("/workspace/projects/gesp"),
-            base_branch="main",
-            merge_target="main",
-            verify_mode="direct",
-            cleanup_policy="archive",
+        result = write_worktree_context(
+            str(plan), "issue-42-slug", ".worktrees/gesp-issue-42-slug",
         )
-
-        result = write_worktree_context(str(plan), ctx)
         assert result is True
 
-        # Verify round-trip
-        parsed = parse_worktree_context(str(plan))
-        assert parsed is not None
-        assert parsed.enabled == ctx.enabled
-        assert parsed.branch == ctx.branch
-        assert parsed.path == ctx.path
-        assert parsed.verify_mode == ctx.verify_mode
+        content = plan.read_text()
+        assert "  - branch: issue-42-slug" in content
+        assert "  - path: .worktrees/gesp-issue-42-slug" in content
+        # New format should NOT write the old 9 fields
+        assert "enabled:" not in content
+        assert "project_type:" not in content
+        assert "verify_mode:" not in content
 
-    def test_write_replaces_structured_format(self, tmp_path):
+    def test_write_and_read_roundtrip(self, tmp_path):
+        plan = _write_plan(tmp_path, PLAN_TEMPLATE)
+        write_worktree_context(
+            str(plan), "feature/test-1", ".worktrees/gesp-feature-test-1",
+        )
+
+        meta = parse_worktree_meta(str(plan))
+        assert meta is not None
+        assert meta["branch"] == "feature/test-1"
+        assert meta["path"] == ".worktrees/gesp-feature-test-1"
+
+    def test_write_replaces_old_structured_format(self, tmp_path):
         content = PLAN_TEMPLATE + """\
 - **Worktree**:
   - enabled: true
+  - project_type: standard
   - branch: old-branch
   - path: .worktrees/old
   - repo_root: /old
@@ -203,61 +233,97 @@ class TestWriteWorktreeContext:
   - cleanup_policy: archive
 """
         plan = _write_plan(tmp_path, content)
-
-        new_ctx = WorktreeContext(
-            enabled=True,
-            project_type="standard",
-            branch="new-branch",
-            path=Path(".worktrees/new"),
-            repo_root=Path("/new"),
-            base_branch="main",
-            merge_target="main",
-            verify_mode="direct",
-            cleanup_policy="archive",
+        result = write_worktree_context(
+            str(plan), "new-branch", ".worktrees/new",
         )
-
-        result = write_worktree_context(str(plan), new_ctx)
         assert result is True
 
-        parsed = parse_worktree_context(str(plan))
-        assert parsed is not None
-        assert parsed.branch == "new-branch"
-        assert parsed.path == Path(".worktrees/new")
+        file_content = plan.read_text()
+        assert "  - branch: new-branch" in file_content
+        assert "  - path: .worktrees/new" in file_content
+        # Old fields should be gone
+        assert "enabled:" not in file_content
+        assert "repo_root:" not in file_content
 
     def test_write_replaces_legacy_format(self, tmp_path):
         content = PLAN_TEMPLATE + "- **Worktree**: old-branch | /old/path\n"
         plan = _write_plan(tmp_path, content)
 
-        ctx = WorktreeContext(
-            enabled=True,
-            project_type="standard",
-            branch="new-branch",
-            path=Path(".worktrees/new"),
-            repo_root=Path("/workspace/projects/gesp"),
-            base_branch="main",
-            merge_target="main",
-            verify_mode="direct",
-            cleanup_policy="archive",
+        result = write_worktree_context(
+            str(plan), "new-branch", ".worktrees/new",
         )
-
-        result = write_worktree_context(str(plan), ctx)
         assert result is True
 
-        parsed = parse_worktree_context(str(plan))
-        assert parsed is not None
-        assert parsed.branch == "new-branch"
+        meta = parse_worktree_meta(str(plan))
+        assert meta is not None
+        assert meta["branch"] == "new-branch"
+        assert meta["path"] == ".worktrees/new"
 
     def test_write_nonexistent_file_returns_false(self, tmp_path):
-        ctx = WorktreeContext(
-            enabled=False, project_type="standard", branch="",
-            path=Path(""), repo_root=Path(""), base_branch="main",
-            merge_target="main", verify_mode="direct", cleanup_policy="manual",
+        result = write_worktree_context(
+            str(tmp_path / "nope.md"), "branch", "path",
         )
-        result = write_worktree_context(str(tmp_path / "nope.md"), ctx)
         assert result is False
 
+    def test_write_normalizes_path_to_posix(self, tmp_path):
+        """Paths should always be stored with forward slashes."""
+        plan = _write_plan(tmp_path, PLAN_TEMPLATE)
+        write_worktree_context(
+            str(plan), "feature-x", ".worktrees/project-feature-x",
+        )
+        content = plan.read_text()
+        assert "  - path: .worktrees/project-feature-x" in content
 
-# -- Verify mode tests --------------------------------------------------------
+
+# -- Backward compatibility: old formats still readable -----------------------
+
+class TestParseOldFormatCompat:
+    """Old 9-field and legacy pipe formats must remain readable."""
+
+    def test_read_old_9_field_format(self, tmp_path):
+        """Old Plans with 9-field Worktree block still parse correctly."""
+        content = PLAN_TEMPLATE + """\
+- **Worktree**:
+  - enabled: true
+  - project_type: standard
+  - branch: feature/old-1
+  - path: .worktrees/gesp-old-1
+  - repo_root: /workspace/projects/gesp
+  - base_branch: main
+  - merge_target: main
+  - verify_mode: direct
+  - cleanup_policy: archive
+"""
+        plan = _write_plan(tmp_path, content)
+        meta = parse_worktree_meta(str(plan))
+        assert meta is not None
+        assert meta["branch"] == "feature/old-1"
+        assert meta["path"] == ".worktrees/gesp-old-1"
+
+    def test_read_legacy_pipe_format(self, tmp_path):
+        """Legacy pipe format still parses."""
+        content = PLAN_TEMPLATE + "- **Worktree**: legacy-branch | .worktrees/legacy\n"
+        plan = _write_plan(tmp_path, content)
+        meta = parse_worktree_meta(str(plan))
+        assert meta is not None
+        assert meta["branch"] == "legacy-branch"
+        assert meta["path"] == ".worktrees/legacy"
+
+    def test_read_new_2_field_format(self, tmp_path):
+        """New 2-field format parses correctly."""
+        content = PLAN_TEMPLATE + """\
+- **Worktree**:
+  - branch: new-branch
+  - path: .worktrees/new
+"""
+        plan = _write_plan(tmp_path, content)
+        meta = parse_worktree_meta(str(plan))
+        assert meta is not None
+        assert meta["branch"] == "new-branch"
+        assert meta["path"] == ".worktrees/new"
+
+
+# -- Verify mode tests (WorktreeContext dataclass preserved) -------------------
 
 class TestVerifyMode:
     """Test verify_mode selection based on project type."""
@@ -304,16 +370,253 @@ class TestDisabledWorktree:
         ctx = parse_worktree_context(str(plan))
         assert ctx is None
 
-    def test_write_disabled_context_roundtrip(self, tmp_path):
-        plan = _write_plan(tmp_path, PLAN_TEMPLATE)
-        ctx = WorktreeContext(
-            enabled=False, project_type="standard", branch="",
-            path=Path(""), repo_root=Path(""), base_branch="main",
-            merge_target="main", verify_mode="direct", cleanup_policy="manual",
-        )
-        assert write_worktree_context(str(plan), ctx) is True
 
-        parsed = parse_worktree_context(str(plan))
-        assert parsed is not None
-        assert parsed.enabled is False
-        assert parsed.cleanup_policy == "manual"
+# -- resolve_active_plan tests ------------------------------------------------
+
+class TestResolveActivePlanNoWorktree:
+    """resolve_active_plan: no worktree metadata returns main Plan."""
+
+    def test_no_worktree_returns_main_plan(self, tmp_path):
+        """Plan without Worktree metadata -> main Plan on integration."""
+        import subprocess
+
+        # Create a git repo with a plan file
+        repo = tmp_path / "projects" / "myproject"
+        repo.mkdir(parents=True)
+        subprocess.run(["git", "init", "-b", "main", str(repo)],
+                       capture_output=True, check=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"],
+                       cwd=str(repo), capture_output=True, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"],
+                       cwd=str(repo), capture_output=True, check=True)
+
+        plans_dir = repo / "docs" / "plans"
+        plans_dir.mkdir(parents=True)
+        plan_file = plans_dir / "test-plan.md"
+        plan_file.write_text("# Plan\n\n## Metadata\n\n- **Status**: executing\n- **Type**: feature\n")
+
+        subprocess.run(["git", "add", "."], cwd=str(repo), capture_output=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=str(repo), capture_output=True)
+
+        info = resolve_active_plan(str(plan_file), "complete", workspace_root=tmp_path)
+
+        assert info.active_plan_path == plan_file.resolve()
+        assert info.branch_context == "integration"
+        assert info.commit_repo_root == repo.resolve()
+
+
+class TestResolveActivePlanWithWorktree:
+    """resolve_active_plan: worktree exists -> feature branch Plan."""
+
+    def test_complete_phase_returns_worktree_plan(self, tmp_path):
+        """complete phase + worktree -> worktree's Plan copy."""
+        import subprocess
+
+        # Create main repo
+        repo = tmp_path / "projects" / "myproject"
+        repo.mkdir(parents=True)
+        subprocess.run(["git", "init", "-b", "main", str(repo)],
+                       capture_output=True, check=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"],
+                       cwd=str(repo), capture_output=True, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"],
+                       cwd=str(repo), capture_output=True, check=True)
+
+        # Create plan in main repo
+        plans_dir = repo / "docs" / "plans"
+        plans_dir.mkdir(parents=True)
+        plan_file = plans_dir / "test-plan.md"
+        plan_file.write_text(
+            "# Plan\n\n## Metadata\n\n- **Status**: executing\n- **Type**: feature\n"
+            "\n- **Worktree**:\n  - branch: feature-test\n  - path: .worktrees/myproject-feature-test\n"
+        )
+
+        subprocess.run(["git", "add", "."], cwd=str(repo), capture_output=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=str(repo), capture_output=True)
+
+        # Create feature branch
+        subprocess.run(
+            ["git", "branch", "feature-test", "HEAD"],
+            cwd=str(repo), capture_output=True, check=True,
+        )
+
+        # Create worktree checkout
+        wt_dir = tmp_path / ".worktrees" / "myproject-feature-test"
+        subprocess.run(
+            ["git", "worktree", "add", str(wt_dir), "feature-test"],
+            cwd=str(repo), capture_output=True, check=True,
+        )
+
+        # Plan copy inside worktree (worktree inherits repo files)
+        wt_plans = wt_dir / "docs" / "plans"
+        wt_plans.mkdir(parents=True, exist_ok=True)
+        wt_plan = wt_plans / "test-plan.md"
+        wt_plan.write_text(
+            "# Plan\n\n## Metadata\n\n- **Status**: executing\n- **Type**: feature\n"
+            "\n- **Worktree**:\n  - branch: feature-test\n  - path: .worktrees/myproject-feature-test\n"
+        )
+
+        subprocess.run(["git", "add", "."], cwd=str(wt_dir), capture_output=True)
+        subprocess.run(["git", "commit", "-m", "add plan to worktree"],
+                       cwd=str(wt_dir), capture_output=True)
+
+        info = resolve_active_plan(str(plan_file), "complete", workspace_root=tmp_path)
+
+        assert info.branch_context == "feature"
+        assert info.active_plan_path == wt_plan.resolve()
+
+    def test_review_phase_returns_worktree_plan(self, tmp_path):
+        """review phase same as complete — worktree Plan."""
+        import subprocess
+
+        repo = tmp_path / "projects" / "myproject"
+        repo.mkdir(parents=True)
+        subprocess.run(["git", "init", "-b", "main", str(repo)],
+                       capture_output=True, check=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"],
+                       cwd=str(repo), capture_output=True, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"],
+                       cwd=str(repo), capture_output=True, check=True)
+
+        plans_dir = repo / "docs" / "plans"
+        plans_dir.mkdir(parents=True)
+        plan_file = plans_dir / "test-plan.md"
+        plan_file.write_text(
+            "# Plan\n\n## Metadata\n\n- **Status**: verifying\n- **Type**: feature\n"
+            "\n- **Worktree**:\n  - branch: feature-x\n  - path: .worktrees/myproject-feature-x\n"
+        )
+
+        subprocess.run(["git", "add", "."], cwd=str(repo), capture_output=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=str(repo), capture_output=True)
+
+        subprocess.run(
+            ["git", "branch", "feature-x", "HEAD"],
+            cwd=str(repo), capture_output=True, check=True,
+        )
+
+        wt_dir = tmp_path / ".worktrees" / "myproject-feature-x"
+        subprocess.run(
+            ["git", "worktree", "add", str(wt_dir), "feature-x"],
+            cwd=str(repo), capture_output=True, check=True,
+        )
+
+        wt_plans = wt_dir / "docs" / "plans"
+        wt_plans.mkdir(parents=True, exist_ok=True)
+        wt_plan = wt_plans / "test-plan.md"
+        wt_plan.write_text("# Plan\n\n## Metadata\n\n- **Status**: verifying\n- **Type**: feature\n")
+
+        subprocess.run(["git", "add", "."], cwd=str(wt_dir), capture_output=True)
+        subprocess.run(["git", "commit", "-m", "add plan"], cwd=str(wt_dir), capture_output=True)
+
+        info = resolve_active_plan(str(plan_file), "review", workspace_root=tmp_path)
+        assert info.branch_context == "feature"
+        assert info.active_plan_path == wt_plan.resolve()
+
+
+class TestResolveActivePlanVerify:
+    """resolve_active_plan: verify phase branch checks."""
+
+    def test_verify_unmerged_raises_error(self, tmp_path):
+        """verify on unmerged feature branch raises ResolveActivePlanError."""
+        import subprocess
+
+        repo = tmp_path / "projects" / "myproject"
+        repo.mkdir(parents=True)
+        subprocess.run(["git", "init", "-b", "main", str(repo)],
+                       capture_output=True, check=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"],
+                       cwd=str(repo), capture_output=True, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"],
+                       cwd=str(repo), capture_output=True, check=True)
+
+        plans_dir = repo / "docs" / "plans"
+        plans_dir.mkdir(parents=True)
+        plan_file = plans_dir / "test-plan.md"
+        plan_file.write_text(
+            "# Plan\n\n## Metadata\n\n- **Status**: verifying\n- **Type**: feature\n"
+            "\n- **Worktree**:\n  - branch: feature-unmerged\n  - path: .worktrees/myproject-feature-unmerged\n"
+        )
+
+        subprocess.run(["git", "add", "."], cwd=str(repo), capture_output=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=str(repo), capture_output=True)
+
+        # Checkout the feature branch to simulate "not merged"
+        subprocess.run(
+            ["git", "checkout", "-b", "feature-unmerged"],
+            cwd=str(repo), capture_output=True, check=True,
+        )
+
+        with pytest.raises(ResolveActivePlanError, match="not been merged"):
+            resolve_active_plan(str(plan_file), "verify", workspace_root=tmp_path)
+
+    def test_verify_merged_returns_main(self, tmp_path):
+        """verify after merge returns main Plan."""
+        import subprocess
+
+        repo = tmp_path / "projects" / "myproject"
+        repo.mkdir(parents=True)
+        subprocess.run(["git", "init", "-b", "main", str(repo)],
+                       capture_output=True, check=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"],
+                       cwd=str(repo), capture_output=True, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"],
+                       cwd=str(repo), capture_output=True, check=True)
+
+        plans_dir = repo / "docs" / "plans"
+        plans_dir.mkdir(parents=True)
+        plan_file = plans_dir / "test-plan.md"
+        plan_file.write_text(
+            "# Plan\n\n## Metadata\n\n- **Status**: verifying\n- **Type**: feature\n"
+            "\n- **Worktree**:\n  - branch: feature-merged\n  - path: .worktrees/myproject-feature-merged\n"
+        )
+
+        subprocess.run(["git", "add", "."], cwd=str(repo), capture_output=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=str(repo), capture_output=True)
+
+        # Create and merge the feature branch so ancestry check passes
+        subprocess.run(["git", "checkout", "-b", "feature-merged"],
+                       cwd=str(repo), capture_output=True, check=True)
+        subprocess.run(["git", "commit", "--allow-empty", "-m", "feature work"],
+                       cwd=str(repo), capture_output=True, check=True)
+        subprocess.run(["git", "checkout", "main"],
+                       cwd=str(repo), capture_output=True, check=True)
+        subprocess.run(["git", "merge", "--no-ff", "feature-merged"],
+                       cwd=str(repo), capture_output=True, check=True)
+
+        # Now on main with feature-merged actually merged via ancestry
+        info = resolve_active_plan(str(plan_file), "verify", workspace_root=tmp_path)
+
+        assert info.branch_context == "integration"
+        assert info.active_plan_path == plan_file.resolve()
+
+
+class TestResolveActivePlanArchive:
+    """resolve_active_plan: archive always returns main Plan."""
+
+    def test_archive_returns_main_plan(self, tmp_path):
+        """archive phase always uses main Plan."""
+        import subprocess
+
+        repo = tmp_path / "projects" / "myproject"
+        repo.mkdir(parents=True)
+        subprocess.run(["git", "init", "-b", "main", str(repo)],
+                       capture_output=True, check=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"],
+                       cwd=str(repo), capture_output=True, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"],
+                       cwd=str(repo), capture_output=True, check=True)
+
+        plans_dir = repo / "docs" / "plans"
+        plans_dir.mkdir(parents=True)
+        plan_file = plans_dir / "test-plan.md"
+        plan_file.write_text(
+            "# Plan\n\n## Metadata\n\n- **Status**: done\n- **Type**: feature\n"
+            "\n- **Worktree**:\n  - branch: feature-done\n  - path: .worktrees/myproject-feature-done\n"
+        )
+
+        subprocess.run(["git", "add", "."], cwd=str(repo), capture_output=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=str(repo), capture_output=True)
+
+        info = resolve_active_plan(str(plan_file), "archive", workspace_root=tmp_path)
+        assert info.branch_context == "integration"
+        assert info.active_plan_path == plan_file.resolve()

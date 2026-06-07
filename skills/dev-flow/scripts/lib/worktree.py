@@ -18,6 +18,8 @@ import subprocess
 from dataclasses import dataclass, fields
 from pathlib import Path
 
+from lib.project import resolve_plan_location
+
 
 # ============================================
 # WorktreeContext
@@ -79,10 +81,54 @@ def parse_worktree_context(plan_path: str) -> WorktreeContext | None:
     # Try new structured format first
     ctx = _parse_structured_worktree(content)
     if ctx is not None:
+        if ctx.project_type == 'standard':
+            meta_type = _read_plan_project_type(content)
+            if meta_type and meta_type != 'standard':
+                ctx = WorktreeContext(
+                    enabled=ctx.enabled,
+                    project_type=meta_type,
+                    branch=ctx.branch,
+                    path=ctx.path,
+                    repo_root=ctx.repo_root,
+                    base_branch=ctx.base_branch,
+                    merge_target=ctx.merge_target,
+                    verify_mode=ctx.verify_mode,
+                    cleanup_policy=ctx.cleanup_policy,
+                )
         return ctx
 
     # Fallback to legacy format: "- **Worktree**: branch | path"
-    return _parse_legacy_worktree(content)
+    ctx = _parse_legacy_worktree(content)
+    if ctx is not None:
+        meta_type = _read_plan_project_type(content)
+        if meta_type:
+            ctx = WorktreeContext(
+                enabled=ctx.enabled,
+                project_type=meta_type,
+                branch=ctx.branch,
+                path=ctx.path,
+                repo_root=ctx.repo_root,
+                base_branch=ctx.base_branch,
+                merge_target=ctx.merge_target,
+                verify_mode=ctx.verify_mode,
+                cleanup_policy=ctx.cleanup_policy,
+            )
+        return ctx
+
+    return None
+
+
+def _read_plan_project_type(content: str) -> str | None:
+    """Read Project Type from Plan Metadata section.
+
+    Looks for '- **Project Type**: <value>' in the Metadata block.
+    Returns None if not found.
+    """
+    pattern = r'^\- \*\*Project Type\*\*:\s*(.+)$'
+    match = re.search(pattern, content, re.MULTILINE)
+    if match:
+        return match.group(1).strip()
+    return None
 
 
 def _parse_structured_worktree(content: str) -> WorktreeContext | None:
@@ -165,36 +211,39 @@ def _parse_legacy_worktree(content: str) -> WorktreeContext | None:
     )
 
 
-def write_worktree_context(plan_path: str, ctx: WorktreeContext) -> bool:
-    """Write WorktreeContext to Plan metadata in structured format.
+def write_worktree_context(plan_path: str, branch: str, path: str) -> bool:
+    """Write minimal Worktree metadata to Plan file (branch + path only).
 
-    Replaces existing Worktree field (new or legacy format) with structured block.
+    Replaces existing Worktree field (new or legacy format) with simplified block.
 
     Args:
         plan_path: Path to Plan markdown file
-        ctx: WorktreeContext to write
+        branch: Feature branch name
+        path: Workspace-relative worktree path
 
     Returns:
         True if write succeeded, False otherwise
     """
-    path = Path(plan_path)
-    if not path.exists():
+    wt_path = Path(path)
+    # Normalize to forward-slash relative path string
+    if wt_path.is_absolute():
+        try:
+            rel = wt_path.as_posix()
+        except Exception:
+            rel = str(wt_path)
+    else:
+        rel = wt_path.as_posix()
+
+    p = Path(plan_path)
+    if not p.exists():
         return False
 
-    content = path.read_text()
+    content = p.read_text()
 
-    # Build the structured block
     lines = [
         '- **Worktree**:',
-        f'  - enabled: {str(ctx.enabled).lower()}',
-        f'  - project_type: {ctx.project_type}',
-        f'  - branch: {ctx.branch}',
-        f'  - path: {ctx.path}',
-        f'  - repo_root: {ctx.repo_root}',
-        f'  - base_branch: {ctx.base_branch}',
-        f'  - merge_target: {ctx.merge_target}',
-        f'  - verify_mode: {ctx.verify_mode}',
-        f'  - cleanup_policy: {ctx.cleanup_policy}',
+        f'  - branch: {branch}',
+        f'  - path: {rel}',
     ]
     new_block = '\n'.join(lines)
 
@@ -203,7 +252,7 @@ def write_worktree_context(plan_path: str, ctx: WorktreeContext) -> bool:
     structured_match = re.search(structured_pattern, content, re.MULTILINE)
     if structured_match:
         new_content = content[:structured_match.start()] + new_block + content[structured_match.end():]
-        path.write_text(new_content)
+        p.write_text(new_content)
         return True
 
     # Try replacing legacy format
@@ -211,7 +260,7 @@ def write_worktree_context(plan_path: str, ctx: WorktreeContext) -> bool:
     legacy_match = re.search(legacy_pattern, content, re.MULTILINE)
     if legacy_match:
         new_content = content[:legacy_match.start()] + new_block + content[legacy_match.end():]
-        path.write_text(new_content)
+        p.write_text(new_content)
         return True
 
     # No existing Worktree field — insert after Status field
@@ -220,10 +269,156 @@ def write_worktree_context(plan_path: str, ctx: WorktreeContext) -> bool:
     if status_match:
         insert_pos = status_match.end()
         new_content = content[:insert_pos] + '\n' + new_block + content[insert_pos:]
-        path.write_text(new_content)
+        p.write_text(new_content)
         return True
 
     return False
+
+
+def parse_worktree_meta(plan_path: str) -> dict | None:
+    """Parse minimal Worktree metadata (branch + path) from Plan file.
+
+    Supports all formats: new 2-field, old 9-field structured, and legacy pipe.
+
+    Returns:
+        {"branch": str, "path": str} if found, None otherwise.
+    """
+    ctx = parse_worktree_context(plan_path)
+    if ctx is None:
+        return None
+    return {"branch": ctx.branch, "path": str(ctx.path)}
+
+
+class ResolveActivePlanError(Exception):
+    """Raised when resolve_active_plan cannot determine the active Plan."""
+    pass
+
+
+@dataclass
+class ActivePlanInfo:
+    """Result of active Plan resolution.
+
+    Attributes:
+        active_plan_path: Absolute path to the active Plan file
+        commit_repo_root: Absolute path to the Git working tree root
+            where Plan-only commits must be executed
+        repo_relative_plan_path: Plan path relative to commit_repo_root
+        branch_context: "integration" when on main/integration branch,
+            "feature" when on a feature worktree branch
+    """
+    active_plan_path: Path
+    commit_repo_root: Path
+    repo_relative_plan_path: str
+    branch_context: str  # "integration" | "feature"
+
+
+def resolve_active_plan(
+    main_plan_path: str,
+    command_phase: str,
+    workspace_root: str | Path | None = None,
+) -> ActivePlanInfo:
+    """Resolve the active Plan path for a given command phase.
+
+    Logic:
+        1. Read Worktree metadata from main Plan.
+        2. No Worktree metadata -> return main Plan (integration branch).
+        3. complete/review phase + worktree exists -> map to worktree Plan copy.
+        4. verify phase + not merged -> raise ResolveActivePlanError.
+        5. Merged / no worktree / other phases -> return main Plan.
+
+    Args:
+        main_plan_path: Path to the main-branch Plan file (from find_plan)
+        command_phase: One of "approve", "complete", "review",
+            "verify", "archive"
+        workspace_root: Workspace root path. If None, auto-detected.
+
+    Returns:
+        ActivePlanInfo with resolved paths and branch context.
+
+    Raises:
+        ResolveActivePlanError: When verify is called on an unmerged branch.
+    """
+    from lib.workspace import find_workspace_root as _find_ws
+
+    if workspace_root is None:
+        workspace_root = _find_ws()
+    workspace_root = Path(workspace_root).resolve()
+
+    main_plan = Path(main_plan_path).resolve()
+    main_loc = resolve_plan_location(main_plan, workspace_root)
+
+    # Step 1: Read worktree metadata
+    wt_meta = parse_worktree_meta(str(main_plan))
+
+    # Step 2: No worktree -> main Plan on integration branch
+    if wt_meta is None:
+        return ActivePlanInfo(
+            active_plan_path=main_plan,
+            commit_repo_root=main_loc.repo_root,
+            repo_relative_plan_path=main_loc.repo_relative_path,
+            branch_context="integration",
+        )
+
+    branch = wt_meta["branch"]
+    wt_rel_path = wt_meta["path"]
+
+    # Step 3: complete/review -> worktree Plan copy
+    if command_phase in ("complete", "review"):
+        worktree_dir = workspace_root / wt_rel_path
+        repo_relative = main_loc.repo_relative_path
+        worktree_plan = worktree_dir / repo_relative
+
+        # Determine the repo root for the worktree
+        if worktree_plan.exists():
+            wt_loc = resolve_plan_location(worktree_plan, workspace_root)
+            return ActivePlanInfo(
+                active_plan_path=worktree_plan,
+                commit_repo_root=wt_loc.repo_root,
+                repo_relative_plan_path=wt_loc.repo_relative_path,
+                branch_context="feature",
+            )
+        # Worktree dir doesn't exist or plan not in worktree — fall through
+        # to main plan (e.g., worktree already cleaned up)
+        return ActivePlanInfo(
+            active_plan_path=main_plan,
+            commit_repo_root=main_loc.repo_root,
+            repo_relative_plan_path=main_loc.repo_relative_path,
+            branch_context="integration",
+        )
+
+    # Step 4: verify + unmerged -> block
+    if command_phase == "verify":
+        # Check if the feature branch has been merged into the integration branch
+        # using git ancestry, not just current branch name
+        from lib.git import is_branch_merged as _is_merged, get_current_branch as _get_branch
+
+        current_branch = _get_branch(str(main_loc.repo_root))
+        if current_branch and current_branch == branch:
+            # Still on feature branch — definitely not merged
+            raise ResolveActivePlanError(
+                f"Feature branch '{branch}' has not been merged. "
+                f"Run verify-switch and merge manually before verify."
+            )
+        # Even on integration branch, verify feature is actually merged
+        if branch and not _is_merged(branch, current_branch or "HEAD", str(main_loc.repo_root)):
+            raise ResolveActivePlanError(
+                f"Feature branch '{branch}' has not been merged into '{current_branch}'. "
+                f"Run verify-switch and merge manually before verify."
+            )
+        return ActivePlanInfo(
+            active_plan_path=main_plan,
+            commit_repo_root=main_loc.repo_root,
+            repo_relative_plan_path=main_loc.repo_relative_path,
+            branch_context="integration",
+        )
+
+    # Step 5: archive and other phases -> main Plan
+    return ActivePlanInfo(
+        active_plan_path=main_plan,
+        commit_repo_root=main_loc.repo_root,
+        repo_relative_plan_path=main_loc.repo_relative_path,
+        branch_context="integration",
+    )
 
 
 def scan_projects(workspace_root: Path) -> list[str]:

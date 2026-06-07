@@ -20,9 +20,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from support.bootstrap import ensure_scripts_path
 ensure_scripts_path()
 
-from lib.git import commit_paths, push_repo, commit_all, get_current_branch
+from lib.git import commit_paths, push_repo, commit_all, get_current_branch, is_repo_dirty
 from lib.project import resolve_plan_location
 from workflow import update_plan_status
+from lib.worktree import write_worktree_context, resolve_active_plan, ResolveActivePlanError
 
 
 # ============================================
@@ -643,3 +644,211 @@ class TestB03SameRepoWorktreeDetection:
         _git_init(repo_b)
 
         assert get_common_git_dir(str(repo_a)) != get_common_git_dir(str(repo_b))
+
+
+# ============================================
+# Test: approve commits Plan before creating worktree (Task 3)
+# ============================================
+
+class TestApprovePlanFirstCommit:
+    """Tests that approve commits Plan (executing + Worktree metadata) to
+    integration branch BEFORE creating the worktree."""
+
+    def test_plan_committed_before_worktree_creation(self, tmp_path):
+        """Integration branch has executing+Worktree commit before worktree exists."""
+        # Set up project repo with a Plan
+        project_repo = tmp_path / "projects" / "myproject"
+        _git_init(project_repo)
+        plans_dir = project_repo / "docs" / "plans"
+        plans_dir.mkdir(parents=True)
+        plan_file = plans_dir / "test-plan.md"
+        _make_plan_file(plan_file, status="planning")
+
+        # Track the plan
+        subprocess.run(["git", "add", "."], cwd=str(project_repo),
+                       capture_output=True, check=True)
+        subprocess.run(["git", "commit", "-m", "add plan"],
+                       cwd=str(project_repo), capture_output=True, check=True)
+
+        initial_commits = _get_commit_count(project_repo)
+
+        # Step 1: Write Worktree metadata into Plan
+        branch = "issue-42-slug"
+        wt_rel_path = ".worktrees/myproject-issue-42-slug"
+        write_worktree_context(str(plan_file), branch, wt_rel_path)
+
+        # Step 2: Update status to executing
+        update_plan_status(str(plan_file), "executing")
+
+        # Step 3: Commit Plan-only baseline on integration branch
+        plan_location = resolve_plan_location(plan_file, tmp_path)
+        commit_paths(
+            str(plan_location.repo_root),
+            [plan_location.repo_relative_path],
+            "docs(plan): approve plan #42",
+        )
+
+        # At this point, integration branch has exactly one new commit
+        assert _get_commit_count(project_repo) == initial_commits + 1
+        commit_files = _get_last_commit_files(project_repo)
+        assert "docs/plans/test-plan.md" in commit_files
+
+        # Plan content now has executing status and Worktree metadata
+        content = plan_file.read_text()
+        assert "executing" in content
+        assert "branch: issue-42-slug" in content
+
+        # Step 4: Create worktree AFTER the Plan commit
+        worktree_base = tmp_path / ".worktrees"
+        worktree_base.mkdir()
+        from lib.worktree import create_worktree
+        wt_path = create_worktree(project_repo, branch, worktree_base)
+        assert wt_path.exists()
+
+        # Worktree Plan copy should inherit the committed baseline
+        wt_plan = wt_path / "docs" / "plans" / "test-plan.md"
+        assert wt_plan.exists()
+        wt_content = wt_plan.read_text()
+        assert "executing" in wt_content
+        assert "branch: issue-42-slug" in wt_content
+
+
+# ============================================
+# Test: complete is Plan-only with dirty tree guard (Task 3)
+# ============================================
+
+class TestCompletePlanOnlyCommit:
+    """Tests that complete only commits the active Plan file.
+    Dirty implementation tree blocks the command."""
+
+    def test_dirty_tree_blocks_complete(self, tmp_path):
+        """Uncommitted code changes cause complete to error out."""
+        repo = tmp_path / "projects" / "myproject"
+        _git_init(repo)
+
+        # Create Plan with Worktree metadata (simulating post-approve state)
+        plans_dir = repo / "docs" / "plans"
+        plans_dir.mkdir(parents=True)
+        plan_file = plans_dir / "test-plan.md"
+        _make_plan_file(plan_file, status="executing")
+
+        subprocess.run(["git", "add", "."], cwd=str(repo), capture_output=True, check=True)
+        subprocess.run(["git", "commit", "-m", "add plan"],
+                       cwd=str(repo), capture_output=True, check=True)
+
+        # Create feature branch + worktree
+        branch = "issue-42-slug"
+        worktree_base = tmp_path / ".worktrees"
+        worktree_base.mkdir()
+        from lib.worktree import create_worktree
+        wt_path = create_worktree(repo, branch, worktree_base)
+
+        # Write Worktree metadata to Plan
+        wt_rel = str(wt_path.relative_to(tmp_path))
+        write_worktree_context(str(plan_file), branch, wt_rel)
+
+        # Commit the metadata update
+        subprocess.run(["git", "add", "."], cwd=str(repo), capture_output=True, check=True)
+        subprocess.run(["git", "commit", "-m", "add worktree meta"],
+                       cwd=str(repo), capture_output=True, check=True)
+
+        # Add dirty code in worktree
+        (wt_path / "dirty_code.py").write_text("# uncommitted")
+
+        # Resolve active plan (should point to worktree copy)
+        active = resolve_active_plan(str(plan_file), "complete", tmp_path)
+        assert active.branch_context == "feature"
+        assert str(wt_path) in str(active.active_plan_path)
+
+        # Dirty check on the worktree repo should detect changes
+        # (worktree shares the same git repo, so check via the worktree path)
+        assert is_repo_dirty(str(wt_path)) is True
+
+    def test_clean_tree_produces_plan_only_commit(self, tmp_path):
+        """Clean implementation tree: only Plan file is committed."""
+        repo = tmp_path / "projects" / "myproject"
+        _git_init(repo)
+
+        plans_dir = repo / "docs" / "plans"
+        plans_dir.mkdir(parents=True)
+        plan_file = plans_dir / "test-plan.md"
+        _make_plan_file(plan_file, status="executing")
+
+        subprocess.run(["git", "add", "."], cwd=str(repo), capture_output=True, check=True)
+        subprocess.run(["git", "commit", "-m", "add plan"],
+                       cwd=str(repo), capture_output=True, check=True)
+
+        # Create feature branch + worktree
+        branch = "issue-42-slug"
+        worktree_base = tmp_path / ".worktrees"
+        worktree_base.mkdir()
+        from lib.worktree import create_worktree
+        wt_path = create_worktree(repo, branch, worktree_base)
+
+        # Write Worktree metadata and commit
+        wt_rel = str(wt_path.relative_to(tmp_path))
+        write_worktree_context(str(plan_file), branch, wt_rel)
+        subprocess.run(["git", "add", "."], cwd=str(repo), capture_output=True, check=True)
+        subprocess.run(["git", "commit", "-m", "add worktree meta"],
+                       cwd=str(repo), capture_output=True, check=True)
+
+        # Worktree is clean — no extra code changes
+
+        # Resolve active plan in worktree
+        active = resolve_active_plan(str(plan_file), "complete", tmp_path)
+        assert active.branch_context == "feature"
+        assert is_repo_dirty(str(wt_path)) is False
+
+        # Update status to verifying on the active plan
+        update_plan_status(str(active.active_plan_path), "verifying")
+
+        # Plan-only commit: only the active Plan file
+        commit_paths(
+            str(active.commit_repo_root),
+            [active.repo_relative_plan_path],
+            "docs(plan): complete plan #42",
+        )
+
+        # The commit should only contain the Plan file
+        files = _get_last_commit_files(active.commit_repo_root)
+        has_plan = any("test-plan.md" in f for f in files)
+        has_code = any(f.endswith(".py") and "test-plan" not in f for f in files)
+        assert has_plan, f"Plan file should be in commit, got: {files}"
+        assert not has_code, f"No code files in Plan-only commit, got: {files}"
+
+    def test_no_worktree_plan_only_commit_on_integration(self, tmp_path):
+        """Without worktree, complete commits Plan-only on integration branch."""
+        repo = tmp_path / "projects" / "myproject"
+        _git_init(repo)
+
+        plans_dir = repo / "docs" / "plans"
+        plans_dir.mkdir(parents=True)
+        plan_file = plans_dir / "test-plan.md"
+        _make_plan_file(plan_file, status="executing")
+
+        subprocess.run(["git", "add", "."], cwd=str(repo), capture_output=True, check=True)
+        subprocess.run(["git", "commit", "-m", "add plan"],
+                       cwd=str(repo), capture_output=True, check=True)
+
+        initial_commits = _get_commit_count(repo)
+
+        # No worktree — resolve returns integration branch
+        active = resolve_active_plan(str(plan_file), "complete", tmp_path)
+        assert active.branch_context == "integration"
+        assert active.active_plan_path == plan_file
+
+        # Clean tree check
+        assert is_repo_dirty(str(repo)) is False
+
+        # Update + commit Plan-only
+        update_plan_status(str(active.active_plan_path), "verifying")
+        commit_paths(
+            str(active.commit_repo_root),
+            [active.repo_relative_plan_path],
+            "docs(plan): complete plan test-plan",
+        )
+
+        # One new commit, only Plan file
+        assert _get_commit_count(repo) == initial_commits + 1
+        files = _get_last_commit_files(repo)
+        assert "docs/plans/test-plan.md" in files

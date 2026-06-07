@@ -12,10 +12,10 @@ import sys
 __version__ = "0.1.0"
 
 from commands.issue import register_issue_parser, cmd_issue
-from commands.query import cmd_query_status, cmd_query_list
 from commands.sync import register_sync_parser, cmd_sync
 from commands.archive import register_archive_parser, cmd_archive
 from commands.approve import register_approve_parser, cmd_approve
+from commands.submit import register_submit_parser, cmd_submit
 from commands.complete import register_complete_parser, cmd_complete
 from commands.verify import register_verify_parser, cmd_verify
 from commands.plan import register_plan_parser, cmd_plan
@@ -52,6 +52,9 @@ def build_parser() -> argparse.ArgumentParser:
     # Register approve subcommand
     register_approve_parser(subparsers)
 
+    # Register submit subcommand
+    register_submit_parser(subparsers)
+
     # Register complete subcommand
     register_complete_parser(subparsers)
 
@@ -70,17 +73,10 @@ def build_parser() -> argparse.ArgumentParser:
     # Register reset subcommand
     register_reset_parser(subparsers)
 
-    # Register status as top-level command
-    status_parser = subparsers.add_parser("status", help="Show Issue/Plan status")
-    status_parser.add_argument("target", nargs="?", help="Issue number or Plan name")
-
-    # Register list as top-level command
-    list_parser = subparsers.add_parser("list", help="List active Plans")
-
     # Register verify-switch subcommand
-    vs_parser = subparsers.add_parser("verify-switch", help="Switch .wopal/ to feature branch for verification")
+    vs_parser = subparsers.add_parser("verify-switch", help="Switch workspace to feature branch for verification")
     vs_parser.add_argument("issue", help="Issue number or plan name")
-    vs_parser.add_argument("--merge", action="store_true", help="Phase 2: merge feature branch back to main")
+    vs_parser.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
 
     return parser
 
@@ -96,18 +92,20 @@ def main(argv: list[str] | None = None) -> int:
         print("Available subcommands:")
         print("  issue create    Create a new GitHub Issue")
         print("  issue update    Update an existing GitHub Issue")
-        print("  status          Show Issue/Plan status")
-        print("  list            List active Plans")
         print("  sync            Sync Plan to Issue (body + labels)")
         print("  sync --body-only    Sync only Issue body")
         print("  sync --labels-only  Sync only Issue labels")
         print("")
         print("Workflow commands:")
         print("  plan            Create or locate a Plan")
-        print("  approve         Review and approve a Plan")
+        print("  plan new        Create a new Plan")
+        print("  plan status     Show Plan status details")
+        print("  plan list       List active Plans")
+        print("  submit          Submit Plan for review (planning -> reviewing)")
+        print("  approve         Approve a reviewed Plan (--confirm required)")
         print("  complete        Mark implementation complete")
         print("  verify          Verify and confirm completion")
-        print("  verify-switch   Switch .wopal/ for worktree verification")
+        print("  verify-switch   Switch workspace for worktree verification")
         print("  archive         Archive a completed Plan")
         print("")
         print("Utility commands:")
@@ -115,7 +113,6 @@ def main(argv: list[str] | None = None) -> int:
         print("  decompose       Create Issues from PRD or ROADMAP.md slices")
         print("  roadmap         Product phase roadmap (Analyze/Discuss/Produce/Decompose)")
         print("  reset           Reset Plan to planning status")
-        print("  query           Low-level data queries")
         print("")
         print("For detailed options: flow.sh <command> --help")
         return 0
@@ -135,6 +132,10 @@ def main(argv: list[str] | None = None) -> int:
     # Dispatch approve subcommand
     if args.command == "approve":
         return cmd_approve(args)
+
+    # Dispatch submit subcommand
+    if args.command == "submit":
+        return cmd_submit(args)
 
     # Dispatch complete subcommand
     if args.command == "complete":
@@ -160,17 +161,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "reset":
         return cmd_reset(args)
 
-    # Dispatch status as top-level command
-    if args.command == "status":
-        return cmd_query_status(args)
-
-    # Dispatch list as top-level command
-    if args.command == "list":
-        return cmd_query_list(args)
-
     # Dispatch verify-switch
     if args.command == "verify-switch":
-        return 0 if run_verify_switch(args.issue, merge=args.merge) else 1
+        return 0 if run_verify_switch(args.issue, yes=args.yes) else 1
 
     return 0
 

@@ -216,6 +216,19 @@ def is_commit_in_remote(repo_path: str, remote: str = "origin", branch: str = "m
     return result.returncode == 0
 
 
+def is_branch_merged(branch: str, target: str, repo_path: str = ".") -> bool:
+    """Check if branch has been merged into target.
+
+    Returns True if all commits from branch are reachable from target.
+    """
+    result = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", branch, target],
+        cwd=repo_path,
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
 def get_relative_path(file_path: str, base_path: str) -> str:
     """Get relative path from base_path to file_path.
 

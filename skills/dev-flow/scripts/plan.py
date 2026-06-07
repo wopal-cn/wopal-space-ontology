@@ -146,10 +146,23 @@ def set_plan_field(plan_path: str, field_name: str, field_value: str) -> bool:
 
 
 def get_plan_worktree(plan_path: str) -> dict | None:
-    """Extract Worktree field from Plan metadata.
+    """Extract Worktree metadata from Plan file.
 
-    Worktree format: "- **Worktree**: <branch> | <path>"
+    Supports:
+      1. New 2-field structured: - **Worktree**: with branch + path sub-fields
+      2. Old 9-field structured: - **Worktree**: with enabled, project_type, etc.
+      3. Legacy pipe format: - **Worktree**: branch | path
+
+    Returns:
+        {'branch': str, 'path': str} if found, None otherwise
     """
+    # Try structured format (new 2-field and old 9-field) first
+    from lib.worktree import parse_worktree_meta
+    meta = parse_worktree_meta(plan_path)
+    if meta is not None:
+        return meta
+
+    # Fallback to legacy pipe format
     raw = get_plan_field(plan_path, "Worktree")
     if not raw:
         return None
@@ -168,9 +181,9 @@ def get_plan_worktree(plan_path: str) -> dict | None:
 
 
 def set_plan_worktree(plan_path: str, branch: str, path: str) -> bool:
-    """Set Worktree field in Plan metadata."""
-    value = f"{branch} | {path}"
-    return set_plan_field(plan_path, "Worktree", value)
+    """Set Worktree metadata in Plan file using the new 2-field format."""
+    from lib.worktree import write_worktree_context
+    return write_worktree_context(plan_path, branch, path)
 
 
 # ============================================

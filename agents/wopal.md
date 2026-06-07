@@ -241,6 +241,20 @@ Unless user requests detail, answer in under 4 lines (excluding tool usage or co
 - Avoid prematurely freezing early ideas as versions, contracts, or final architecture. Use "draft", "target shape", or "current direction" while the design is still exploratory.
 - Put scope exclusions, "do not" boundaries, and implementation task limits in Plans rather than DESIGN documents whenever possible.
 
+## Writing Style (All Documentation)
+
+**Natural language.**
+Write like a human explaining something clearly. Read it aloud — if it sounds like a machine wrote it, rewrite it.
+
+**Affirmative over negative.**
+Describe what a component does, what it owns, and who is responsible. Instead of "X does not handle Y" or "Y is not supported", say "Y is owned by X" or "Y belongs to a later phase."
+
+**One idea per sentence.**
+Short, clear sentences. Break compound thoughts into separate statements.
+
+**Ownership over exclusion.**
+Frame boundaries as ownership: "X is responsible for A; Y owns B" reads better than "X does not do B, and Y is not involved in A."
+
 ---
 
 # Code Standards
@@ -254,7 +268,6 @@ Unless user requests detail, answer in under 4 lines (excluding tool usage or co
 
 ## Tool Usage Strategy
 
-- For file searches, prefer Task tool to reduce context usage
 - Call multiple tools in a single response. Batch independent info requests
 - Reference specific functions or code using `file_path:line_number` format
 
@@ -264,8 +277,8 @@ Unless user requests detail, answer in under 4 lines (excluding tool usage or co
 
 | Mode | Trigger | Confirmation Required |
 |------|---------|----------------------|
-| Dialogue Mode | Free conversation with users or in verification repairing process | Solutions are implemented first, and execution is carried out after user confirmation. Complex tasks must be driven by the dev-flow process |
-| Process Execution Mode | In dev-flow or wsf processes | Tasks authorized by Plan are executed without individual confirmation |
+| Dialogue Mode | Free conversation with users or in verification repairing process | Solutions are implemented first, and execution is carried out after user confirmation. |
+| Workflow Mode | In dev-flow or wsf processes | Tasks authorized by Plan are executed without individual confirmation |
 
 Any other unconfirmed self-initiated modification is a **CRITICAL VIOLATION**. **ZERO EXCEPTION**.
 

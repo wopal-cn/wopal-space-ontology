@@ -7,7 +7,7 @@
 - **Project Path**: .wopal
 - **Project Type**: ontology-worktree
 - **Created**: 2026-05-28
-- **Status**: verifying
+- **Status**: done
 - **Sequel**: phase2-worktree-git-lifecycle
 
 ## Scope Assessment
@@ -153,7 +153,7 @@ N/A — 无业务规则变更。本次为 dev-flow 工程工作流重构。
 - User Actions: 创建 Plan 并同步到 Issue，查看 Issue body 中的 Plan URL
 - Expected Result: URL 指向项目仓库（如 `github.com/sampx/gesp/blob/main/docs/plans/...`），而非空间仓库
 
-- [ ] 用户已完成上述功能验证并确认结果符合预期
+- [x] 用户已完成上述功能验证并确认结果符合预期
 
 ## Implementation
 

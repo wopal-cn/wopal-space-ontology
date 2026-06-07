@@ -10,13 +10,16 @@
 
 | 命令 | 说明 |
 |------|------|
-| `plan <issue>` | 创建或定位 Plan |
-| `approve <issue>` | 方案评审 |
-| `approve <issue> --confirm` | 用户审批通过，默认创建 worktree 隔离 |
-| `approve <issue> --confirm --no-worktree` | 用户审批通过，跳过 worktree |
+| `plan <issue>` | 创建或定位 Plan（裸命令，后向兼容） |
+| `plan new <issue>` | 创建新 Plan |
+| `plan status <plan-id>` | 查看 Plan 完整状态 |
+| `plan list [--issue]` | 列出活跃 Plan（`--issue` 含 GitHub Issues） |
+| `submit <plan>` | 提交人工审阅（planning → reviewing） |
+| `approve <plan> --confirm` | 用户审批通过，默认创建 worktree 隔离 |
+| `approve <plan> --confirm --no-worktree` | 用户审批通过，跳过 worktree |
 | `complete <issue> [--pr]` | 实施完成，进入用户验证 |
 | `verify <issue> --confirm` | 用户验证通过 |
-| `archive <issue>` | 归档 Plan，push 代码 |
+| `archive <issue>` | 归档 Plan，push 代码，同步阶段文档 |
 | `verify-switch <issue> [--merge]` | worktree 验证切换 |
 | `roadmap <prd-path> [--product ...] [--project ...]` | 产品阶段规划（四阶段工作流） |
 
@@ -31,20 +34,22 @@
 | `decompose-prd <prd-path> [--dry-run]` | 从 PRD 拆分 Issue |
 | `decompose-prd --from ROADMAP.md [--product <name>] [--dry-run]` | 从 ROADMAP.md Slices 表生成 Slice Issues |
 
-### 查询与诊断
+### Plan 子命令
 
 | 命令 | 说明 |
 |------|------|
-| `status <issue>` | 查看 Issue + Plan 状态 |
-| `list` | 列出所有活跃 Plan |
+| `plan new <issue>` | 创建新 Plan，与裸 `plan <issue>` 等效 |
+| `plan status <plan-id>` | 查看 Plan 完整状态（metadata、Issue、worktree） |
+| `plan list` | 列出本地活跃 Plan |
+| `plan list --issue` | 列出活跃 Plan，含 GitHub Issues 合并展示 |
+| `plan <issue>` | 裸命令，后向兼容（自动创建或定位 Plan） |
+
+### 其他命令
+
+| 命令 | 说明 |
+|------|------|
 | `sync <issue> [--body-only\|--labels-only]` | Plan → Issue 同步 |
 | `reset <issue>` | 重置 Plan 到 planning 状态 |
-
-### 工具
-
-| 命令 | 说明 |
-|------|------|
-| `query` | 低层数据查询（内部用） |
 
 ---
 
@@ -85,15 +90,20 @@ flow.sh issue update <issue> [options]
 
 ⚠️ 已废弃，使用 `issue write --body-file` 或 `--append` 替代。调用时输出 deprecated 警告。
 
-### plan（无 Issue 模式）
+### plan 子命令
 
 ```bash
-flow.sh plan --title "feat(scope): desc" --project <name> --type <type>
+# 创建新 Plan（裸命令后向兼容）
+flow.sh plan <issue>
+
+# 子命令方式
+flow.sh plan new <issue>              # 创建新 Plan
+flow.sh plan status <plan-id>         # 查看 Plan 完整状态
+flow.sh plan list                     # 列出本地活跃 Plan
+flow.sh plan list --issue             # 列出活跃 Plan + GitHub Issues
 ```
 
-先运行这条命令生成或定位 Plan stub，再编辑内容；禁止手写创建新的 Plan 文件。
-
-目录由 `--project` 决定（必填参数）。标准项目：`projects/<project>/docs/plans/`；ontology-worktree：`.wopal/docs/plans/`。`docs/projects/<project>/plans/` 已废弃，仅作只读回退。
+`plan list` 默认离线，仅扫描本地 Plan 文件。`--issue` 增加 GitHub Issues 合并展示，无 Plan 的 Issue 显示 `[recorded]`。
 
 ### plan --check
 
@@ -110,12 +120,22 @@ flow.sh sync <issue> --body-only    # 仅 body
 flow.sh sync <issue> --labels-only  # 仅 labels
 ```
 
+### submit
+
+```bash
+flow.sh submit <plan>       # planning → reviewing，提交人工审阅
+```
+
+提交 Plan 状态变更，commit/push 到集成分支。输出 "Next: flow.sh approve <plan> --confirm" 提示。
+
 ### approve --confirm
 
 ```bash
-flow.sh approve <issue> --confirm              # 默认创建 worktree
-flow.sh approve <issue> --confirm --no-worktree # 跳过 worktree
+flow.sh approve <plan> --confirm              # 默认创建 worktree（接受 reviewing 或 planning）
+flow.sh approve <plan> --confirm --no-worktree # 跳过 worktree
 ```
+
+`approve` 不带 `--confirm` 时报错退出，提示使用 `submit`。`--confirm` 接受 `reviewing` 或 `planning`（快捷路径）→ `executing`。
 
 ### complete --pr
 
@@ -123,15 +143,19 @@ flow.sh approve <issue> --confirm --no-worktree # 跳过 worktree
 flow.sh complete <issue> --pr    # PR 路径（默认不走 PR）
 ```
 
-### verify-switch（worktree 验证专用）
+### verify-switch（ontology-worktree 验证专用）
+
+verify-switch 仅用于 ontology-worktree 的 switch-runtime 模式。standard 项目直接在 worktree 目录验证，合并后走 verify --confirm。
 
 ```bash
-# Phase 1: 切换到 feature 分支供用户验证
+# Phase 1: 切换 .wopal/ 到 feature 分支供用户验证
 flow.sh verify-switch <issue>
 
-# Phase 2: 合并回主分支 + verify --confirm（用户确认后 Wopal 自动执行）
+# Phase 2: 合并回主分支 + verify --confirm（用户确认后执行）
 flow.sh verify-switch <issue> --merge
 ```
+
+standard 项目执行 verify-switch 时会打印验证指引，不执行任何 git 操作。
 
 ### decompose-prd
 

@@ -13,56 +13,48 @@ from pathlib import Path
 from lib.git import get_remote_url
 
 
-def find_workspace_root(start: Path | None = None) -> Path:
-    """Find workspace root by locating .wopal/.git worktree file.
-    
-    The workspace root has a .wopal/ directory where .git is a file
-    containing "gitdir: ..." (git worktree signature), not a regular
-    directory. This distinguishes it from project-level .wopal/ dirs.
-    
-    Args:
-        start: Starting directory for search (defaults to cwd)
-        
-    Returns:
-        Path to workspace root
-        
-    Raises:
-        RuntimeError: If workspace root cannot be found
-    """
-    if start is None:
-        start = Path.cwd()
-    else:
-        start = Path(start).resolve()
-    
+def _traverse_up(start: Path) -> Path | None:
+    """Walk up from start looking for .wopal/.git worktree file."""
     current = start
-    
     while current != current.parent:
         wopal_git = current / ".wopal" / ".git"
-        
-        # Check for worktree signature: .wopal/.git is a file starting with "gitdir:"
         if wopal_git.exists() and wopal_git.is_file():
             try:
-                content = wopal_git.read_text().strip()
-                if content.startswith("gitdir:"):
+                if wopal_git.read_text().strip().startswith("gitdir:"):
                     return current
             except Exception:
                 pass
-        
         current = current.parent
-    
-    # Fallback: return start if we can't find worktree signature
-    # This allows running from workspace root itself
-    wopal_git = start / ".wopal" / ".git"
-    if wopal_git.exists() and wopal_git.is_file():
-        try:
-            content = wopal_git.read_text().strip()
-            if content.startswith("gitdir:"):
-                return start
-        except Exception:
-            pass
-    
-    raise RuntimeError(f"Cannot find workspace root from {start}. "
-                       "Expected .wopal/.git worktree file at workspace root.")
+    return None
+
+
+def find_workspace_root(start: Path | None = None) -> Path:
+    """Find workspace root by locating .wopal/.git worktree file.
+
+    Uses the directory containing this script file as traversal start,
+    which is deterministic regardless of caller's cwd. The script lives
+    under .wopal/skills/dev-flow/scripts/lib/, so traversal will always
+    find the workspace root in a single pass.
+
+    Args:
+        start: Override traversal start (used for testing only)
+
+    Raises:
+        RuntimeError: If workspace root cannot be found
+    """
+    try:
+        script_start = Path(__file__).resolve().parent
+    except NameError:
+        script_start = Path.cwd()
+
+    result = _traverse_up(start if start else script_start)
+    if result:
+        return result
+
+    raise RuntimeError(
+        f"Cannot find workspace root from {script_start}. "
+        "Expected .wopal/.git worktree file at workspace root."
+    )
 
 
 def detect_space_repo(workspace_root: Path) -> str:

@@ -112,6 +112,12 @@ git push origin space/main
 # 验证：重启 OpenCode → 测试功能
 ```
 
+### 能力分层与下放
+
+fork main 与 space/main 的关系、同步铁律、能力下放与裁剪流程见 `references/capability-layers.md`。
+
+**核心铁律**：禁止 `space/main → fork main` 直接 merge（会破坏用户级能力栈）。能力下放用 `git checkout space/main -- <files>` + 新 commit。
+
 ---
 
 ## 技能生命周期
@@ -174,9 +180,10 @@ wopal skills list
 ## Tips
 
 1. **Ontology 协作必读** — 贡献/同步上游前读 `references/upstream-sync.md`
-2. **Edit in workspace** — `.wopal/skills/<name>/` 可直接编辑
-3. **Scan before install** — Downloaded skills need explicit scan
-4. **Verify after install** — `ls .wopal/skills/<name>/SKILL.md`
+2. **能力分层必读** — 修改、裁剪或下放 ontology 能力（plugin/skill/agent）前读 `references/capability-layers.md`
+3. **Edit in workspace** — `.wopal/skills/<name>/` 可直接编辑
+4. **Scan before install** — Downloaded skills need explicit scan
+5. **Verify after install** — `ls .wopal/skills/<name>/SKILL.md`
 
 ---
 

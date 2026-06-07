@@ -12,7 +12,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from support.bootstrap import ensure_scripts_path
 ensure_scripts_path()
 
-from workflow import guard_status, format_suggestion, resolve_space_repo
+from workflow import (
+    guard_status,
+    format_suggestion,
+    resolve_space_repo,
+    PLAN_STATES,
+    is_valid_state,
+    is_valid_transition,
+    get_next_state,
+    get_state_order,
+    get_status_display,
+    plan_status_to_issue_label,
+    STATUS_REVIEWING,
+)
 
 
 class TestGuardStatus(unittest.TestCase):
@@ -89,6 +101,98 @@ class TestFormatSuggestion(unittest.TestCase):
     def test_works_with_plan_name_ref(self):
         result = format_suggestion("planning", "executing", "refactor-dev-flow-foo")
         self.assertIn("refactor-dev-flow-foo", result)
+
+
+class TestReviewingState(unittest.TestCase):
+    """Test reviewing state additions to the state machine."""
+
+    def test_reviewing_in_plan_states(self):
+        self.assertIn("reviewing", PLAN_STATES)
+
+    def test_plan_states_order(self):
+        self.assertEqual(
+            PLAN_STATES,
+            ["planning", "reviewing", "executing", "verifying", "done"],
+        )
+
+    def test_status_reviewing_constant(self):
+        self.assertEqual(STATUS_REVIEWING, "reviewing")
+
+    def test_is_valid_state_reviewing(self):
+        self.assertTrue(is_valid_state("reviewing"))
+
+    def test_valid_transition_planning_to_reviewing(self):
+        self.assertTrue(is_valid_transition("planning", "reviewing"))
+
+    def test_valid_transition_reviewing_to_executing(self):
+        self.assertTrue(is_valid_transition("reviewing", "executing"))
+
+    def test_valid_transition_planning_to_executing_shortcut(self):
+        """planning -> executing shortcut path must still be valid."""
+        self.assertTrue(is_valid_transition("planning", "executing"))
+
+    def test_invalid_transition_reviewing_to_planning_direct(self):
+        """reviewing -> planning is only valid as a reset (handled by to_state==planning rule)."""
+        self.assertTrue(is_valid_transition("reviewing", "planning"))
+
+    def test_invalid_transition_reviewing_to_verifying(self):
+        self.assertFalse(is_valid_transition("reviewing", "verifying"))
+
+    def test_invalid_transition_reviewing_to_done(self):
+        self.assertFalse(is_valid_transition("reviewing", "done"))
+
+    def test_same_state_reviewing_allowed(self):
+        self.assertTrue(is_valid_transition("reviewing", "reviewing"))
+
+    def test_get_state_order_reviewing(self):
+        self.assertEqual(get_state_order("reviewing"), 2)
+
+    def test_get_state_order_executing_shifted(self):
+        """executing order shifts from 2 to 3 after reviewing insertion."""
+        self.assertEqual(get_state_order("executing"), 3)
+
+    def test_get_state_order_verifying_shifted(self):
+        self.assertEqual(get_state_order("verifying"), 4)
+
+    def test_get_state_order_done_shifted(self):
+        self.assertEqual(get_state_order("done"), 5)
+
+
+class TestGetStatusDisplayReviewing(unittest.TestCase):
+    """Test get_status_display for reviewing state."""
+
+    def test_reviewing_display(self):
+        result = get_status_display("reviewing")
+        self.assertEqual(result["order"], 2)
+        self.assertEqual(result["name"], "reviewing")
+        self.assertEqual(result["emoji"], "R")
+
+
+class TestPlanStatusToIssueLabelReviewing(unittest.TestCase):
+    """Test plan_status_to_issue_label for reviewing state."""
+
+    def test_reviewing_maps_to_planning_label(self):
+        """reviewing reuses status/planning Issue label."""
+        self.assertEqual(plan_status_to_issue_label("reviewing"), "status/planning")
+
+
+class TestGetNextStateSubmit(unittest.TestCase):
+    """Test get_next_state for submit command."""
+
+    def test_submit_maps_to_reviewing(self):
+        self.assertEqual(get_next_state("submit"), "reviewing")
+
+
+class TestFormatSuggestionReviewing(unittest.TestCase):
+    """Test format_suggestion for reviewing-related scenarios."""
+
+    def test_reviewing_planning_suggests_submit(self):
+        result = format_suggestion("planning", "reviewing", "42")
+        self.assertEqual(result, "Run: flow.sh submit 42")
+
+    def test_executing_reviewing_suggests_approve(self):
+        result = format_suggestion("reviewing", "executing", "test-plan")
+        self.assertEqual(result, "Run: flow.sh approve --confirm test-plan")
 
 
 class TestResolveSpaceRepo(unittest.TestCase):

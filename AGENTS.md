@@ -89,6 +89,24 @@ Applies to semantic content in: `agents/`, `rules/`, `commands/`, `templates/`, 
 - This module is produced by the space-flow project. See `wsf-file-manifest.json` for the full workflow asset inventory.
 - This module may be modified directly only at the user's explicit request; otherwise it should be deployed via the space-flow project.
 
+### Dev-flow Worktree Lifecycle
+
+dev-flow 技能的 worktree Plan 生命周期遵循 **Plan 分支归属** 契约：
+
+- `planning` 和已批准的 `executing` 基线位于集成分支（main 或 space/main）
+- `approve --confirm` 先在集成分支提交 `executing` + Worktree 元数据，再创建 worktree
+- `complete` 在 feature 分支上提交 Plan-only commit（`verifying`），脏实施树报错退出
+- 用户验证在 feature 分支上进行
+- `verify-switch --merge` 在用户明确确认后将 feature 分支集成到 main
+- `verify --confirm` 在集成分支上提交 Plan-only commit（`done`）
+- `archive` 在集成分支上将已接受 Plan 移至 `done/`，清理 worktree
+
+**Plan-only commit 原则**：生命周期脚本只提交 Plan 状态变更，不提交实施代码。代码提交由实施 agent 负责。
+
+**活动 Plan 路径**：子代理 prompt 必须使用活动 Plan 的本地路径。worktree 隔离的 Plan 活动副本位于 feature 分支的 worktree 内。
+
+权威细节见 `skills/dev-flow/SKILL.md` 的「Plan 分支归属」、「Wopal 编排规则」和「委派用活动 Plan 路径」章节。
+
 ### Plugin
 
 - Plugin internal architecture, logging, type safety, error handling, development, and testing rules: **follow** `.wopal/plugins/wopal-plugin/AGENTS.md`.

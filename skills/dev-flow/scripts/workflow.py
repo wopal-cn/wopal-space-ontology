@@ -7,7 +7,7 @@
 #   core/status.py - plan status update
 #
 # Provides:
-#   Constants: PLAN_STATES, STATUS_PLANNING, STATUS_EXECUTING, STATUS_VERIFYING, STATUS_DONE
+#   Constants: PLAN_STATES, STATUS_PLANNING, STATUS_REVIEWING, STATUS_EXECUTING, STATUS_VERIFYING, STATUS_DONE
 #   State machine: is_valid_state, is_valid_transition, get_next_state,
 #                   parse_plan_status, get_state_order, get_status_display,
 #                   plan_status_to_issue_label
@@ -28,19 +28,22 @@ from lib.workspace import detect_space_repo
 # ============================================
 
 STATUS_PLANNING = "planning"
+STATUS_REVIEWING = "reviewing"
 STATUS_EXECUTING = "executing"
 STATUS_VERIFYING = "verifying"
 STATUS_DONE = "done"
 
 # Valid Plan states in order
-PLAN_STATES = [STATUS_PLANNING, STATUS_EXECUTING, STATUS_VERIFYING, STATUS_DONE]
+PLAN_STATES = [STATUS_PLANNING, STATUS_REVIEWING, STATUS_EXECUTING, STATUS_VERIFYING, STATUS_DONE]
 
 # Valid state transitions (from_state -> to_state)
 VALID_TRANSITIONS = {
     (None, STATUS_PLANNING),          # Initial state
-    (STATUS_PLANNING, STATUS_EXECUTING),   # approve --confirm
-    (STATUS_EXECUTING, STATUS_VERIFYING),  # complete
-    (STATUS_VERIFYING, STATUS_DONE),       # verify --confirm
+    (STATUS_PLANNING, STATUS_REVIEWING),    # submit
+    (STATUS_REVIEWING, STATUS_EXECUTING),   # approve --confirm
+    (STATUS_PLANNING, STATUS_EXECUTING),    # approve --confirm (shortcut)
+    (STATUS_EXECUTING, STATUS_VERIFYING),   # complete
+    (STATUS_VERIFYING, STATUS_DONE),        # verify --confirm
 }
 
 
@@ -72,6 +75,7 @@ def get_next_state(command: str) -> str | None:
     """Get next state based on command."""
     command_state_map = {
         "plan": STATUS_PLANNING,
+        "submit": STATUS_REVIEWING,
         "approve": STATUS_EXECUTING,
         "complete": STATUS_VERIFYING,
         "verify": STATUS_DONE,
@@ -106,7 +110,7 @@ def parse_plan_status(plan_path: str) -> str | None:
 
 
 def get_state_order(state: str) -> int:
-    """Get order number for state (1-4)."""
+    """Get order number for state (1-5)."""
     try:
         return PLAN_STATES.index(state) + 1
     except ValueError:
@@ -117,9 +121,10 @@ def get_status_display(state: str) -> dict:
     """Get display info for a status."""
     state_info = {
         "planning": {"order": 1, "name": "planning", "emoji": "P"},
-        "executing": {"order": 2, "name": "executing", "emoji": "E"},
-        "verifying": {"order": 3, "name": "verifying", "emoji": "V"},
-        "done": {"order": 4, "name": "done", "emoji": "D"},
+        "reviewing": {"order": 2, "name": "reviewing", "emoji": "R"},
+        "executing": {"order": 3, "name": "executing", "emoji": "E"},
+        "verifying": {"order": 4, "name": "verifying", "emoji": "V"},
+        "done": {"order": 5, "name": "done", "emoji": "D"},
     }
 
     return state_info.get(state, {"order": 0, "name": "unknown", "emoji": "?"})
@@ -129,6 +134,7 @@ def plan_status_to_issue_label(status: str) -> str | None:
     """Map Plan status to Issue label."""
     label_map = {
         "planning": "status/planning",
+        "reviewing": "status/planning",
         "executing": "status/in-progress",
         "verifying": "status/verifying",
         "done": None,
@@ -174,18 +180,24 @@ def update_plan_status(plan_path: str | Path, new_status: str) -> bool:
 # ============================================
 
 _STATUS_COMMANDS = {
+    "reviewing": {
+        "planning": "submit",
+    },
     "executing": {
         "planning": "approve --confirm",
+        "reviewing": "approve --confirm",
         "verifying": "verify --confirm",
         "done": "archive",
     },
     "verifying": {
         "planning": "approve --confirm",
+        "reviewing": "approve --confirm",
         "executing": "complete",
         "done": "archive",
     },
     "done": {
         "planning": "approve --confirm",
+        "reviewing": "approve --confirm",
         "executing": "complete",
         "verifying": "verify --confirm",
     },

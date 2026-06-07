@@ -172,7 +172,7 @@ class TestScanLocalPlansDelegation:
 
     @patch("lib.project._get_repo_slug", side_effect=_slug_by_path)
     def test_scans_new_paths(self, mock_slug, workspace):
-        from commands.query import _scan_local_plans
+        from commands.plan import _scan_local_plans
 
         # Create plan in new path
         plan_file = workspace / "projects" / "gesp" / "docs" / "plans" / "feat-x.md"
@@ -187,7 +187,7 @@ class TestScanLocalPlansDelegation:
 
     @patch("lib.project._get_repo_slug", side_effect=_slug_by_path)
     def test_scans_ontology_plans(self, mock_slug, workspace):
-        from commands.query import _scan_local_plans
+        from commands.plan import _scan_local_plans
 
         plan_file = workspace / ".wopal" / "docs" / "plans" / "refactor-skills.md"
         plan_file.write_text("- **Status**: planning\n")
@@ -201,7 +201,7 @@ class TestScanLocalPlansDelegation:
     @patch("lib.project._get_repo_slug", side_effect=_slug_by_path)
     def test_deprecated_fallback_read(self, mock_slug, mock_branch, workspace):
         """DEPRECATED legacy read-only compatibility: old paths still readable."""
-        from commands.query import _scan_local_plans
+        from commands.plan import _scan_local_plans
 
         dep_dir = workspace / "docs" / "projects" / "gesp" / "plans"
         dep_dir.mkdir(parents=True)
@@ -214,14 +214,14 @@ class TestScanLocalPlansDelegation:
 
     @patch("lib.project._get_repo_slug", side_effect=_slug_by_path)
     def test_empty_workspace(self, mock_slug, workspace):
-        from commands.query import _scan_local_plans
+        from commands.plan import _scan_local_plans
         results = _scan_local_plans(str(workspace))
         assert results == []
 
     @patch("lib.project._get_repo_slug", side_effect=_slug_by_path)
     def test_excludes_done_dirs(self, mock_slug, workspace):
         """Plans in done/ subdirectories are excluded from active listing."""
-        from commands.query import _scan_local_plans
+        from commands.plan import _scan_local_plans
 
         done_dir = workspace / "projects" / "gesp" / "docs" / "plans" / "done"
         done_dir.mkdir(parents=True)

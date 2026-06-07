@@ -7,7 +7,7 @@
 - **Project Path**: .wopal
 - **Project Type**: ontology-worktree
 - **Created**: 2026-05-28
-- **Status**: verifying
+- **Status**: done
 - **Depends On**: phase1-path-model-plan-discovery
 
 ## Scope Assessment
@@ -134,7 +134,7 @@ N/A — 无业务规则变更。
 - User Actions: `flow.sh archive <plan>`，查看归档 commit
 - Expected Result: 归档 commit 在项目仓库（非空间仓库）
 
-- [ ] 用户已完成上述功能验证并确认结果符合预期
+- [x] 用户已完成上述功能验证并确认结果符合预期
 
 ## Implementation
 
