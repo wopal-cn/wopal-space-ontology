@@ -25,3 +25,11 @@ Thumbs.db
 # Space runtime (transient)
 .wopal-space/.tmp/
 .wopal-space/logs/
+
+# Ontology worktree (separate git)
+.wopal/
+
+# Project containers (subprojects are independent git repos)
+/projects/
+/contents/
+/labs/
