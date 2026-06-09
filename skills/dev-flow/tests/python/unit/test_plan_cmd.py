@@ -275,7 +275,7 @@ class TestCmdPlanStatus(unittest.TestCase):
 
 
 class TestCmdPlanDispatch(unittest.TestCase):
-    """Test cmd_plan subcommand dispatch."""
+    """Test cmd_plan subcommand dispatch (new subparser structure)."""
 
     def setUp(self):
         self.tmp_dir = tempfile.mkdtemp()
@@ -288,12 +288,7 @@ class TestCmdPlanDispatch(unittest.TestCase):
 
     def test_plan_status_dispatches_to_status_handler(self):
         ws = Path(self.tmp_dir)
-        args = Namespace(
-            target="status",
-            _extra_target="42",
-            title=None, project=None, type=None,
-            scope=None, prd=None, deep=False, check=False,
-        )
+        args = Namespace(plan_command="status", plan_id="42")
         with patch('commands.plan._cmd_plan_status', return_value=0) as mock_status:
             with patch('commands.plan.find_workspace_root', return_value=ws):
                 result = cmd_plan(args)
@@ -302,13 +297,7 @@ class TestCmdPlanDispatch(unittest.TestCase):
 
     def test_plan_list_dispatches_to_list_handler(self):
         ws = Path(self.tmp_dir)
-        args = Namespace(
-            target="list",
-            _extra_target=None,
-            title=None, project=None, type=None,
-            scope=None, prd=None, deep=False, check=False,
-            issue=False,
-        )
+        args = Namespace(plan_command="list", issue=False)
         with patch('commands.plan._cmd_plan_list', return_value=0) as mock_list:
             with patch('commands.plan.find_workspace_root', return_value=ws):
                 result = cmd_plan(args)
@@ -316,18 +305,14 @@ class TestCmdPlanDispatch(unittest.TestCase):
                 mock_list.assert_called_once()
 
     def test_plan_new_falls_through_to_creation(self):
-        """plan new 42 falls through to existing creation logic."""
+        """plan new 42 falls through to creation logic."""
         ws = Path(self.tmp_dir)
         args = Namespace(
-            target="new",
-            _extra_target="42",
+            plan_command="new",
+            issue="42",
             title=None, project=None, type=None,
-            scope=None, prd=None, deep=False, check=False,
+            scope=None, prd=None, deep=False,
         )
-        # When "new 42" is dispatched, target should be reset to "42"
-        # and fall through to existing creation logic which will fail
-        # because there's no actual Issue/GitHub. We just verify it
-        # doesn't hit the subcommand branch.
         with patch('commands.plan.find_workspace_root', return_value=ws):
             # Will fail trying to detect_space_repo, but proves dispatch works
             try:
@@ -337,12 +322,7 @@ class TestCmdPlanDispatch(unittest.TestCase):
 
     def test_plan_status_without_id_errors(self):
         ws = Path(self.tmp_dir)
-        args = Namespace(
-            target="status",
-            _extra_target=None,
-            title=None, project=None, type=None,
-            scope=None, prd=None, deep=False, check=False,
-        )
+        args = Namespace(plan_command="status", plan_id=None)
         with patch('commands.plan.find_workspace_root', return_value=ws):
             result = cmd_plan(args)
             self.assertEqual(result, 1)
@@ -350,14 +330,81 @@ class TestCmdPlanDispatch(unittest.TestCase):
     def test_plan_new_without_target_errors(self):
         ws = Path(self.tmp_dir)
         args = Namespace(
-            target="new",
-            _extra_target=None,
+            plan_command="new",
+            issue=None,
             title=None, project=None, type=None,
-            scope=None, prd=None, deep=False, check=False,
+            scope=None, prd=None, deep=False,
         )
         with patch('commands.plan.find_workspace_root', return_value=ws):
             result = cmd_plan(args)
             self.assertEqual(result, 1)
+
+    def test_plan_no_subcommand_errors(self):
+        """Plan command without any subcommand should error with usage."""
+        ws = Path(self.tmp_dir)
+        args = Namespace(plan_command=None)
+        with patch('commands.plan.find_workspace_root', return_value=ws):
+            result = cmd_plan(args)
+            self.assertEqual(result, 1)
+
+    def test_plan_check_dispatches_to_check_handler(self):
+        """plan check <name> dispatches to _cmd_plan_check."""
+        ws = Path(self.tmp_dir)
+        args = Namespace(plan_command="check", target="42")
+        with patch('commands.plan._cmd_plan_check', return_value=0) as mock_check:
+            with patch('commands.plan.find_workspace_root', return_value=ws):
+                result = cmd_plan(args)
+                self.assertEqual(result, 0)
+                mock_check.assert_called_once()
+
+
+class TestCmdPlanCheck(unittest.TestCase):
+    """Test _cmd_plan_check (plan check <name>) validation flow."""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        wopal_git = Path(self.tmp_dir) / ".wopal" / ".git"
+        wopal_git.parent.mkdir(parents=True)
+        wopal_git.write_text("gitdir: /some/path")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp_dir)
+
+    def test_check_with_valid_file_passes(self):
+        ws = Path(self.tmp_dir)
+        valid_plan = Path(self.tmp_dir) / "valid.md"
+        valid_plan.write_text("# test\n## Metadata\n- **Type**: test\n- **Status**: planning\n")
+        args = Namespace(plan_command="check", target=str(valid_plan))
+        with patch('commands.plan.find_workspace_root', return_value=ws):
+            with patch('commands.plan.check_doc_plan', return_value=None):
+                result = cmd_plan(args)
+                self.assertEqual(result, 0)
+
+    def test_check_with_missing_target_errors(self):
+        ws = Path(self.tmp_dir)
+        args = Namespace(plan_command="check", target=None)
+        with patch('commands.plan.find_workspace_root', return_value=ws):
+            result = cmd_plan(args)
+            self.assertEqual(result, 1)
+
+    def test_check_with_not_found_target_errors(self):
+        ws = Path(self.tmp_dir)
+        args = Namespace(plan_command="check", target="nonexistent-plan-name")
+        with patch('commands.plan.find_workspace_root', return_value=ws):
+            with patch('commands.plan.find_plan_by_name', side_effect=FileNotFoundError("not found")):
+                result = cmd_plan(args)
+                self.assertEqual(result, 1)
+
+    def test_check_with_validation_error_returns_1(self):
+        ws = Path(self.tmp_dir)
+        valid_plan = Path(self.tmp_dir) / "invalid.md"
+        valid_plan.write_text("# test\n")
+        args = Namespace(plan_command="check", target=str(valid_plan))
+        from validation import ValidationError
+        with patch('commands.plan.find_workspace_root', return_value=ws):
+            with patch('commands.plan.check_doc_plan', side_effect=ValidationError("Plan has issues")):
+                result = cmd_plan(args)
+                self.assertEqual(result, 1)
 
 
 if __name__ == '__main__':

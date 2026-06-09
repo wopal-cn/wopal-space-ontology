@@ -93,24 +93,20 @@ flow.sh issue update <issue> [options]
 ### plan 子命令
 
 ```bash
-# 创建新 Plan（裸命令后向兼容）
-flow.sh plan <issue>
+# 创建
+flow.sh plan new <issue>                # 从 Issue 创建
+flow.sh plan new --title "..." --project <name> --type <type>  # 无 Issue 创建
 
-# 子命令方式
-flow.sh plan new <issue>              # 创建新 Plan
-flow.sh plan status <plan-id>         # 查看 Plan 完整状态
-flow.sh plan list                     # 列出本地活跃 Plan
-flow.sh plan list --issue             # 列出活跃 Plan + GitHub Issues
+# 查询
+flow.sh plan status <plan-id>           # 查看 Plan 完整状态
+flow.sh plan list                       # 列出本地活跃 Plan
+flow.sh plan list --issue               # 列出活跃 Plan + GitHub Issues
+
+# 校验
+flow.sh plan check <plan-name-or-path>  # 校验 Plan 质量（Issue 号 / Plan 名 / 文件路径均可）
 ```
 
 `plan list` 默认离线，仅扫描本地 Plan 文件。`--issue` 增加 GitHub Issues 合并展示，无 Plan 的 Issue 显示 `[recorded]`。
-
-### plan --check
-
-```bash
-flow.sh plan <issue> --check
-```
-校验 Plan 质量，不推进状态。
 
 ### sync
 

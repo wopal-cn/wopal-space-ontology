@@ -68,21 +68,23 @@ class ValidationError(Exception):
 
 
 def check_doc_plan(plan_file: str) -> None:
-    """Check Plan document completeness (execution-grade quality gate)."""
+    """Check Plan document completeness (execution-grade quality gate).
+
+    All issues include line number + fix hint + why. Aggregated into a single
+    ValidationError so Wopal sees the full picture in one pass.
+    """
     with open(plan_file, 'r', encoding='utf-8') as f:
         content = f.read()
     
-    issues = []
+    issues: list[str] = []
     version = detect_template_version(content)
-    
-    # Common checks: placeholders / uncleaned template guidance
     content_no_codeblocks = _remove_code_blocks(content)
-    placeholder_pattern = r'(<!-- *(TODO|FIXME)|\- \[ \] *(TODO|FIXME)|\*\*(TODO|FIXME)|(TODO|FIXME)[：:]|待补充|REQ-xxx|path/to/)'
-    if re.search(placeholder_pattern, content_no_codeblocks):
-        issues.append("Found placeholders in plan")
-
-    if "<!--" in content_no_codeblocks or "-->" in content_no_codeblocks:
-        issues.append("Found uncleaned template comments in plan")
+    
+    # 1. Unfilled placeholders (TODO/FIXME/待补/path-to/REQ-xxx)
+    issues.extend(_check_placeholders(content_no_codeblocks))
+    
+    # 2. Template guidance comments (<!-- ... -->) not removed
+    issues.extend(_check_template_guidance_comments(content_no_codeblocks))
     
     if version == 'new':
         task_issues = check_task_structure(content)
@@ -116,7 +118,131 @@ def check_doc_plan(plan_file: str) -> None:
         issues.append(pt_issue)
     
     if issues:
-        raise ValidationError("\n".join(issues))
+        summary = _format_issues_summary(issues, plan_file)
+        raise ValidationError(summary)
+
+
+# ============================================
+# Issue formatting helpers
+# ============================================
+
+
+def _format_issue(
+    problem: str,
+    fix: str,
+    line_no: int | None = None,
+    why: str | None = None,
+) -> str:
+    """Format a single issue with line number, fix hint, and why.
+
+    Format:
+        [Line 12] Problem description
+          Fix: How to fix
+          Why: Why this matters
+    """
+    prefix = f"[Line {line_no}] " if line_no is not None else ""
+    parts = [f"{prefix}{problem}"]
+    if fix:
+        parts.append(f"  Fix: {fix}")
+    if why:
+        parts.append(f"  Why: {why}")
+    return "\n".join(parts)
+
+
+def _format_issues_summary(issues: list[str], plan_file: str) -> str:
+    """Format aggregated issues into a single error message."""
+    if not issues:
+        return ""
+    n = len(issues)
+    header = f"Plan validation failed: {n} issue(s) in {plan_file}"
+    body = "\n\n".join(issues)
+    return f"{header}\n\n{body}"
+
+
+# ============================================
+# Placeholder & template guidance checks
+# ============================================
+
+
+PLACEHOLDER_PATTERNS: list[tuple[str, str]] = [
+    (r'<!--\s*(TODO|FIXME)', 'HTML comment with TODO/FIXME'),
+    (r'\-\s+\[\s*\]\s*(TODO|FIXME)', 'checkbox with TODO/FIXME'),
+    (r'\*\*(TODO|FIXME)\*\*', 'bold TODO/FIXME marker'),
+    (r'(TODO|FIXME)\s*[:：]', 'TODO/FIXME with colon'),
+    (r'待补充|待补|占位|TBD|TBC', 'unfilled placeholder marker'),
+    (r'REQ-xxx|\bXXX\b', 'unfilled requirement code'),
+    (r'path/to/|/path/to/', 'unfilled path'),
+]
+
+
+def _check_placeholders(content_no_codeblocks: str) -> list[str]:
+    """Detect unfilled placeholders with line numbers and fix hints.
+
+    Code blocks are removed by the caller (see _remove_code_blocks).
+    """
+    issues: list[str] = []
+    for pattern, description in PLACEHOLDER_PATTERNS:
+        for match in re.finditer(pattern, content_no_codeblocks):
+            line_no = content_no_codeblocks[:match.start()].count("\n") + 1
+            issues.append(
+                _format_issue(
+                    problem=f"Placeholder detected: '{match.group()}' ({description})",
+                    fix=f"Replace '{match.group()}' with the actual value",
+                    line_no=line_no,
+                    why="Plan files should not contain TODO/FIXME/path-to markers — these signal incomplete work.",
+                )
+            )
+    return issues
+
+
+# Keywords that identify template guidance comments (vs author-written comments).
+# These match the scaffolding comments in templates/plan.md and reference docs.
+TEMPLATE_GUIDANCE_KEYWORDS: list[str] = [
+    r"⚠️",
+    r"自动注入",
+    r"TDD\s*标记说明",
+    r"委派策略规范",
+    r"WorktreeContext",
+    r"必填",
+    r"任务产出说明",
+    r"使用编号列表",
+    r"前期研究结论",
+    r"Agent\s*可自动验证",
+    r"Plan\s*编写时检查",
+    r"Acceptance\s*Criteria\s*位于",
+    r"完整实施设计",
+]
+
+
+def _check_template_guidance_comments(content_no_codeblocks: str) -> list[str]:
+    """Detect template guidance comments (<!-- ... -->) that should be removed.
+
+    Author-written comments (those that don't match template guidance patterns)
+    are allowed and won't trigger this check. This avoids false positives on
+    legitimate explanatory comments.
+    """
+    issues: list[str] = []
+    comment_pattern = re.compile(r"<!--(.*?)-->", re.DOTALL)
+
+    for match in comment_pattern.finditer(content_no_codeblocks):
+        comment_text = match.group(1).strip()
+        line_no = content_no_codeblocks[:match.start()].count("\n") + 1
+
+        for keyword in TEMPLATE_GUIDANCE_KEYWORDS:
+            if re.search(keyword, comment_text):
+                preview = comment_text[:80] + ("..." if len(comment_text) > 80 else "")
+                issues.append(
+                    _format_issue(
+                        problem=f"Template guidance comment not removed: '<!-- {preview} -->'",
+                        fix="Delete this line — it is template scaffolding, not plan content",
+                        line_no=line_no,
+                        why="Template guidance helps authors during writing. "
+                            "Plan files should contain only task description, not template hints.",
+                    )
+                )
+                break
+
+    return issues
 
 
 def check_user_validation(plan_file: str) -> None:
@@ -262,30 +388,59 @@ def _check_project_path(content: str) -> str | None:
     declared = match.group(1).strip()
     ws_root = find_workspace_root()
     resolved = ws_root / declared
+    line_no = content[:match.start()].count("\n") + 1
 
     if not resolved.exists():
-        return f"Project Path: declared path does not exist: {declared}"
+        return _format_issue(
+            problem=f"Project Path: declared path does not exist: '{declared}' (resolved: {resolved})",
+            fix=(
+                "Project Path must be relative to the space root "
+                "(e.g. 'projects/ellamaka/' or '.wopal/'). "
+                f"Run flow.sh from the space root, not from a project subdirectory. "
+                f"Current ws_root: {ws_root}"
+            ),
+            line_no=line_no,
+            why="Paths are resolved relative to the space root, so 'projects/ellamaka/' only works "
+                "when flow.sh runs from the space root (where .wopal-space/ lives).",
+        )
 
     git_path = resolved / ".git"
     if not git_path.exists():
-        return f"Project Path: not a git repository (no .git): {declared}"
+        return _format_issue(
+            problem=f"Project Path: not a git repository (no .git): '{declared}'",
+            fix="Ensure the path points to a git repo (standard projects) or a worktree (ontology-worktree)",
+            line_no=line_no,
+        )
 
     project_type = _read_project_type(content)
     if project_type == "ontology-worktree":
         if not git_path.is_file():
-            return (
-                f"Project Path: expected worktree pointer file at {declared}/.git "
-                f"but found directory (ontology-worktree .git must be a file)"
+            return _format_issue(
+                problem=f"Project Path: expected worktree pointer file at '{declared}/.git' but found directory",
+                fix="For ontology-worktree, .git must be a file (worktree pointer), not a directory",
+                line_no=line_no,
             )
         try:
             content_git = git_path.read_text().strip()
             if not content_git.startswith("gitdir: "):
-                return f"Project Path: {declared}/.git is not a valid worktree pointer (missing 'gitdir:' prefix)"
+                return _format_issue(
+                    problem=f"Project Path: '{declared}/.git' is not a valid worktree pointer (missing 'gitdir:' prefix)",
+                    fix="Check that .git is a proper worktree pointer file",
+                    line_no=line_no,
+                )
             main_repo_part = content_git[len("gitdir: "):]
             if "/.git/worktrees/" not in main_repo_part:
-                return f"Project Path: {declared}/.git does not reference a valid worktree"
-        except Exception:
-            return f"Project Path: cannot read {declared}/.git worktree pointer"
+                return _format_issue(
+                    problem=f"Project Path: '{declared}/.git' does not reference a valid worktree",
+                    fix="The worktree pointer must point to a path containing '/.git/worktrees/'",
+                    line_no=line_no,
+                )
+        except Exception as e:
+            return _format_issue(
+                problem=f"Project Path: cannot read '{declared}/.git' worktree pointer: {e}",
+                fix="Check file permissions and that .git is a valid worktree pointer file",
+                line_no=line_no,
+            )
 
     return None
 

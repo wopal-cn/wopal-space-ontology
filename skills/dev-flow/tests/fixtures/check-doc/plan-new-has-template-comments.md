@@ -49,7 +49,7 @@ Current architecture description.
 
 ## Implementation
 
-<!-- Template authoring guidance should not survive into execution-grade plan -->
+<!-- ⚠️ Template authoring guidance should not survive into execution-grade plan -->
 
 ### Task 1: Test Task
 
