@@ -57,7 +57,7 @@ export async function launchTask(
     return { ok: false, status: 'failed', error }
   }
 
-  debugLog.trace(`[launch] starting: description="${input.description}" agent="${input.agent}" parent_id=${formatSessionID(input.parentSessionID, false)}`)
+  debugLog.trace(`[launch] starting: description="${input.description}" agent="${input.agent}" parent=${formatSessionID(input.parentSessionID, false)}`)
 
   if (!concurrency.tryAcquire(concurrencyKey, DEFAULT_CONCURRENCY_LIMIT)) {
     debugLog.debug(`[launch] concurrency limit reached (${DEFAULT_CONCURRENCY_LIMIT}/${DEFAULT_CONCURRENCY_LIMIT})`)

@@ -98,8 +98,7 @@ Task is still running. Use \`wopal_task_output(task_id="${task.id}")\` for detai
   const success = await sendNotification(deps, task.parentSessionID, notification)
 
   // Mirror to debug log with concise summary
-  const debugSummary = `task_id=${formatSessionID(task.sessionID, true)} msgs=${messageCount} runtime=${elapsedLine ?? 'unknown'} tools=${toolSummary.total} trigger=${triggerReason ?? 'unknown'}`
-  debugLog.debug(`[progressNotify] ${success ? 'sent' : 'failed'}: ${debugSummary}`)
+  debugLog.debug(`[progressNotify] ${success ? 'sent' : 'failed'}: ${formatSessionID(task.sessionID, true)} msgs=${messageCount} runtime=${elapsedLine ?? 'unknown'} tools=${toolSummary.total} trigger=${triggerReason ?? 'unknown'}`)
 }
 
 export async function sendNotification(
