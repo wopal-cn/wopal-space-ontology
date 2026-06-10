@@ -130,6 +130,7 @@ start_backend() {
     nohup env \
         WOPAL_PLUGIN_LOG_LEVEL="${LOG_LEVEL}" \
         WOPAL_PLUGIN_LOG_MODULES="${LOG_MODULES}" \
+        WOPAL_PLUGIN_LOG_FILE="$LOG_DIR/wopal-plugins-debug.log" \
         ellamaka "${serve_args[@]}" > "$BACKEND_LOG" 2>&1 &
 
     # 记录 PID 和启动目录，stop 时用于校验
@@ -161,7 +162,7 @@ stop_backend() {
         return
     fi
 
-    rm -f "$BACKEND_PID_FILE" "$BACKEND_LOG" || true
+    rm -f "$BACKEND_PID_FILE" "$BACKEND_LOG" "$LOG_DIR/wopal-plugins-debug.log" || true
 
     for p in $pid $port_pid; do
         [ -n "$p" ] && kill "$p" 2>/dev/null || true
@@ -324,7 +325,7 @@ create_session() {
     else
         local tmux_env=() debug_args=()
         if [ "$DEBUG_MODE" = true ]; then
-            tmux_env=(-e "WOPAL_PLUGIN_LOG_LEVEL=$LOG_LEVEL")
+            tmux_env=(-e "WOPAL_PLUGIN_LOG_LEVEL=$LOG_LEVEL" -e "WOPAL_PLUGIN_LOG_FILE=$LOG_DIR/wopal-plugins-debug.log")
             debug_args=(--log-level DEBUG)
         fi
         if [ -n "$LOG_MODULES" ]; then
