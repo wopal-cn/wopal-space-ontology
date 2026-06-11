@@ -55,6 +55,23 @@ Important wopal-space differences:
 - wopal-space mode **skips** `~/.config/opencode/`
 - agent frontmatter is the highest-precedence place for per-agent permission tuning
 
+### WopalSpace capability override
+
+Directories load in order: `~/.wopal/` (user-level) → `.wopal/` (space-level). Later layers override earlier ones.
+
+| Capability | Same-name override |
+|---|---|
+| Agents | **Field-level merge** — space only overrides fields it defines; user-only fields survive. Cannot delete user fields. |
+| Commands | **Field-level merge** — same as agents. |
+| Skills | **Full replacement** — space skill entirely replaces user skill with the same name. |
+| Plugins | **Full replacement** — same-identity space plugin replaces user plugin. |
+
+Config guidance:
+
+- To **tune** a user-level agent, set only the fields you want to change in the space definition
+- To **fully replace** an agent, explicitly set all fields in the space definition
+- Skills and plugins are simpler — same name/identity = complete replacement
+
 ## Permission model
 
 Use `permission`, not legacy `tools`, for new config.

@@ -25,7 +25,7 @@
               "model": "wopal-ai/glm-5-turbo"
             },
             "rook": {
-              "model": "openai/gpt-5.4",
+              "model": "wopal-ai/minimax-m3",
               "variant": "xhigh"
             },
             "wsf-planner": {
