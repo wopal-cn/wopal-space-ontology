@@ -7,10 +7,12 @@ Switches workspace to feature branch for verification:
 User confirmation is required unless --yes is passed.
 """
 
+import re
 import subprocess
 from pathlib import Path
 
-from lib.workspace import find_workspace_root
+from lib.git import commit_paths, get_dirty_lines, get_relative_path
+from lib.workspace import find_workspace_root, get_ontology_main_repo
 from lib.worktree import parse_worktree_context
 from lib.logging import log_info, log_success, log_error, log_warn, log_step
 from plan import find_plan, get_plan_worktree, get_plan_field
@@ -112,22 +114,81 @@ def _resolve_wt_path(wt_path: Path | str, workspace_root: Path) -> Path:
     return raw if raw.is_absolute() else workspace_root / str(wt_path)
 
 
+def _check_dirty(cwd: str) -> list[str]:
+    """Run git status --porcelain, return dirty file lines (empty if clean).
+
+    Args:
+        cwd: Directory to check
+
+    Returns:
+        List of dirty file lines from git status --porcelain
+    """
+    return get_dirty_lines(cwd)
+
+
+def _update_plan_after_switch(plan_path: str, repo_root: str) -> None:
+    """Update Plan Worktree metadata after switching.
+
+    - Replace path: <original> → path: (removed)
+    - Add Verification Dir metadata field after Worktree block
+    - Commit the Plan change
+
+    Args:
+        plan_path: Absolute path to the Plan file
+        repo_root: Git repo root where Plan lives (for commit)
+    """
+    plan_file = Path(plan_path)
+    content = plan_file.read_text()
+
+    # Replace path: <anything> → path: (removed) in Worktree block
+    content = re.sub(r'(  - path: ).+', r'\1(removed)', content)
+
+    # Normalize trailing newline before regex matching.
+    # Without this, the regex won't consume the last Worktree sub-field line
+    # when it sits at EOF, causing Verification Dir to be inserted inside the block.
+    if not content.endswith("\n"):
+        content += "\n"
+
+    # Insert Verification Dir AFTER the Worktree block, not inside it.
+    # The Worktree block ends at the last 2-indent line belonging to it;
+    # "Verification Dir" is a top-level metadata field and must be 0-indent.
+    wt_pattern = r'(- \*\*Worktree\*\*:.*\n(?:(?:  - .+\n)|(?:[ \t]*\n))*)'
+    wt_match = re.search(wt_pattern, content)
+    if wt_match:
+        end_pos = wt_match.end()
+        verification_line = f"- **Verification Dir**: {repo_root}\n"
+        content = content[:end_pos] + verification_line + content[end_pos:]
+
+    plan_file.write_text(content)
+
+    # Commit the Plan change
+    plan_file_rel = get_relative_path(str(plan_file), repo_root)
+    commit_paths(
+        repo_root,
+        [plan_file_rel],
+        "docs(plan): verify-switch — update worktree metadata",
+    )
+
+
 def _switch_ontology(
     workspace_root: Path,
     wt_ctx,
     issue: str,
+    plan_path: str,
 ) -> bool:
     """Switch .wopal/ to feature branch for ontology-worktree.
 
     Steps:
-    1. git fetch in .wopal/
-    2. git checkout <feature_branch> in .wopal/
-    3. Print verification guidance
-
-    Does NOT remove the worktree (ontology needs it).
+    1. Check dirty on .wopal/ — warn, don't block
+    2. Remove worktree from main repo
+    3. git fetch in .wopal/
+    4. git checkout <feature_branch> in .wopal/
+    5. Update Plan metadata
+    6. Print verification guidance
 
     Args:
         issue: Issue number or plan name (for guidance output)
+        plan_path: Path to Plan file (for metadata update)
     Returns:
         True if switch succeeded
     """
@@ -135,15 +196,33 @@ def _switch_ontology(
     repo_root = str(wt_ctx.repo_root)
     branch = wt_ctx.branch
     merge_target = getattr(wt_ctx, "merge_target", "space/main")
+    wt_path = str(_resolve_wt_path(wt_ctx.path, workspace_root))
 
-    # Fetch
+    # 1. Check dirty on .wopal/
+    dirty_files = _check_dirty(str(wopal_dir))
+    if dirty_files:
+        log_warn(
+            f"Canonical path has uncommitted changes "
+            f"({len(dirty_files)} files)"
+        )
+
+    # 2. Remove worktree from main repo
+    main_repo = get_ontology_main_repo(workspace_root)
+    if main_repo:
+        _remove_worktree(str(main_repo), wt_path)
+
+    # 3. Fetch
     if not _git_fetch(str(wopal_dir)):
         return False
 
-    # Checkout
+    # 4. Checkout
     if not _git_checkout(branch, str(wopal_dir)):
         return False
 
+    # 5. Update Plan metadata
+    _update_plan_after_switch(plan_path, str(wopal_dir))
+
+    # 6. Print verification guidance
     log_success(f"Switched .wopal/ to '{branch}'")
     print()
     log_step("Verification steps:")
@@ -159,17 +238,21 @@ def _switch_standard(
     workspace_root: Path,
     wt_ctx,
     issue: str,
+    plan_path: str,
 ) -> bool:
     """Switch project repo to feature branch for standard project.
 
     Steps:
     1. git fetch in project repo
-    2. git checkout <feature_branch> in project repo
-    3. git worktree remove <worktree_path>
-    4. Print verification guidance
+    2. Check dirty on canonical path — warn, don't block
+    3. Remove worktree FIRST
+    4. git checkout <feature_branch>
+    5. Update Plan metadata
+    6. Print verification guidance
 
     Args:
         issue: Issue number or plan name (for guidance output)
+        plan_path: Path to Plan file (for metadata update)
     Returns:
         True if switch succeeded
     """
@@ -178,17 +261,29 @@ def _switch_standard(
     wt_path = str(_resolve_wt_path(wt_ctx.path, workspace_root))
     merge_target = getattr(wt_ctx, "merge_target", "main")
 
-    # Fetch
+    # 1. Fetch
     if not _git_fetch(repo_root):
         return False
 
-    # Checkout
+    # 2. Check dirty on canonical path (warn, don't block)
+    dirty_files = _check_dirty(repo_root)
+    if dirty_files:
+        log_warn(
+            f"Canonical path has uncommitted changes "
+            f"({len(dirty_files)} files)"
+        )
+
+    # 3. Remove worktree FIRST
+    _remove_worktree(repo_root, wt_path)
+
+    # 4. THEN checkout
     if not _git_checkout(branch, repo_root):
         return False
 
-    # Remove worktree
-    _remove_worktree(repo_root, wt_path)
+    # 5. Update Plan metadata
+    _update_plan_after_switch(plan_path, repo_root)
 
+    # 6. Print verification guidance
     log_success(f"Switched project repo to '{branch}'")
     print()
     log_step("Verification steps:")
@@ -295,9 +390,9 @@ def run_verify_switch(issue: str, yes: bool = False) -> bool:
             return False
 
         if project_type == "ontology-worktree":
-            return _switch_ontology(workspace_root, wt_ctx, issue)
+            return _switch_ontology(workspace_root, wt_ctx, issue, str(plan_path))
         else:
-            return _switch_standard(workspace_root, wt_ctx, issue)
+            return _switch_standard(workspace_root, wt_ctx, issue, str(plan_path))
 
     # Legacy fallback — WorktreeContext unavailable
     wt = get_plan_worktree(plan_path)

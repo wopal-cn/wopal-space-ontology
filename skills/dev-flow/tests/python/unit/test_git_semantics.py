@@ -532,75 +532,30 @@ class TestB01WorktreePathConsistency:
 
 
 class TestB02AbsolutePathResolution:
-    """B-02 regression: verify-switch must handle absolute paths in WorktreeContext."""
+    """B-02 regression: verify-switch must handle absolute paths in WorktreeContext.
+
+    After the verify-switch refactor, _run_switch_runtime_phase1 was replaced by
+    _switch_ontology / _switch_standard. These use _resolve_wt_path to determine
+    the actual worktree path for removal. The guard test now validates
+    _resolve_wt_path directly.
+    """
 
     def test_absolute_path_not_concatenated(self, tmp_path):
-        """If WorktreeContext.path is absolute, must not prepend workspace_root."""
-        from commands.verify_switch import _run_switch_runtime_phase1
-        from lib.worktree import WorktreeContext
+        """If WorktreeContext.path is absolute, _resolve_wt_path returns it as-is."""
+        from commands.verify_switch import _resolve_wt_path
 
-        # Create a real git repo to serve as repo_root
-        main_repo = tmp_path / "main-repo"
-        _git_init(main_repo)
-        subprocess.run(["git", "commit", "--allow-empty", "-m", "init"],
-                       cwd=str(main_repo), capture_output=True)
+        ws_root = tmp_path / "workspace"
 
-        # Create the feature branch on main_repo
-        subprocess.run(
-            ["git", "branch", "feature-test", "HEAD"],
-            cwd=str(main_repo), capture_output=True,
-        )
+        # Absolute path: must NOT be prepended with workspace_root
+        abs_path = Path("/absolute/path/to/worktree")
+        result = _resolve_wt_path(abs_path, ws_root)
+        assert result == abs_path
+        assert str(result).startswith("/absolute/")
 
-        worktree_base = tmp_path / ".worktrees"
-        worktree_base.mkdir()
-
-        # Create .wopal/ as a worktree of main_repo (simulates ontology runtime)
-        wopal_dir = tmp_path / ".wopal"
-        subprocess.run(
-            ["git", "worktree", "add", str(wopal_dir), "HEAD"],
-            cwd=str(main_repo), capture_output=True, check=True,
-        )
-
-        plans_dir = wopal_dir / "docs" / "plans"
-        plans_dir.mkdir(parents=True)
-        plan_file = plans_dir / "test-plan.md"
-        _make_plan_file(plan_file, status="verifying")
-
-        # Commit the plan so the worktree is clean
-        subprocess.run(["git", "add", "."], cwd=str(wopal_dir), capture_output=True)
-        subprocess.run(["git", "commit", "-m", "add plan"],
-                       cwd=str(wopal_dir), capture_output=True)
-
-        # Create the issue worktree (the one Phase 1 should remove)
-        wt_path = worktree_base / "ontology-feature-test"
-        subprocess.run(
-            ["git", "worktree", "add", str(wt_path), "feature-test"],
-            cwd=str(main_repo), capture_output=True, check=True,
-        )
-        assert wt_path.exists()
-
-        ctx = WorktreeContext(
-            enabled=True,
-            project_type="ontology-worktree",
-            branch="feature-test",
-            path=wt_path,  # absolute path
-            repo_root=main_repo,
-            base_branch="main",
-            merge_target="main",
-            verify_mode="switch-runtime",
-            cleanup_policy="archive",
-        )
-
-        # Run Phase 1 — should remove the worktree successfully
-        with patch("commands.verify_switch.set_plan_field"), \
-             patch("commands.verify_switch.get_current_branch", return_value="main"):
-            result = _run_switch_runtime_phase1(
-                tmp_path, str(plan_file), ctx,
-            )
-
-        assert result is True
-        # Worktree should have been removed
-        assert not wt_path.exists()
+        # Relative path: must be resolved relative to workspace_root
+        rel_path = Path(".worktrees/project-issue-1")
+        result = _resolve_wt_path(rel_path, ws_root)
+        assert result == ws_root / ".worktrees" / "project-issue-1"
 
 
 class TestB03SameRepoWorktreeDetection:

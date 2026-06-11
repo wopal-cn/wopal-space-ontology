@@ -20,7 +20,7 @@
 | `complete <issue> [--pr]` | 实施完成，进入用户验证 |
 | `verify <issue> --confirm` | 用户验证通过 |
 | `archive <issue>` | 归档 Plan，push 代码，同步阶段文档 |
-| `verify-switch <issue> [--merge]` | worktree 验证切换 |
+| `verify-switch <issue> [--yes]` | 切换到特性分支验证 |
 | `roadmap <prd-path> [--product ...] [--project ...]` | 产品阶段规划（四阶段工作流） |
 
 ### Issue 管理
@@ -139,19 +139,32 @@ flow.sh approve <plan> --confirm --no-worktree # 跳过 worktree
 flow.sh complete <issue> --pr    # PR 路径（默认不走 PR）
 ```
 
-### verify-switch（ontology-worktree 验证专用）
+### verify-switch
 
-verify-switch 仅用于 ontology-worktree 的 switch-runtime 模式。standard 项目直接在 worktree 目录验证，合并后走 verify --confirm。
+切换工作空间到特性分支供用户验证。适用 standard 和 ontology-worktree 两种项目类型。
+
+执行流程：
+1. 检查规范路径 git 状态（脏时输出 warning，不阻塞）
+2. 移除开发工作树
+3. 在规范路径 checkout 特性分支
+4. 更新 Plan Worktree 元数据（path → "(removed)"，新增 Verification Dir 字段）
+5. commit Plan 变更（保持特性分支 git 状态干净）
+6. 输出验证指引
+
+standard 项目规范路径为项目目录（如 `projects/<name>/`）；ontology-worktree 规范路径为 `.wopal/`。
 
 ```bash
-# Phase 1: 切换 .wopal/ 到 feature 分支供用户验证
+# 切换到特性分支验证
 flow.sh verify-switch <issue>
-
-# Phase 2: 合并回主分支 + verify --confirm（用户确认后执行）
-flow.sh verify-switch <issue> --merge
 ```
 
-standard 项目执行 verify-switch 时会打印验证指引，不执行任何 git 操作。
+验证通过后，手动合并特性分支到集成分支：
+
+```bash
+cd <repo_root>
+git checkout main        # standard 项目；ontology-worktree 用 space/main
+git merge <feature_branch>
+```
 
 ### decompose-prd
 

@@ -18,14 +18,27 @@ def is_repo_dirty(repo_path: str) -> bool:
         True if repo has uncommitted changes (staged or unstaged)
         False if repo is clean or path is not a valid repo
     """
+    return bool(get_dirty_lines(repo_path))
+
+
+def get_dirty_lines(repo_path: str) -> list[str]:
+    """Run git status --porcelain and return dirty file lines.
+
+    Args:
+        repo_path: Path to git repository root
+
+    Returns:
+        List of non-empty porcelain output lines. Empty list if clean or invalid.
+    """
     result = subprocess.run(
         ["git", "status", "--porcelain"],
         cwd=repo_path,
         capture_output=True,
         text=True,
     )
-    # If there's any output, repo is dirty
-    return bool(result.stdout.strip())
+    if result.returncode != 0:
+        return []
+    return [line for line in result.stdout.strip().split("\n") if line]
 
 
 def get_current_branch(repo_path: str) -> str:
