@@ -110,15 +110,15 @@ N/A — 纯技术重构，无业务规则变更。
 
 ### Agent Verification
 
-1. [ ] `cd .wopal/plugins/wopal-plugin && bun run typecheck` — exit 0，无类型错误
-2. [ ] `cd .wopal/plugins/wopal-plugin && bun run test:run` — 全部 pass，0 failure
-3. [ ] `cd .wopal/plugins/wopal-plugin && bun run lint` — exit 0
-4. [ ] `rg 'setPluginDirectory' .wopal/plugins/wopal-plugin/src/` — 0 matches（已删除）
-5. [ ] `rg '_pluginDir' .wopal/plugins/wopal-plugin/src/` — 0 matches（已删除）
-6. [ ] `rg 'initRuntimeContext|RuntimeContext' .wopal/plugins/wopal-plugin/src/index.ts` ≥ 1（已集成到插件初始化流程）
-7. [ ] `rg 'resolvePromptFile' .wopal/plugins/wopal-plugin/src/memory/prompts.ts` ≥ 1（新 prompt 加载函数存在）
-8. [ ] `rg 'WOPAL_HOME.*\.env|user.*env|userEnv' .wopal/plugins/wopal-plugin/src/index.ts` ≥ 1（双层 env 加载逻辑存在）
-9. [ ] `rg 'RuntimeContext.*import|from.*runtime-context' .wopal/plugins/wopal-plugin/src/logger.ts` ≥ 1（logger 使用 RuntimeContext.logDir）
+1. [x] `cd .wopal/plugins/wopal-plugin && bun run typecheck` — exit 0，无类型错误
+2. [x] `cd .wopal/plugins/wopal-plugin && bun run test:run` — 全部 pass，0 failure
+3. [x] `cd .wopal/plugins/wopal-plugin && bun run lint` — exit 0
+4. [x] `rg 'setPluginDirectory' .wopal/plugins/wopal-plugin/src/` — 0 matches（已删除）
+5. [x] `rg '_pluginDir' .wopal/plugins/wopal-plugin/src/` — 0 matches（已删除）
+6. [x] `rg 'initRuntimeContext|RuntimeContext' .wopal/plugins/wopal-plugin/src/index.ts` ≥ 1（已集成到插件初始化流程）
+7. [x] `rg 'resolvePromptFile' .wopal/plugins/wopal-plugin/src/memory/prompts.ts` ≥ 1（新 prompt 加载函数存在）
+8. [x] `rg 'WOPAL_HOME.*\.env|user.*env|userEnv' .wopal/plugins/wopal-plugin/src/index.ts` ≥ 1（双层 env 加载逻辑存在）
+9. [x] `rg 'RuntimeContext.*import|from.*runtime-context' .wopal/plugins/wopal-plugin/src/logger.ts` ≥ 1（logger 使用 RuntimeContext.logDir）
 
 ### User Validation
 
