@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from support.bootstrap import ensure_scripts_path
 ensure_scripts_path()
 
-from lib.worktree import WorktreeContext
+from lib.worktree import WorktreeContext, parse_worktree_context
 
 
 # -- Fixtures -----------------------------------------------------------------
@@ -82,6 +82,13 @@ def _write_plan(tmp_path, content: str, name: str = "42-feature-dev-flow-test.md
     return plan_file
 
 
+def _setup_ontology_worktree(tmp_path):
+    """Create ontology worktree directory on disk so _remove_worktree calls subprocess."""
+    wt_dir = tmp_path / ".worktrees" / "ontology-issue-10-slug"
+    wt_dir.mkdir(parents=True, exist_ok=True)
+    return wt_dir
+
+
 def _make_ontology_ctx():
     """Create an ontology-worktree WorktreeContext for testing."""
     return WorktreeContext(
@@ -117,13 +124,15 @@ def _make_standard_ctx():
 class TestOntologySwitch:
     """Test verify-switch for ontology-worktree: checkout .wopal/ to feature branch."""
 
+    @patch("commands.verify_switch.commit_paths", return_value=True)
+    @patch("commands.verify_switch.get_ontology_main_repo", return_value=Path("/home/.wopal/ontologies/wopal-space-ontology"))
     @patch("commands.verify_switch.subprocess.run")
     @patch("commands.verify_switch.parse_worktree_context")
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
     def test_checkout_wopal_to_feature_branch(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
-        tmp_path
+        mock_get_main_repo, mock_commit_paths, tmp_path
     ):
         """Ontology: checkouts .wopal/ to feature branch after confirmation."""
         from commands.verify_switch import run_verify_switch
@@ -135,32 +144,48 @@ class TestOntologySwitch:
         mock_parse_ctx.return_value = _make_ontology_ctx()
         mock_subprocess.return_value = MagicMock(returncode=0)
 
+        _setup_ontology_worktree(tmp_path)
+
         result = run_verify_switch("10", yes=True)
 
         assert result is True
 
-        # subprocess.run should have been called: git fetch + git checkout
+        # subprocess.run should have been called: dirty check + worktree remove + git fetch + git checkout
         calls = mock_subprocess.call_args_list
-        assert len(calls) == 2
+        assert len(calls) == 4
 
-        # First call: git fetch
+        # First call: git status --porcelain (dirty check)
         assert calls[0][0][0][0] == "git"
-        assert "fetch" in calls[0][0][0]
+        assert "status" in calls[0][0][0]
 
-        # Second call: git checkout
-        checkout_call = calls[1]
+        # Second call: git worktree remove (from main repo)
+        assert "worktree" in calls[1][0][0]
+        assert "remove" in calls[1][0][0]
+        assert calls[1][1]["cwd"] == "/home/.wopal/ontologies/wopal-space-ontology"
+
+        # Third call: git fetch
+        assert "fetch" in calls[2][0][0]
+
+        # Fourth call: git checkout
+        checkout_call = calls[3]
         assert checkout_call[0][0] == ["git", "checkout", "issue-10-slug"]
         assert checkout_call[1]["cwd"] == str(ws_root / ".wopal")
 
+        # commit_paths should have been called
+        mock_commit_paths.assert_called_once()
+
+    @patch("commands.verify_switch.commit_paths", return_value=True)
+    @patch("commands.verify_switch.get_ontology_main_repo", return_value=Path("/home/.wopal/ontologies/wopal-space-ontology"))
     @patch("commands.verify_switch.subprocess.run")
     @patch("commands.verify_switch.parse_worktree_context")
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
     def test_checkout_runs_in_wopal_directory(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
-        tmp_path
+        mock_get_main_repo, mock_commit_paths, tmp_path
     ):
-        """Ontology: git commands run in .wopal/ directory."""
+        """Ontology: fetch and checkout run in .wopal/ directory.
+        Dirty check and worktree remove run elsewhere."""
         from commands.verify_switch import run_verify_switch
 
         plan_path = _write_plan(tmp_path, PLAN_ONTOLOGY)
@@ -170,20 +195,30 @@ class TestOntologySwitch:
         mock_parse_ctx.return_value = _make_ontology_ctx()
         mock_subprocess.return_value = MagicMock(returncode=0)
 
+        _setup_ontology_worktree(tmp_path)
+
         result = run_verify_switch("10", yes=True)
         assert result is True
 
-        # All subprocess calls should have cwd = .wopal/
-        for call in mock_subprocess.call_args_list:
-            assert call[1]["cwd"] == str(ws_root / ".wopal")
+        calls = mock_subprocess.call_args_list
+        # dirty check in .wopal/
+        assert calls[0][1]["cwd"] == str(ws_root / ".wopal")
+        # worktree remove in main repo (NOT .wopal/)
+        assert calls[1][1]["cwd"] == "/home/.wopal/ontologies/wopal-space-ontology"
+        # fetch in .wopal/
+        assert calls[2][1]["cwd"] == str(ws_root / ".wopal")
+        # checkout in .wopal/
+        assert calls[3][1]["cwd"] == str(ws_root / ".wopal")
 
+    @patch("commands.verify_switch.commit_paths", return_value=True)
+    @patch("commands.verify_switch.get_ontology_main_repo", return_value=Path("/home/.wopal/ontologies/wopal-space-ontology"))
     @patch("commands.verify_switch.subprocess.run")
     @patch("commands.verify_switch.parse_worktree_context")
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
     def test_checkout_failure_returns_false(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
-        tmp_path
+        mock_get_main_repo, mock_commit_paths, tmp_path
     ):
         """Ontology: returns False when git checkout fails."""
         from commands.verify_switch import run_verify_switch
@@ -194,8 +229,12 @@ class TestOntologySwitch:
         mock_find_plan.return_value = str(plan_path)
         mock_parse_ctx.return_value = _make_ontology_ctx()
 
-        # fetch succeeds, checkout fails
+        _setup_ontology_worktree(tmp_path)
+
+        # dirty check ok, worktree remove ok, fetch ok, checkout fails
         mock_subprocess.side_effect = [
+            MagicMock(returncode=0, stdout=""),  # dirty check
+            MagicMock(returncode=0),  # worktree remove
             MagicMock(returncode=0),  # fetch
             MagicMock(returncode=1, stderr="checkout error"),  # checkout
         ]
@@ -203,13 +242,15 @@ class TestOntologySwitch:
         result = run_verify_switch("10", yes=True)
         assert result is False
 
+    @patch("commands.verify_switch.commit_paths", return_value=True)
+    @patch("commands.verify_switch.get_ontology_main_repo", return_value=Path("/home/.wopal/ontologies/wopal-space-ontology"))
     @patch("commands.verify_switch.subprocess.run")
     @patch("commands.verify_switch.parse_worktree_context")
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
     def test_fetch_failure_returns_false(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
-        tmp_path
+        mock_get_main_repo, mock_commit_paths, tmp_path
     ):
         """Ontology: returns False when git fetch fails."""
         from commands.verify_switch import run_verify_switch
@@ -219,7 +260,15 @@ class TestOntologySwitch:
         mock_ws_root.return_value = ws_root
         mock_find_plan.return_value = str(plan_path)
         mock_parse_ctx.return_value = _make_ontology_ctx()
-        mock_subprocess.return_value = MagicMock(returncode=1, stderr="fetch error")
+
+        _setup_ontology_worktree(tmp_path)
+
+        # dirty check ok, worktree remove ok, fetch fails
+        mock_subprocess.side_effect = [
+            MagicMock(returncode=0, stdout=""),  # dirty check
+            MagicMock(returncode=0),  # worktree remove
+            MagicMock(returncode=1, stderr="fetch error"),  # fetch
+        ]
 
         result = run_verify_switch("10", yes=True)
         assert result is False
@@ -236,15 +285,17 @@ class TestStandardSwitch:
         wt_dir.mkdir(parents=True, exist_ok=True)
         return wt_dir
 
+    @patch("commands.verify_switch.commit_paths", return_value=True)
     @patch("commands.verify_switch.subprocess.run")
     @patch("commands.verify_switch.parse_worktree_context")
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
     def test_checkout_project_repo_to_feature_branch(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
-        tmp_path
+        mock_commit_paths, tmp_path
     ):
-        """Standard: checkouts project repo to feature branch after confirmation."""
+        """Standard: checkouts project repo to feature branch after confirmation.
+        New order: fetch → dirty check → remove worktree → checkout → commit."""
         from commands.verify_switch import run_verify_switch
 
         plan_path = _write_plan(tmp_path, PLAN_STANDARD)
@@ -260,25 +311,38 @@ class TestStandardSwitch:
 
         assert result is True
 
-        # subprocess.run should have been called: git fetch + git checkout + git worktree remove
+        # subprocess.run should have been called: fetch + dirty check + remove + checkout
         calls = mock_subprocess.call_args_list
-        assert len(calls) == 3
+        assert len(calls) == 4
 
         # First call: git fetch (in project repo)
         assert "fetch" in calls[0][0][0]
         assert calls[0][1]["cwd"] == "/workspace/projects/gesp"
 
-        # Second call: git checkout (in project repo)
-        assert calls[1][0][0] == ["git", "checkout", "feature/test-1-slug"]
+        # Second call: git status --porcelain (dirty check)
+        assert "status" in calls[1][0][0]
         assert calls[1][1]["cwd"] == "/workspace/projects/gesp"
 
+        # Third call: git worktree remove
+        assert "worktree" in calls[2][0][0]
+        assert "remove" in calls[2][0][0]
+        assert calls[2][1]["cwd"] == "/workspace/projects/gesp"
+
+        # Fourth call: git checkout (in project repo)
+        assert calls[3][0][0] == ["git", "checkout", "feature/test-1-slug"]
+        assert calls[3][1]["cwd"] == "/workspace/projects/gesp"
+
+        # commit_paths should have been called
+        mock_commit_paths.assert_called_once()
+
+    @patch("commands.verify_switch.commit_paths", return_value=True)
     @patch("commands.verify_switch.subprocess.run")
     @patch("commands.verify_switch.parse_worktree_context")
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
     def test_removes_worktree_after_checkout(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
-        tmp_path
+        mock_commit_paths, tmp_path
     ):
         """Standard: removes worktree after successful checkout."""
         from commands.verify_switch import run_verify_switch
@@ -296,22 +360,24 @@ class TestStandardSwitch:
         assert result is True
 
         calls = mock_subprocess.call_args_list
-        # Third call: git worktree remove
+        # Third call: git worktree remove (AFTER checkout is 2nd call)
         wt_remove_call = calls[2]
         assert "worktree" in wt_remove_call[0][0]
         assert "remove" in wt_remove_call[0][0]
         # cwd should be repo_root from WorktreeContext
         assert wt_remove_call[1]["cwd"] == "/workspace/projects/gesp"
 
+    @patch("commands.verify_switch.commit_paths", return_value=True)
     @patch("commands.verify_switch.subprocess.run")
     @patch("commands.verify_switch.parse_worktree_context")
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
     def test_worktree_cleanup_skipped_on_checkout_failure(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
-        tmp_path
+        mock_commit_paths, tmp_path
     ):
-        """Standard: skips worktree cleanup when checkout fails."""
+        """Standard: worktree remove happens before checkout, so remove still
+        runs even when checkout fails. 4 subprocess calls: fetch, dirty check, remove, checkout."""
         from commands.verify_switch import run_verify_switch
 
         plan_path = _write_plan(tmp_path, PLAN_STANDARD)
@@ -320,25 +386,30 @@ class TestStandardSwitch:
         mock_find_plan.return_value = str(plan_path)
         mock_parse_ctx.return_value = _make_standard_ctx()
 
-        # fetch succeeds, checkout fails
+        self._setup_standard_with_worktree(tmp_path)
+
+        # fetch ok, dirty check clean, worktree remove ok, checkout fails
         mock_subprocess.side_effect = [
             MagicMock(returncode=0),  # fetch
+            MagicMock(returncode=0, stdout=""),  # git status --porcelain (clean)
+            MagicMock(returncode=0),  # worktree remove
             MagicMock(returncode=1, stderr="checkout error"),  # checkout
         ]
 
         result = run_verify_switch("42", yes=True)
         assert result is False
 
-        # Only 2 calls (fetch + checkout), no worktree remove
-        assert len(mock_subprocess.call_args_list) == 2
+        # 4 calls: fetch + dirty check + worktree remove + checkout
+        assert len(mock_subprocess.call_args_list) == 4
 
+    @patch("commands.verify_switch.commit_paths", return_value=True)
     @patch("commands.verify_switch.subprocess.run")
     @patch("commands.verify_switch.parse_worktree_context")
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
     def test_worktree_cleanup_failure_warns_but_succeeds(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
-        tmp_path, capsys
+        mock_commit_paths, tmp_path, capsys
     ):
         """Standard: worktree remove failure warns but returns True."""
         from commands.verify_switch import run_verify_switch
@@ -351,11 +422,12 @@ class TestStandardSwitch:
 
         self._setup_standard_with_worktree(tmp_path)
 
-        # fetch ok, checkout ok, worktree remove fails
+        # fetch ok, dirty check clean, worktree remove fails, checkout ok
         mock_subprocess.side_effect = [
             MagicMock(returncode=0),  # fetch
-            MagicMock(returncode=0),  # checkout
+            MagicMock(returncode=0, stdout=""),  # git status --porcelain (clean)
             MagicMock(returncode=1, stderr="worktree remove error"),  # worktree remove
+            MagicMock(returncode=0),  # checkout
         ]
 
         result = run_verify_switch("42", yes=True)
@@ -363,15 +435,16 @@ class TestStandardSwitch:
         output = capsys.readouterr().out
         assert "WARN" in output
 
+    @patch("commands.verify_switch.commit_paths", return_value=True)
     @patch("commands.verify_switch.subprocess.run")
     @patch("commands.verify_switch.parse_worktree_context")
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
     def test_git_commands_run_in_project_repo(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
-        tmp_path
+        mock_commit_paths, tmp_path
     ):
-        """Standard: git fetch and checkout run in project repo root."""
+        """Standard: git fetch, dirty check, worktree remove, and checkout run in project repo root."""
         from commands.verify_switch import run_verify_switch
 
         plan_path = _write_plan(tmp_path, PLAN_STANDARD)
@@ -384,8 +457,8 @@ class TestStandardSwitch:
         result = run_verify_switch("42", yes=True)
         assert result is True
 
-        # fetch and checkout both use project repo cwd
-        for call in mock_subprocess.call_args_list[:2]:
+        # All subprocess calls use project repo cwd
+        for call in mock_subprocess.call_args_list:
             assert call[1]["cwd"] == "/workspace/projects/gesp"
 
 
@@ -395,13 +468,15 @@ class TestUserConfirmation:
     """Test user confirmation prompt in verify-switch."""
 
     @patch("builtins.input", return_value="y")
+    @patch("commands.verify_switch.commit_paths", return_value=True)
+    @patch("commands.verify_switch.get_ontology_main_repo", return_value=Path("/home/.wopal/ontologies/wopal-space-ontology"))
     @patch("commands.verify_switch.subprocess.run")
     @patch("commands.verify_switch.parse_worktree_context")
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
     def test_confirmation_prompt_shown_without_yes_flag(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
-        mock_input, tmp_path
+        mock_get_main_repo, mock_commit_paths, mock_input, tmp_path
     ):
         """Without --yes: shows confirmation prompt and proceeds on 'y'."""
         from commands.verify_switch import run_verify_switch
@@ -444,13 +519,15 @@ class TestUserConfirmation:
         mock_subprocess.assert_not_called()
 
     @patch("builtins.input", return_value="y")
+    @patch("commands.verify_switch.commit_paths", return_value=True)
+    @patch("commands.verify_switch.get_ontology_main_repo", return_value=Path("/home/.wopal/ontologies/wopal-space-ontology"))
     @patch("commands.verify_switch.subprocess.run")
     @patch("commands.verify_switch.parse_worktree_context")
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
     def test_yes_flag_skips_confirmation_prompt(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
-        mock_input, tmp_path
+        mock_get_main_repo, mock_commit_paths, mock_input, tmp_path
     ):
         """With --yes: skips confirmation prompt entirely."""
         from commands.verify_switch import run_verify_switch
@@ -473,13 +550,15 @@ class TestUserConfirmation:
 class TestVerificationGuidance:
     """Test that verification guidance is printed after successful switch."""
 
+    @patch("commands.verify_switch.commit_paths", return_value=True)
+    @patch("commands.verify_switch.get_ontology_main_repo", return_value=Path("/home/.wopal/ontologies/wopal-space-ontology"))
     @patch("commands.verify_switch.subprocess.run")
     @patch("commands.verify_switch.parse_worktree_context")
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
     def test_ontology_prints_guidance(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
-        tmp_path, capsys
+        mock_get_main_repo, mock_commit_paths, tmp_path, capsys
     ):
         """Ontology: prints verification guidance after switch."""
         from commands.verify_switch import run_verify_switch
@@ -502,13 +581,14 @@ class TestVerificationGuidance:
         # Verify merge is in the correct repo
         assert "/home/.wopal/ontologies/wopal-space-ontology" in output
 
+    @patch("commands.verify_switch.commit_paths", return_value=True)
     @patch("commands.verify_switch.subprocess.run")
     @patch("commands.verify_switch.parse_worktree_context")
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
     def test_standard_prints_merge_guidance(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
-        tmp_path, capsys
+        mock_commit_paths, tmp_path, capsys
     ):
         """Standard: prints merge guidance after switch."""
         from commands.verify_switch import run_verify_switch
@@ -1053,11 +1133,14 @@ class TestDispatchFromRealPlan:
     the full parse→dispatch chain: Plan metadata → WorktreeContext → switch function.
     """
 
+    @patch("commands.verify_switch.commit_paths", return_value=True)
+    @patch("commands.verify_switch.get_ontology_main_repo", return_value=Path("/home/.wopal/ontologies/wopal-space-ontology"))
     @patch("commands.verify_switch.subprocess.run")
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
     def test_ontology_plan_dispatches_via_metadata_project_type(
-        self, mock_ws_root, mock_find_plan, mock_subprocess, tmp_path
+        self, mock_ws_root, mock_find_plan, mock_subprocess,
+        mock_get_main_repo, mock_commit_paths, tmp_path
     ):
         """PLAN_ONTOLOGY has Project Type in Metadata, NOT in Worktree block.
         verify_switch must read it from Metadata and dispatch to ontology path."""
@@ -1069,24 +1152,29 @@ class TestDispatchFromRealPlan:
         mock_find_plan.return_value = str(plan_path)
         mock_subprocess.return_value = MagicMock(returncode=0)
 
+        _setup_ontology_worktree(tmp_path)
+
         result = run_verify_switch("10", yes=True)
         assert result is True
 
-        # Ontology path: git commands run in .wopal/
+        # Ontology path: dirty check + worktree remove + fetch + checkout
         calls = mock_subprocess.call_args_list
-        assert len(calls) == 2  # fetch + checkout (no worktree remove)
-        for call in calls:
-            assert call[1]["cwd"] == str(ws_root / ".wopal")
+        assert len(calls) == 4
+        # fetch and checkout in .wopal/
+        assert calls[2][1]["cwd"] == str(ws_root / ".wopal")
+        assert calls[3][1]["cwd"] == str(ws_root / ".wopal")
+        # worktree remove in main repo
+        assert calls[1][1]["cwd"] == "/home/.wopal/ontologies/wopal-space-ontology"
 
+    @patch("commands.verify_switch.commit_paths", return_value=True)
     @patch("commands.verify_switch.subprocess.run")
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
     def test_standard_plan_dispatches_with_worktree_cleanup(
-        self, mock_ws_root, mock_find_plan, mock_subprocess, tmp_path
+        self, mock_ws_root, mock_find_plan, mock_subprocess,
+        mock_commit_paths, tmp_path
     ):
-        """PLAN_STANDARD has Project Type in Metadata, NOT in Worktree block.
-        verify_switch must read it from Metadata, dispatch to standard path,
-        and include worktree removal."""
+        """PLAN_STANDARD dispatches to standard path with worktree removal before checkout."""
         from commands.verify_switch import run_verify_switch
 
         plan_path = _write_plan(tmp_path, PLAN_STANDARD)
@@ -1102,12 +1190,370 @@ class TestDispatchFromRealPlan:
         result = run_verify_switch("42", yes=True)
         assert result is True
 
-        # Standard path: fetch + checkout + worktree remove
+        # Standard path: fetch + dirty check + worktree remove + checkout
         calls = mock_subprocess.call_args_list
-        assert len(calls) == 3
-        # fetch + checkout in project repo
-        for call in calls[:2]:
+        assert len(calls) == 4
+        # fetch + dirty check + worktree remove + checkout all in project repo
+        for call in calls:
             assert call[1]["cwd"] == "/workspace/projects/gesp"
-        # worktree remove in project repo
+        # worktree remove before checkout
         assert "worktree" in calls[2][0][0]
-        assert calls[2][1]["cwd"] == "/workspace/projects/gesp"
+        assert "checkout" in calls[3][0][0]
+
+
+# -- Test: dirty check on verify-switch --------------------------------------
+
+class TestDirtyCheckOnVerifySwitch:
+    """Test that _check_dirty is called and warns when repo is dirty."""
+
+    @patch("commands.verify_switch.commit_paths", return_value=True)
+    @patch("commands.verify_switch.subprocess.run")
+    @patch("commands.verify_switch.parse_worktree_context")
+    @patch("commands.verify_switch.find_plan")
+    @patch("commands.verify_switch.find_workspace_root")
+    def test_standard_dirty_warns_but_proceeds(
+        self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
+        mock_commit_paths, tmp_path, capsys
+    ):
+        """Standard: dirty canonical path warns but switch still succeeds."""
+        from commands.verify_switch import run_verify_switch
+
+        plan_path = _write_plan(tmp_path, PLAN_STANDARD)
+        ws_root = tmp_path
+        mock_ws_root.return_value = ws_root
+        mock_find_plan.return_value = str(plan_path)
+        mock_parse_ctx.return_value = _make_standard_ctx()
+
+        # Create worktree dir so _remove_worktree triggers
+        wt_dir = tmp_path / ".worktrees" / "gesp-issue-1-slug"
+        wt_dir.mkdir(parents=True, exist_ok=True)
+
+        # fetch ok, dirty check returns dirty files, worktree remove ok, checkout ok
+        mock_subprocess.side_effect = [
+            MagicMock(returncode=0),  # fetch
+            MagicMock(returncode=0, stdout=" M src/foo.py\n?? src/bar.py"),  # dirty
+            MagicMock(returncode=0),  # worktree remove
+            MagicMock(returncode=0),  # checkout
+        ]
+
+        result = run_verify_switch("42", yes=True)
+        assert result is True
+
+        output = capsys.readouterr().out
+        assert "WARN" in output
+        assert "uncommitted" in output
+
+    @patch("commands.verify_switch.commit_paths", return_value=True)
+    @patch("commands.verify_switch.get_ontology_main_repo", return_value=Path("/home/.wopal/ontologies/wopal-space-ontology"))
+    @patch("commands.verify_switch.subprocess.run")
+    @patch("commands.verify_switch.parse_worktree_context")
+    @patch("commands.verify_switch.find_plan")
+    @patch("commands.verify_switch.find_workspace_root")
+    def test_ontology_dirty_warns_but_proceeds(
+        self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
+        mock_get_main_repo, mock_commit_paths, tmp_path, capsys
+    ):
+        """Ontology: dirty .wopal/ warns but switch still succeeds."""
+        from commands.verify_switch import run_verify_switch
+
+        plan_path = _write_plan(tmp_path, PLAN_ONTOLOGY)
+        ws_root = tmp_path
+        mock_ws_root.return_value = ws_root
+        mock_find_plan.return_value = str(plan_path)
+        mock_parse_ctx.return_value = _make_ontology_ctx()
+
+        _setup_ontology_worktree(tmp_path)
+
+        # dirty check returns dirty, worktree remove ok, fetch ok, checkout ok
+        mock_subprocess.side_effect = [
+            MagicMock(returncode=0, stdout=" M rules/foo.md"),  # dirty
+            MagicMock(returncode=0),  # worktree remove
+            MagicMock(returncode=0),  # fetch
+            MagicMock(returncode=0),  # checkout
+        ]
+
+        result = run_verify_switch("10", yes=True)
+        assert result is True
+
+        output = capsys.readouterr().out
+        assert "WARN" in output
+        assert "uncommitted" in output
+
+
+# -- Test: Plan metadata update after switch ----------------------------------
+
+class TestUpdatePlanMetadata:
+    """Test that _update_plan_after_switch updates Plan metadata correctly."""
+
+    @patch("commands.verify_switch.commit_paths", return_value=True)
+    @patch("commands.verify_switch.subprocess.run")
+    @patch("commands.verify_switch.parse_worktree_context")
+    @patch("commands.verify_switch.find_plan")
+    @patch("commands.verify_switch.find_workspace_root")
+    def test_standard_updates_path_to_removed(
+        self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
+        mock_commit_paths, tmp_path
+    ):
+        """Standard: Plan Worktree path is updated to '(removed)' after switch."""
+        from commands.verify_switch import run_verify_switch
+
+        plan_path = _write_plan(tmp_path, PLAN_STANDARD)
+        ws_root = tmp_path
+        mock_ws_root.return_value = ws_root
+        mock_find_plan.return_value = str(plan_path)
+        mock_parse_ctx.return_value = _make_standard_ctx()
+        mock_subprocess.return_value = MagicMock(returncode=0)
+
+        result = run_verify_switch("42", yes=True)
+        assert result is True
+
+        plan_content = plan_path.read_text()
+        assert "path: (removed)" in plan_content
+        # Original path should no longer be present
+        assert "path: .worktrees/gesp-issue-1-slug" not in plan_content
+
+        # Structural assertion: WorktreeContext still parses correctly
+        # (Verification Dir is NOT inside the Worktree block)
+        ctx = parse_worktree_context(str(plan_path))
+        assert ctx is not None, "WorktreeContext should parse after metadata update"
+        # path is intentionally "(removed)" — worktree has been cleaned up
+        assert ctx.repo_root == Path("/workspace/projects/gesp"), "repo_root preserved"
+        assert ctx.branch == "feature/test-1-slug", "branch preserved"
+
+    @patch("commands.verify_switch.commit_paths", return_value=True)
+    @patch("commands.verify_switch.subprocess.run")
+    @patch("commands.verify_switch.parse_worktree_context")
+    @patch("commands.verify_switch.find_plan")
+    @patch("commands.verify_switch.find_workspace_root")
+    def test_standard_adds_verification_dir(
+        self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
+        mock_commit_paths, tmp_path
+    ):
+        """Standard: Plan gets Verification Dir metadata field after switch."""
+        from commands.verify_switch import run_verify_switch
+
+        plan_path = _write_plan(tmp_path, PLAN_STANDARD)
+        ws_root = tmp_path
+        mock_ws_root.return_value = ws_root
+        mock_find_plan.return_value = str(plan_path)
+        mock_parse_ctx.return_value = _make_standard_ctx()
+        mock_subprocess.return_value = MagicMock(returncode=0)
+
+        result = run_verify_switch("42", yes=True)
+        assert result is True
+
+        plan_content = plan_path.read_text()
+        assert "Verification Dir" in plan_content
+        assert "/workspace/projects/gesp" in plan_content
+
+        # Structural assertion: Verification Dir is a top-level field (0-indent),
+        # NOT accidentally inserted inside the Worktree block (2-indent).
+        for line in plan_content.splitlines():
+            if "Verification Dir" in line:
+                assert not line.startswith(" "), (
+                    f"Verification Dir should be top-level, got: {line!r}"
+                )
+                break
+        else:
+            pytest.fail("Verification Dir not found in plan")
+
+        # Verify WorktreeContext still parses correctly
+        ctx = parse_worktree_context(str(plan_path))
+        assert ctx is not None, "WorktreeContext should parse after metadata update"
+
+    @patch("commands.verify_switch.commit_paths", return_value=True)
+    @patch("commands.verify_switch.get_ontology_main_repo", return_value=Path("/home/.wopal/ontologies/wopal-space-ontology"))
+    @patch("commands.verify_switch.subprocess.run")
+    @patch("commands.verify_switch.parse_worktree_context")
+    @patch("commands.verify_switch.find_plan")
+    @patch("commands.verify_switch.find_workspace_root")
+    def test_ontology_updates_path_to_removed(
+        self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
+        mock_get_main_repo, mock_commit_paths, tmp_path
+    ):
+        """Ontology: Plan Worktree path is updated to '(removed)' after switch."""
+        from commands.verify_switch import run_verify_switch
+
+        plan_path = _write_plan(tmp_path, PLAN_ONTOLOGY)
+        ws_root = tmp_path
+        mock_ws_root.return_value = ws_root
+        mock_find_plan.return_value = str(plan_path)
+        mock_parse_ctx.return_value = _make_ontology_ctx()
+        mock_subprocess.return_value = MagicMock(returncode=0)
+
+        _setup_ontology_worktree(tmp_path)
+
+        result = run_verify_switch("10", yes=True)
+        assert result is True
+
+        plan_content = plan_path.read_text()
+        assert "path: (removed)" in plan_content
+        assert "path: .worktrees/ontology-issue-10-slug" not in plan_content
+
+    @patch("commands.verify_switch.commit_paths", return_value=True)
+    @patch("commands.verify_switch.subprocess.run")
+    @patch("commands.verify_switch.parse_worktree_context")
+    @patch("commands.verify_switch.find_plan")
+    @patch("commands.verify_switch.find_workspace_root")
+    def test_plan_committed_after_switch(
+        self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
+        mock_commit_paths, tmp_path
+    ):
+        """Standard: commit_paths called with correct args after switch."""
+        from commands.verify_switch import run_verify_switch
+
+        plan_path = _write_plan(tmp_path, PLAN_STANDARD)
+        ws_root = tmp_path
+        mock_ws_root.return_value = ws_root
+        mock_find_plan.return_value = str(plan_path)
+        mock_parse_ctx.return_value = _make_standard_ctx()
+        mock_subprocess.return_value = MagicMock(returncode=0)
+
+        result = run_verify_switch("42", yes=True)
+        assert result is True
+
+        mock_commit_paths.assert_called_once()
+        call_args = mock_commit_paths.call_args
+        # First arg: repo_root
+        assert call_args[0][0] == "/workspace/projects/gesp"
+        # Second arg: list of paths (plan file relative)
+        paths = call_args[0][1]
+        assert len(paths) == 1
+        assert plan_path.name in paths[0]
+        # Third arg: commit message
+        msg = call_args[0][2]
+        assert "verify-switch" in msg
+
+    @patch("commands.verify_switch.commit_paths", return_value=True)
+    @patch("commands.verify_switch.subprocess.run")
+    @patch("commands.verify_switch.parse_worktree_context")
+    @patch("commands.verify_switch.find_plan")
+    @patch("commands.verify_switch.find_workspace_root")
+    def test_eof_plan_no_trailing_newline(
+        self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
+        mock_commit_paths, tmp_path
+    ):
+        """Worktree block at EOF without trailing newline: Verification Dir
+        is still placed after the block, not inside it (R-01 regression)."""
+        from commands.verify_switch import run_verify_switch
+
+        # Remove trailing newline from PLAN_STANDARD
+        plan_content = PLAN_STANDARD.rstrip("\n")
+        plan_path = _write_plan(tmp_path, plan_content)
+        ws_root = tmp_path
+        mock_ws_root.return_value = ws_root
+        mock_find_plan.return_value = str(plan_path)
+        mock_parse_ctx.return_value = _make_standard_ctx()
+        mock_subprocess.return_value = MagicMock(returncode=0)
+
+        result = run_verify_switch("42", yes=True)
+        assert result is True
+
+        updated = plan_path.read_text()
+        # Verification Dir must appear after cleanup_policy (last Worktree field)
+        assert updated.index("Verification Dir") > updated.index("cleanup_policy"), (
+            "Verification Dir must be after Worktree block, not inside it"
+        )
+        # WorktreeContext must still parse correctly (cleanup_policy not lost)
+        ctx = parse_worktree_context(str(plan_path))
+        assert ctx is not None
+        assert ctx.cleanup_policy == "archive", "cleanup_policy must not be lost"
+
+
+# -- Test: remove before checkout ordering -------------------------------------
+
+class TestRemoveBeforeCheckout:
+    """Test the fixed ordering: remove worktree BEFORE checkout."""
+
+    @patch("commands.verify_switch.commit_paths", return_value=True)
+    @patch("commands.verify_switch.subprocess.run")
+    @patch("commands.verify_switch.parse_worktree_context")
+    @patch("commands.verify_switch.find_plan")
+    @patch("commands.verify_switch.find_workspace_root")
+    def test_standard_remove_before_checkout(
+        self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
+        mock_commit_paths, tmp_path
+    ):
+        """Standard: worktree remove subprocess call happens before checkout."""
+        from commands.verify_switch import run_verify_switch
+
+        plan_path = _write_plan(tmp_path, PLAN_STANDARD)
+        ws_root = tmp_path
+        mock_ws_root.return_value = ws_root
+        mock_find_plan.return_value = str(plan_path)
+        mock_parse_ctx.return_value = _make_standard_ctx()
+        mock_subprocess.return_value = MagicMock(returncode=0)
+
+        # Create worktree dir
+        wt_dir = tmp_path / ".worktrees" / "gesp-issue-1-slug"
+        wt_dir.mkdir(parents=True, exist_ok=True)
+
+        result = run_verify_switch("42", yes=True)
+        assert result is True
+
+        calls = mock_subprocess.call_args_list
+        # Order: fetch(0) → dirty_check(1) → worktree_remove(2) → checkout(3)
+        remove_indices = [
+            i for i, c in enumerate(calls)
+            if "worktree" in c[0][0] and "remove" in c[0][0]
+        ]
+        checkout_indices = [
+            i for i, c in enumerate(calls)
+            if c[0][0] == ["git", "checkout", "feature/test-1-slug"]
+        ]
+        assert len(remove_indices) == 1
+        assert len(checkout_indices) == 1
+        assert remove_indices[0] < checkout_indices[0], (
+            "worktree remove must happen before checkout"
+        )
+
+    @patch("commands.verify_switch.commit_paths", return_value=True)
+    @patch("commands.verify_switch.get_ontology_main_repo", return_value=Path("/home/.wopal/ontologies/wopal-space-ontology"))
+    @patch("commands.verify_switch.subprocess.run")
+    @patch("commands.verify_switch.parse_worktree_context")
+    @patch("commands.verify_switch.find_plan")
+    @patch("commands.verify_switch.find_workspace_root")
+    def test_ontology_remove_worktree_from_main_repo(
+        self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
+        mock_get_main_repo, mock_commit_paths, tmp_path
+    ):
+        """Ontology: worktree is removed from main repo before checkout in .wopal/."""
+        from commands.verify_switch import run_verify_switch
+
+        plan_path = _write_plan(tmp_path, PLAN_ONTOLOGY)
+        ws_root = tmp_path
+        mock_ws_root.return_value = ws_root
+        mock_find_plan.return_value = str(plan_path)
+        mock_parse_ctx.return_value = _make_ontology_ctx()
+        mock_subprocess.return_value = MagicMock(returncode=0)
+
+        _setup_ontology_worktree(tmp_path)
+
+        result = run_verify_switch("10", yes=True)
+        assert result is True
+
+        calls = mock_subprocess.call_args_list
+        # Find worktree remove call
+        remove_calls = [
+            c for c in calls
+            if "worktree" in c[0][0] and "remove" in c[0][0]
+        ]
+        assert len(remove_calls) == 1
+        # Must run in main repo, not .wopal/
+        assert remove_calls[0][1]["cwd"] == "/home/.wopal/ontologies/wopal-space-ontology"
+
+        # Find checkout call
+        checkout_calls = [
+            c for c in calls
+            if c[0][0] == ["git", "checkout", "issue-10-slug"]
+        ]
+        assert len(checkout_calls) == 1
+        # Checkout runs in .wopal/
+        assert checkout_calls[0][1]["cwd"] == str(ws_root / ".wopal")
+
+        # Remove must be before checkout
+        remove_idx = calls.index(remove_calls[0])
+        checkout_idx = calls.index(checkout_calls[0])
+        assert remove_idx < checkout_idx, (
+            "worktree remove must happen before checkout"
+        )

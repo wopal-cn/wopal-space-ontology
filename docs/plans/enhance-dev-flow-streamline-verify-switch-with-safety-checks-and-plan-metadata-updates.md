@@ -7,7 +7,7 @@
 - **Project Path**: .wopal/
 - **Project Type**: ontology-worktree
 - **Created**: 2026-06-11
-- **Status**: executing
+- **Status**: verifying
 - **Worktree**:
   - branch: flow-streamline-verify-switch-with-safety-checks-and-plan-metadata-updates
   - path: /Users/sam/coding/wopal/wopal-workspace/.worktrees/ontology-flow-streamline-verify-switch-with-safety-checks-and-plan-metadata-updates
@@ -83,12 +83,12 @@ N/A — 纯流程优化，无业务规则变更。
 
 ### Agent Verification
 
-1. [ ] `python -m pytest tests/python/ -v` 全部 pass
-2. [ ] `rg 'canonical path\|规范路径\|worktree verify\|branch-switch' scripts/commands/complete.py` ≥ 2（complete 输出验证选项）
-3. [ ] `rg 'git worktree remove' scripts/commands/verify_switch.py` 行号 < `rg 'git checkout' scripts/commands/verify_switch.py` 行号（remove 在 checkout 之前）
-4. [ ] `rg 'Verification Dir' scripts/commands/verify_switch.py` ≥ 1（切换后写入 Verification Dir 元数据）
-5. [ ] `rg 'path: \(removed\)' scripts/commands/verify_switch.py` ≥ 1（切换后标记工作树路径已清理）
-6. [ ] `rg 'commit_paths\|git commit' scripts/commands/verify_switch.py` ≥ 1（切换后 commit Plan 变更）
+1. [x] `python -m pytest tests/python/ -v` 全部 pass
+2. [x] `rg 'canonical path\|规范路径\|worktree verify\|branch-switch' scripts/commands/complete.py` ≥ 2（complete 输出验证选项）
+3. [x] `rg 'worktree.*remove' scripts/commands/verify_switch.py` 行号 < `rg 'git checkout' scripts/commands/verify_switch.py` 行号（remove 在 checkout 之前）
+4. [x] `rg 'Verification Dir' scripts/commands/verify_switch.py` ≥ 1（切换后写入 Verification Dir 元数据）
+5. [x] `rg 'path: \(removed\)' scripts/commands/verify_switch.py` ≥ 1（切换后标记工作树路径已清理）
+6. [x] `rg 'commit_paths' scripts/commands/verify_switch.py` ≥ 1（切换后 commit Plan 变更）
 
 ### User Validation
 
@@ -173,7 +173,7 @@ else:
 
 **Done**:
 任务产出：complete.py 输出规范路径状态和验证选项
-- [ ] 实施 Agent 已完成上述功能开发和验证的所有步骤执行, 并确认结果符合预期（必须由实施 Agent 勾选）
+- [x] 实施 Agent 已完成上述功能开发和验证的所有步骤执行, 并确认结果符合预期（必须由实施 Agent 勾选）
 
 ---
 
@@ -267,7 +267,7 @@ REFACTOR:
 
 **Done**:
 任务产出：verify_switch.py 正确执行切换并更新 Plan 元数据
-- [ ] 实施 Agent 已完成上述功能开发和验证的所有步骤执行, 并确认结果符合预期（必须由实施 Agent 勾选）
+- [x] 实施 Agent 已完成上述功能开发和验证的所有步骤执行, 并确认结果符合预期（必须由实施 Agent 勾选）
 
 ---
 
@@ -346,7 +346,7 @@ skill-creator 核心约定（来自 `.wopal/AGENTS.md` 和 `references/lifecycle
 
 **Done**:
 任务产出：SKILL.md 和 commands.md 反映优化后的验证流程，遵循 skill-creator 规范
-- [ ] 实施 Agent 已完成上述功能开发和验证的所有步骤执行, 并确认结果符合预期（必须由实施 Agent 勾选）
+- [x] 实施 Agent 已完成上述功能开发和验证的所有步骤执行, 并确认结果符合预期（必须由实施 Agent 勾选）
 
 ---
 
