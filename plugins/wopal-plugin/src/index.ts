@@ -116,13 +116,23 @@ const openCodeRulesPlugin = async (pluginInput: PluginInput): Promise<Hooks> => 
   const { directory } = pluginInput;
 
   coreLogger.debug(`Loading plugin: ${directory}`);
-  initRuntimeContext(directory);
+  const runtimeCtx = initRuntimeContext(directory);
+  coreLogger.info({
+    wopal_space: runtimeCtx.isWopalSpace,
+    ...(runtimeCtx.spaceRoot ? { space_root: runtimeCtx.spaceRoot } : {}),
+    wopal_home: runtimeCtx.wopalHome,
+  }, "Runtime context initialized");
   loadWopalEnv();
 
   // Read switches after loadWopalEnv (ensure .env has taken effect)
   const rulesInjectionEnabled = process.env.WOPAL_RULES_INJECTION_ENABLED !== "false";
   const memoryEnabled = process.env.WOPAL_MEMORY_ENABLED !== "false";
   const memoryInjectionEnabled = process.env.WOPAL_MEMORY_INJECTION_ENABLED !== "false";
+  coreLogger.debug({
+    rules_injection: rulesInjectionEnabled,
+    memory: memoryEnabled,
+    memory_injection: memoryInjectionEnabled,
+  }, "Feature switches");
 
   // Rules module initialization
   let ruleFiles: DiscoveredRule[];
