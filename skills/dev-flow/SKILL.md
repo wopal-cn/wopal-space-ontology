@@ -62,6 +62,7 @@ dev-flow 管理两类产物，它们在 git 中独立演化：
 4. **实施产物原子提交**：代码变更 + Task Done checkbox + Agent Verification checkbox 在一次 commit 中提交，不可拆分。
 5. **活动 Plan 路径**：委派实施时，Plan 路径必须使用 feature 分支 worktree 中的活动副本，禁止使用 main 分支路径。
 6. **rook 门禁**：Plan 审查（submit 前）和实施审查（complete 前）必须委派 rook，rook PASS 才能推进。最多 3 轮修订。
+7. **Plan 语言与结构**：Plan 文档正文使用用户偏好语言编写，章节标题保持英文（与模板一致）。禁止混用中英文标题。
 
 ## Plan 定位
 
@@ -292,6 +293,7 @@ flow.sh archive <issue>
 ## 不要这样做
 
 - **跳过 dev-flow 直接手动操作** — Issue/Plan 驱动的任务必须走 `flow.sh` 命令链
+- **直接调 `gh issue create` 绕过 flow.sh** — Issue 创建必须走 `flow.sh issue create`，脚本通过 `detect_space_repo` 自动定位空间仓库，无需也不允许手动指定 `--repo`。直接调 `gh` 会导致 Issue 创建到错误仓库 = 严重失职
 - **跳过 rook 审查直接 submit 或 complete** — Plan 审查和实施审查都是强制门禁
 - **rook BLOCK 后强行 submit 或 complete** — 必须修订后重审，最多 3 轮
 - **fae 实施期间逐 Task 提交代码** — 所有变更留在 working tree，rook PASS 后一次提交
