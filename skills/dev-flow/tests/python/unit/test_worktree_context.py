@@ -24,6 +24,8 @@ from lib.worktree import (
 # -- Fixtures -----------------------------------------------------------------
 
 PLAN_TEMPLATE = """\
+## Metadata
+
 - **Status**: planning
 - **Type**: feature
 - **Target Project**: gesp
@@ -31,6 +33,8 @@ PLAN_TEMPLATE = """\
 """
 
 PLAN_TEMPLATE_ONTOLOGY = """\
+## Metadata
+
 - **Status**: planning
 - **Type**: feature
 - **Target Project**: wopal-space-ontology
@@ -250,6 +254,52 @@ class TestWriteWorktreeContext:
 
 
 # -- Backward compatibility: old formats still readable -----------------------
+
+class TestParseWorktreeScopesToMetadata:
+    """Worktree parsing must only match within ## Metadata, not design sections."""
+
+    def test_design_placeholder_not_parsed_as_metadata(self, tmp_path):
+        """Plan with Worktree placeholder in design section returns None."""
+        content = (
+            PLAN_TEMPLATE_ONTOLOGY
+            + "\n## Scope Assessment\n\n"
+            + "- D-01: Worktree 元数据以显式字段存储：\n\n"
+            + "- **Worktree**:\n"
+            + "  - branch: <feature-branch-name>\n"
+            + "  - path: <workspace-relative-worktree-path>\n"
+        )
+        plan = _write_plan(tmp_path, content)
+        ctx = parse_worktree_context(str(plan))
+        assert ctx is None
+
+    def test_metadata_worktree_still_parsed_with_design_present(self, tmp_path):
+        """When both Metadata and design sections exist, only Metadata's Worktree is read."""
+        content = (
+            PLAN_TEMPLATE
+            + "- **Worktree**:\n"
+            + "  - branch: feature/real-branch\n"
+            + "  - path: .worktrees/real\n"
+            + "\n## Scope Assessment\n\n"
+            + "- **Worktree**:\n"
+            + "  - branch: <feature-branch-name>\n"
+            + "  - path: <workspace-relative-worktree-path>\n"
+        )
+        plan = _write_plan(tmp_path, content)
+        ctx = parse_worktree_context(str(plan))
+        assert ctx is not None
+        assert ctx.branch == "feature/real-branch"
+
+    def test_legacy_placeholder_in_design_not_parsed(self, tmp_path):
+        """Legacy format placeholder in design section is ignored."""
+        content = (
+            PLAN_TEMPLATE_ONTOLOGY
+            + "\n## Design\n\n"
+            + "- **Worktree**: <branch> | <path>\n"
+        )
+        plan = _write_plan(tmp_path, content)
+        ctx = parse_worktree_context(str(plan))
+        assert ctx is None
+
 
 class TestParseOldFormatCompat:
     """Old 9-field and legacy pipe formats must remain readable."""

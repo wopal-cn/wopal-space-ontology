@@ -69,26 +69,42 @@ def parse_worktree_context(plan_path: str) -> WorktreeContext | None:
 
     content = path.read_text()
 
+    # Extract only the ## Metadata section to avoid matching
+    # Worktree placeholders in design/scope sections.
+    metadata_section = _extract_metadata_section(content)
+
     # Try new structured format first
-    ctx = _parse_structured_worktree(content)
+    ctx = _parse_structured_worktree(metadata_section)
     if ctx is not None:
         # Read project_type from Plan metadata if not in WorktreeContext
         if ctx.project_type == 'standard':
-            meta_type = _read_plan_project_type(content)
+            meta_type = _read_plan_project_type(metadata_section)
             if meta_type and meta_type != 'standard':
                 ctx.project_type = meta_type
         return ctx
 
     # Fallback to legacy format: "- **Worktree**: branch | path"
-    ctx = _parse_legacy_worktree(content)
+    ctx = _parse_legacy_worktree(metadata_section)
     if ctx is not None:
         # Read project_type from Plan metadata
-        meta_type = _read_plan_project_type(content)
+        meta_type = _read_plan_project_type(metadata_section)
         if meta_type:
             ctx.project_type = meta_type
         return ctx
 
     return None
+
+
+def _extract_metadata_section(content: str) -> str:
+    """Extract content between '## Metadata' and the next '## ' heading.
+
+    Falls back to full content if no Metadata heading is found.
+    """
+    pattern = r'^## Metadata\s*\n(.*?)(?=^## |\Z)'
+    match = re.search(pattern, content, re.MULTILINE | re.DOTALL)
+    if match:
+        return match.group(1)
+    return content
 
 
 def _read_plan_project_type(content: str) -> str | None:
