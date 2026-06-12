@@ -107,12 +107,15 @@ class TestIssueContract(unittest.TestCase):
         sections = extract_sections(test_body)
         self.assertNotIn('Test Strategy', sections)
 
-    def test_empty_optional_sections_suppressed(self):
-        """Empty optional sections are suppressed"""
+    def test_all_five_sections_always_present(self):
+        """All five sections are always present (even when empty)."""
         body = build_structured_issue_body(goal='Only goal')
-
-        self.assertNotIn('Context', extract_sections(body))
-        self.assertNotIn('Scope', extract_sections(body))
+        sections = extract_sections(body)
+        self.assertIn('Goal', sections)
+        self.assertIn('Context', sections)
+        self.assertIn('Scope', sections)
+        self.assertIn('Acceptance Criteria', sections)
+        self.assertIn('Related Resources', sections)
 
 
 if __name__ == '__main__':

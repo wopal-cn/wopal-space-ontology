@@ -237,22 +237,22 @@ def build_structured_issue_body(**kwargs) -> str:
     # Goal (always present with fallback)
     sections.append(_render_section("Goal", goal, "<一句话描述目标>"))
 
-    # Context (optional)
-    if context:
-        sections.append(_render_section("Context", context))
+    # Context (always present)
+    sections.append(_render_section("Context", context, "<!-- 背景、研究发现、决策依据、参考资料 —— agent 自由写入 -->"))
 
-    # Scope: In / Out
-    scope_parts = []
-    if scope:
-        scope_parts.append("### In\n")
-        scope_parts.append(_format_list(scope))
-    if out_of_scope:
-        if scope_parts:
-            scope_parts.append("\n")
-        scope_parts.append("### Out\n")
-        scope_parts.append(_format_list(out_of_scope))
-    if scope_parts:
-        sections.append("## Scope\n\n" + "".join(scope_parts) + "\n")
+    # Scope: In / Out (always present)
+    scope_lines = [
+        "## Scope",
+        "",
+        "### In",
+        "",
+        _format_list(scope) or "- ",
+        "",
+        "### Out",
+        "",
+        _format_list(out_of_scope) or "- ",
+    ]
+    sections.append("\n".join(scope_lines) + "\n")
 
     # Acceptance Criteria (always present with fallback)
     sections.append(_render_section("Acceptance Criteria", "", "待 plan 阶段细化"))
