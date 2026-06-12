@@ -9,7 +9,10 @@
 - **Project Type**: ontology-worktree
 
 - **Created**: 2026-06-12
-- **Status**: reviewing
+- **Status**: executing
+- **Worktree**:
+  - branch: issue-161-master-rewrite-ontology-collaboration-for-clone-based-model
+  - path: /Users/sam/coding/wopal/wopal-workspace/.worktrees/ontology-issue-161-master-rewrite-ontology-collaboration-for-clone-based-model
 
 ## Scope Assessment
 
