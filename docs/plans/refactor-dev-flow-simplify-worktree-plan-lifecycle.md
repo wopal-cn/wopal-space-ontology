@@ -7,7 +7,7 @@
 - **Project Path**: .wopal
 - **Project Type**: ontology-worktree
 - **Created**: 2026-06-01
-- **Status**: verifying
+- **Status**: done
 
 ## Scope Assessment
 
@@ -124,7 +124,7 @@ N/A — 无业务规则变更。
   3. 确认文档流程清晰说明 Wopal 向 fae 或 rook 委派时应传递哪个 Plan 路径。
 - Expected Result: 生命周期文档可独立阅读理解，无需外部对话补充说明。
 
-- [ ] 用户已完成上述功能验证并确认结果符合预期
+- [x] 用户已完成上述功能验证并确认结果符合预期
 
 ## Implementation
 
