@@ -1,203 +1,169 @@
-# 能力分层与同步契约
+# 能力层级与同步契约
 
-本节定义 ontology fork main 与 space/main 之间的能力分层模型、同步铁律以及下放/裁剪流程。
+ontology 的能力按分支层级组织。每个层级承载不同成熟度的能力，层级之间通过 `wopal ontology` CLI 命令同步。
 
-`upstream/main` ↔ `fork main` 的外部协作见 `upstream-sync.md`，本节专注于 ontology 仓库内部的两个分支关系。
+本节描述层级结构、能力分类、同步契约和删除安全。仓库拓扑和 CLI 命令详情见 `upstream-sync.md`。
 
 ---
 
-## 双栈独立扫描
+## 层级模型
 
-ellamaka 启动时**独立扫描两个目录**加载能力（agents / skills / plugins / commands / rules）：
+ontology 使用三层分支结构承载不同粒度的能力：
 
 ```
-~/.wopal/{agents,skills,plugins,commands,rules}
-    ← 软链接到 ~/.wopal/ontologies/wopal-space-ontology/ 的 fork main checkout
-    ← 用户级能力全集（跨空间共享）
-
-<workspace>/.wopal/{agents,skills,plugins,commands,rules}
-    ← space/<name> 分支的 worktree
-    ← 空间级裁剪与扩展
+main                    ← 通用能力，所有空间共享
+  └── type/<name>       ← 类型特定能力，某类空间共享
+        └── space/<user>/<name>  ← 空间实例定制，单个空间独享
 ```
 
-**关键含义**：space/main **不需要是 fork main 的超集**。两个目录独立扫描。装饰性能力（如音效、主题）只在 fork main 上存在即可，通过 `~/.wopal/plugins` 软链接对所有空间全局可见。
+| 层级 | 分支命名 | 定位 | 变更权限 |
+|------|---------|------|---------|
+| 通用层 | `main` | 所有空间共享的基线能力 | 维护者提交 + PR 审核 |
+| 类型层 | `type/<name>` | 某类空间共享的能力变体 | 维护者提交 + PR 审核 |
+| 空间层 | `space/<user>/<name>` | 单个空间实例的定制 | 空间所有者直接编辑 |
 
-ellamaka 的具体加载机制（哪些是覆盖、哪些是补充、哪些是合并）以项目源码和文档为准，本节仅描述 ontology 仓库层的契约。
+`main` 是 ontology 的权威分支。`type/<name>` 从 `main` 分出，承载特定场景的定制。`space/<user>/<name>` 从 `type/<name>` 分出，是当前运行的空间实例。
 
 ---
 
 ## 能力分类
 
-| 类型 | 定义 | 仓库归属 | 典型例子 |
+| 分类 | 属性 | 所属层级 | 典型例子 |
 |------|------|---------|---------|
-| **用户级** | 跨空间共享、稳定的通用能力 | fork main | agents、skills、rules、装饰性 plugins（音效/主题）、功能性 plugins（wopal-plugin） |
-| **空间级** | 特定空间的定制、未成熟的实验性能力 | space/main | 空间专属 templates、配置覆盖 |
-| **过渡期** | 在 space/main 孵化，成熟后下放 | 先 space/main，后 fork main | 大多数新能力默认从空间级开始 |
+| **通用能力** | 跨所有空间共享、稳定 | `main` | 核心 agent 定义、基础技能、空间模板、wopal-plugin |
+| **类型能力** | 某类空间共享、该类型的定制 | `type/<name>` | 前端项目空间的专属技能、特定技术栈的规则变体 |
+| **空间能力** | 单个空间独享、实例级定制 | `space/<user>/<name>` | 用户个人偏好命令、空间专属配置覆盖、实验性技能 |
+| **孵化能力** | 从空间层起步，验证后提升 | 先 `space/<user>/<name>`，后 `type/<name>` 或 `main` | 大多数新能力 |
 
-**关键承认**：能力归属是**事后追溯**的，不是事前明确的。新能力默认从空间级开始孵化，使用一段时间后再决定是否下放。
+核心原则：**能力在空间中孵化，成熟后提升到类型层或通用层**。
 
----
+不需要事先判断一个能力属于哪个层级。新能力一律从 `space/<user>/<name>` 开始。使用一段时间后，根据实际需求决定是否提升：
 
-## 同步原则
-
-### 默认目标：保持 `space/main → fork main` 可直接 merge
-
-| 方向 | 允许？ | 方式 | 触发时机 |
-|------|-------|------|---------|
-| `upstream/main → fork main` | ✅ | `git merge` | 上游有更新 |
-| `fork main → space/main` | ✅ | `git merge` | 同步用户级增强到空间 |
-| `space/main → fork main` | ✅ | `git merge` | space/main 没有删除 fork main 上的用户级能力 |
-| `space/main → fork main` 单向下放 | ✅ | `git checkout space/main -- <files>` + 新 commit | 只下放单个能力 |
-| `fork main → upstream` | ✅ | GitHub PR | 贡献通用能力 |
-
-**核心判断**：频繁优化 plugin、skill、agent 时，`space/main → fork main` 直接 merge 最省心。为了让这个路径可用，space/main 应尽量保留 fork main 上的用户级能力文件。
-
-### 唯一风险：删除会随 merge 向上传播
-
-space/main 上对用户级能力的 `git rm` 若直接 merge 到 fork main，会从 fork main 上删除这些能力，并通过 `~/.wopal` 软链接影响所有空间。
-
-**处理规则**：如果 space/main 已经删除了 fork main 上的用户级能力，先把这些文件从 fork main 放回 space/main，再执行向上 merge。
-
-```bash
-cd <workspace>/.wopal
-git checkout main -- <deleted-user-level-files>
-git add <deleted-user-level-files>
-git commit -m "fix(<scope>): restore user-level capabilities for merge"
-```
-
-历史教训：fork main 上曾有 `Merge branch 'space/main'` 提交（`d4a717c`），导致用户级插件被反向删除。后续通过恢复插件文件、恢复 wopal-plugin、再重新 merge 的方式修正。
+- 多个同类空间都需要 → 提升到 `type/<name>`
+- 所有空间都需要 → 提升到 `main`
+- 仅当前空间使用 → 保留在 `space/<user>/<name>`
 
 ---
 
-## 操作流程
+## 同步契约
 
-### 流程 1：日常同步（space/main → fork main）
+层级之间的同步通过 `wopal ontology` CLI 命令完成，agent 负责读取状态、与用户讨论、构建命令。
 
-**场景**：space/main 上频繁优化 plugin、skill、agent，希望同步到用户级 fork main。
+### 契约 1：通用层 → 类型层
 
-```bash
-cd ~/.wopal/ontologies/wopal-space-ontology
-git checkout main
-
-# 先检查 space/main 是否删除了 fork main 上的文件
-git diff --name-status main...space/main | awk '$1 ~ /^D/ {print}'
-
-# 若没有需要保护的用户级删除，直接 merge
+```
+main ──merge──→ type/<name>
 ```
 
-**输出非空时**：先回到 `<workspace>/.wopal`，按“恢复被删除的用户级能力”流程处理，再回来 merge。
+**场景**：`main` 有了新的通用能力或重要修复，类型层需要同步。
 
-### 流程 2：恢复被删除的用户级能力（main → space/main）
+**操作**：`wopal ontology sync --from main --to type/<name>`
 
-**场景**：space/main 删除了主题、声音通知、用户级插件等能力，导致不能安全向上 merge。
+**安全检查**：
+- 同步前确认 `type/<name>` 没有删除 `main` 上的文件
+- 若有删除，agent 应提示用户：是保留本地修改还是接受上游版本
 
-```bash
-cd <workspace>/.wopal
-git checkout main -- <files-or-dirs>
-git status
-git add <files-or-dirs>
-git commit -m "fix(<scope>): restore user-level capabilities for merge"
+**要点**：通用更新应尽量及时同步到类型层，避免积累过多差异导致合并冲突。
+
+### 契约 2：类型层 → 空间层
+
+```
+type/<name> ──merge──→ space/<user>/<name>
 ```
 
-恢复后，space/main 与 fork main 在这些文件上重新对齐，后续可直接 merge。
+**场景**：类型层有了更新，当前空间实例需要跟进。
 
-### 流程 3：能力下放（space/main → fork main 单向）
+**操作**：`wopal ontology update`
 
-**场景**：只想下放一个能力，不想把 space/main 上其他优化一起 merge。
+**安全检查**：
+- `wopal ontology status` 会显示空间层与类型层的差异
+- agent 应向用户解释将要合并的变更内容
+- 空间层的本地定制不会丢失（merge 保留双方变更）
 
-```bash
-cd ~/.wopal/ontologies/wopal-space-ontology
-git checkout main                               # 确认在 fork main
-git checkout space/main -- <files-or-dirs>      # 单向拉取文件状态
-git status                                       # 检查变更范围
-git add <files>
-git commit -m "feat(<scope>): promote <capability> to user-level"
+**要点**：这是最常见的同步方向，定期执行即可保持空间与类型层对齐。
+
+### 契约 3：空间层 → 类型层（贡献）
+
+```
+space/<user>/<name> ──cherry-pick + PR──→ type/<name>
 ```
 
-**注意**：不要 push（push 是用户权限）。
+**场景**：空间中孵化出一个能力，适合提升到类型层。
 
-**下放后**：下一次 `fork main → space/main` merge 时不会冲突（内容已一致）。
+**操作**：`wopal ontology contribute --target type/<name>`
 
-### 流程 4：同步上游增强（fork main → space/main）
+**安全检查**：
+- agent 应与用户讨论：哪些 commit 适合贡献，哪些属于空间私有定制
+- 只 cherry-pick 通用性的变更，不包含空间特定的路径、配置或个人偏好
 
-```bash
-cd <workspace>/.wopal
-git merge main --no-edit
-# 冲突优先保留上游版本，自定义内容手动合并
+**要点**：贡献是单向的。cherry-pick 到类型分支后创建 PR，经审核后合入。
+
+### 契约 4：空间层 → 通用层（贡献）
+
+```
+space/<user>/<name> ──cherry-pick + PR──→ main
 ```
 
-### 流程 5：在 fork main 上直接开发用户级能力
+**场景**：空间中孵化出一个能力，适合提升到通用层。
 
-适合从一开始就明确是用户级的能力：
+**操作**：`wopal ontology contribute --target main`
 
-```bash
-cd ~/.wopal/ontologies/wopal-space-ontology
-git checkout main
-# 直接修改 agents/skills/plugins/rules
-git commit -m "feat(<scope>): description"
+**安全检查**：
+- 与契约 3 相同的 commit 筛选讨论
+- 额外确认该能力确实适用于所有空间，而非仅特定类型
 
-# 同步到所有空间
-cd <workspace>/.wopal
-git merge main --no-edit
-```
-
-### 流程 6：空间裁剪（不删除源文件）
-
-**优先策略**：用 ellamaka 配置层禁用（如 agent 级 `"disable": true`），具体支持范围以 ellamaka 项目源码为准。
-
-**兜底策略**：plugin/skill 等不支持配置禁用的层级，通过"不引用即不加载"自然失效——只要 config 不指向它，文件即使存在也不会被加载。
-
-**已经用 `git rm` 裁剪了怎么办**：不是灾难，但会阻止直接向上 merge。若后续需要 `space/main → fork main` merge，先从 main 放回这些文件。
+**要点**：提升到 `main` 是最高级别的贡献，审核更严格。能力应先经过多个空间验证后再考虑。
 
 ---
 
-## 安全检查脚本
+## 删除安全
 
-**向上 merge 前的安全检查**：
+删除是层级同步中最容易出问题的操作。Git merge 会传播删除——如果低层级删除了高层级的文件，merge 会把删除带到高层级。
 
-```bash
-cd ~/.wopal/ontologies/wopal-space-ontology
-git diff --name-status main...space/main | awk '$1 ~ /^D/ {print}'
-```
+### 规则
 
-输出非空 = space/main 删除了文件。逐项判断：
-- 删除的是临时/废弃文件 → 可以 merge
-- 删除的是用户级能力 → 先恢复到 space/main，再 merge
+| 场景 | 行为 | 处理方式 |
+|------|------|---------|
+| `main` 删除文件 | 删除通过 sync 传播到 `type/<name>` 和 `space/<user>/<name>` | 正常接受，这是维护者的意图 |
+| `type/<name>` 删除文件 | 删除通过 update 传播到 `space/<user>/<name>` | 正常接受，类型层决定该类型不需要该能力 |
+| `space/<user>/<name>` 删除文件 | **不会**传播到 `type/<name>` 或 `main` | 安全——贡献是 cherry-pick，不是 merge |
+| `space/<user>/<name>` 隐藏能力 | 通过 ellamaka 配置禁用或"不引用即不加载" | 优先于删除，避免影响后续同步 |
+
+### 向上 merge 前的检查
+
+`wopal ontology status` 会报告层级间的文件差异。agent 在执行向上 sync 前，应检查输出中是否有删除标记（D 状态的文件），并与用户确认：
+
+- 删除的是废弃文件 → 可以同步
+- 删除的是高层级能力 → 先在低层级恢复，再执行同步
+
+### 空间裁剪策略
+
+优先用 ellamaka 配置层禁用不需要的能力（如 agent 级 `"disable": true`）。若配置不支持，通过"不引用即不加载"自然失效——只要配置不指向它，文件存在也不会被加载。
 
 ---
 
-## 常见问题
+## ellamaka 双扫描模型
 
-### Q1: 如何判断能力是用户级还是空间级？
+ellamaka 启动时独立扫描两个目录加载能力：
 
-**不用事先判断**。新能力一律从 space/main 开始孵化。使用一段时间后：
-- 跨多个空间都用 → 下放到 fork main
-- 仅本空间使用 → 保留 space/main
+```
+$WOPAL_HOME/{agents,skills,commands,rules,plugins}
+    ← ontology main 的 symlink 或 managed copy
+    ← 通用基础能力（跨空间共享）
 
-### Q2: 装饰性 plugin 是否必须在 space/main 上？
-
-从加载角度看，不一定必须存在。ellamaka 可通过 `~/.wopal/plugins` 软链接全局加载 fork main 上的 plugin。
-
-从 Git 同步角度看，建议保留。这样 `space/main → fork main` 可以直接 merge，不会把 fork main 上的用户级能力删掉。
-
-### Q3: 想恢复已被 space/main `git rm` 的能力怎么办？
-
-从 fork main 放回 space/main：
-
-```bash
-cd <workspace>/.wopal
-git checkout main -- <files>
-git commit -m "fix(<scope>): restore user-level capabilities for merge"
+<space>/.wopal/{agents,skills,commands,rules,plugins}
+    ← space/<user>/<name> 分支的 worktree
+    ← 空间定制与扩展
 ```
 
-### Q4: fork main 上误删了用户级能力怎么办？
+同名能力由 space overlay 覆盖 base，ellamaka 按目录优先级顺序串行合并。
 
-用 **新 commit** 修正（不用 rebase 或 revert）：
+### 为什么层级重要
 
-```bash
-cd ~/.wopal/ontologies/wopal-space-ontology
-git checkout space/main -- <files>   # 从 space/main 单向拉取
-git commit -m "feat(<scope>): restore <capability> as user-level"
-```
+双扫描模型意味着两个目录是**独立加载**的，不需要 space 分支是 main 的超集。这也解释了为什么层级间同步需要显式操作而不是隐式覆盖：
 
-历史教训参考：fork main 上 `91cf6b0` 是混合提交（加了音效增强但误删 wopal-plugin），已通过 `git checkout space/main --` 在 `24b1bde` 修正恢复。
+- `main` 的变更通过 `wopal ontology sync` 传播到类型层和空间层
+- 空间层的定制通过 overlay 机制直接生效，无需 merge 到 main
+- 贡献（cherry-pick + PR）是显式的、可审核的，防止未经验证的能力污染上层
+
+具体加载机制（哪些覆盖、哪些补充、哪些合并）以 ellamaka 项目源码为准。

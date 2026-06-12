@@ -6,7 +6,7 @@ description: |
   Triggers: 任何意图不明确的任务、"用什么流程"、"该加载什么技能"、
   技能管理（安装/卸载/搜索）、空间运维（worktree/同步/上游）、多 Space 管理。
   
-  🔴 即使用户未明确说"上游同步"，只要涉及 ontology 仓库协作（fork/merge/cherry-pick/PR），就必须加载本技能。
+  🔴 即使用户未明确说"上游同步"，只要涉及 ontology 仓库协作（update/sync/contribute/PR），就必须加载本技能。
 ---
 
 # space-master — 空间工作规范总纲
@@ -76,19 +76,19 @@ dev-flow 是默认开发流程。WSF 仅用于产品级里程碑管理。
 │    cd ~/.wopal/ontologies/wopal-space-ontology
 │    git worktree add ../.worktrees/ontology-<issue> -b feature/<name>
 │    → 在 worktree 开发/测试/验证
-│    → 合并回 space/main（见下方 Worktree 合并流程）
+│    → 合并回 space/<user>/<name>（见下方 Worktree 合并流程）
 │
 ├─ NO → 直接编辑 .wopal/
 │    → 立即影响运行插件（无需重启即可生效）
-│    → 验证后提交到 fork
+│    → 验证后 wopal ontology save
 ```
 
 ### Worktree 合并流程
 
 ```bash
-# 1. Fork 中转层合并
+# 1. 主仓库合并 feature 分支
 cd ~/.wopal/ontologies/wopal-space-ontology
-git checkout space/main
+git checkout space/<user>/<name>
 git merge ../.worktrees/ontology-<issue>/main
 
 # 2. 运行时层同步
@@ -102,21 +102,20 @@ git branch -D feature/<name>
 git push origin --delete feature/<name>  # 如有远程分支
 ```
 
-### 提交到 Fork
+### 提交变更
 
 ```bash
-cd <space-path>/.wopal/
-git add . && git commit -m "feat(scope): description"
-git push origin space/main
+# 通过 CLI 提交（推荐）
+wopal ontology save -m "feat(scope): description"
 
-# 验证：重启 OpenCode → 测试功能
+# 验证：重启 ellamaka → 测试功能
 ```
 
 ### 能力分层与下放
 
-fork main 与 space/main 的关系、同步铁律、能力下放与裁剪流程见 `references/capability-layers.md`。
+分支层级关系（main → type/* → space/<user>/*）、同步契约、能力孵化与提升流程见 `references/capability-layers.md`。
 
-**核心铁律**：保持 `space/main → fork main` 可直接 merge。若 space/main 删除了 fork main 上的用户级能力，先从 main 放回 space/main，再向上 merge。
+**核心铁律**：保持分支层级间的 merge 可达性。space 分支删除了上层能力文件时，先恢复再执行同步。
 
 ---
 
@@ -194,11 +193,11 @@ Find → Download → Scan → Install → Develop → Optimize → Evaluate
 
 | 用户意图 | 参考文档 | 推荐操作 |
 |---------|---------|---------|
-| 查看空间状态 | — | `wopal space status` |
-| 保存空间变更 | — | `wopal space save -m "message"` |
-| 贡献到上游 | `references/upstream-sync.md` | 工作流 1: Fork → Upstream |
-| 同步上游更新 | `references/upstream-sync.md` | 工作流 2: Upstream → Fork |
-| 多用户 Space 管理 | `references/upstream-sync.md` | 工作流 3: 版本矩阵 |
+| 查看 ontology 状态 | — | `wopal ontology status` |
+| 保存 ontology 变更 | — | `wopal ontology save -m "message"` |
+| 更新 ontology | `references/upstream-sync.md` | `wopal ontology update` |
+| 同步分支 | `references/upstream-sync.md` | `wopal ontology sync --from A --to B` |
+| 贡献到上游 | `references/upstream-sync.md` | `wopal ontology contribute` |
 | 查找/搜索技能 | `references/lifecycle-install.md` | `wopal skills find` |
 | 下载审查 | `references/lifecycle-install.md` | `wopal skills download` |
 | 安全扫描 | `references/lifecycle-install.md` | `wopal skills scan` |
@@ -214,9 +213,12 @@ Find → Download → Scan → Install → Develop → Optimize → Evaluate
 ## Quick Commands
 
 ```bash
-# 空间管理
-wopal space status              # 查看空间全貌
-wopal space save -m "message"   # 保存变更
+# Ontology 协作
+wopal ontology status                          # 查看 ontology 分支与同步状态
+wopal ontology save -m "message"               # 提交变更
+wopal ontology update                          # 从上游合并更新到当前分支
+wopal ontology sync --from main --to space/sam/main  # 在分支间同步
+wopal ontology contribute                       # 贡献变更到上游（自动 cherry-pick + PR）
 
 # 技能管理
 wopal skills find "query"
@@ -245,11 +247,12 @@ wopal skills list
 
 ## Tips
 
-1. **Ontology 协作必读** — 贡献/同步上游前读 `references/upstream-sync.md`
-2. **能力分层必读** — 修改、裁剪或下放 ontology 能力（plugin/skill/agent）前读 `references/capability-layers.md`
-3. **Edit in workspace** — `.wopal/skills/<name>/` 可直接编辑
-4. **Scan before install** — Downloaded skills need explicit scan
-5. **Verify after install** — `ls .wopal/skills/<name>/SKILL.md`
+1. **Ontology 协作必读** — 贡献/同步上游前读 `references/upstream-sync.md`（仓库拓扑、分支命名、agent 工作流）
+2. **能力分层必读** — 修改、裁剪或下放 ontology 能力（plugin/skill/agent）前读 `references/capability-layers.md`（层级模型、同步契约、删除安全）
+3. **Agent 驱动的工作流** — ontology 协作操作遵循「读取状态 → 与用户讨论 → 构建命令」模式。先执行 `wopal ontology status` 了解当前状态，再与用户确认后再构建 CLI 命令。不要跳过状态读取步骤。
+4. **Edit in workspace** — `.wopal/skills/<name>/` 可直接编辑
+5. **Scan before install** — Downloaded skills need explicit scan
+6. **Verify after install** — `ls .wopal/skills/<name>/SKILL.md`
 
 ---
 
