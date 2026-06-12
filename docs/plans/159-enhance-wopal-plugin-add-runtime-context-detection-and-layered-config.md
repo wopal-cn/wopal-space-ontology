@@ -9,7 +9,7 @@
 - **Project Path**: .wopal
 - **Project Type**: ontology-worktree
 - **Created**: 2026-06-11
-- **Status**: verifying
+- **Status**: done
 
 ## Scope Assessment
 
@@ -138,7 +138,7 @@ N/A — 纯技术重构，无业务规则变更。
   2. 检查日志中的 LLM client 初始化信息
 - Expected Result: 插件使用 `deepseek-chat`（空间级覆盖用户级）
 
-- [ ] 用户已完成上述功能验证并确认结果符合预期
+- [x] 用户已完成上述功能验证并确认结果符合预期
 
 ## Implementation
 
