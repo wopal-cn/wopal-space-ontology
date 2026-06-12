@@ -50,27 +50,6 @@ PLAN_ONTOLOGY = """\
   - cleanup_policy: archive
 """
 
-PLAN_LEGACY = """\
-- **Status**: verifying
-- **Type**: feature
-- **Target Project**: gesp
-- **Issue**: #42
-- **Worktree**: feature/test-1-slug | .worktrees/gesp-feature-test-1-slug
-"""
-
-PLAN_NO_WORKTREE = """\
-- **Status**: planning
-- **Type**: feature
-- **Target Project**: gesp
-- **Issue**: #42
-"""
-
-PLAN_NO_PROJECT_INFO = """\
-- **Status**: verifying
-- **Type**: feature
-- **Issue**: #42
-- **Worktree**: feature/test-1-slug | .worktrees/test-1-slug
-"""
 
 
 def _write_plan(tmp_path, content: str, name: str = "42-feature-dev-flow-test.md") -> Path:
@@ -555,229 +534,57 @@ class TestErrorCases:
         assert result is False
 
     @patch("commands.verify_switch.parse_worktree_context", return_value=None)
-    @patch("commands.verify_switch.get_plan_worktree", return_value=None)
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
     def test_no_worktree_metadata_at_all(
-        self, mock_ws_root, mock_find_plan, mock_get_wt, mock_parse_ctx,
+        self, mock_ws_root, mock_find_plan, mock_parse_ctx,
         tmp_path
     ):
-        """Returns False when neither WorktreeContext nor legacy worktree exists."""
+        """Returns False when Plan has no structured Worktree metadata."""
         from commands.verify_switch import run_verify_switch
 
-        plan_path = _write_plan(tmp_path, PLAN_NO_WORKTREE)
+        plan_path = _write_plan(tmp_path, PLAN_STANDARD)
         mock_ws_root.return_value = tmp_path
         mock_find_plan.return_value = str(plan_path)
         mock_parse_ctx.return_value = None
-        mock_get_wt.return_value = None
 
         result = run_verify_switch("42")
         assert result is False
-
-    @patch("commands.verify_switch.get_plan_worktree")
-    @patch("commands.verify_switch.parse_worktree_context", return_value=None)
-    @patch("commands.verify_switch.find_plan")
-    @patch("commands.verify_switch.find_workspace_root")
-    def test_legacy_incomplete_metadata(
-        self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_get_wt,
-        tmp_path
-    ):
-        """Returns False when legacy worktree has incomplete data."""
-        from commands.verify_switch import run_verify_switch
-
-        plan_path = _write_plan(tmp_path, PLAN_LEGACY)
-        mock_ws_root.return_value = tmp_path
-        mock_find_plan.return_value = str(plan_path)
-        mock_parse_ctx.return_value = None
-        mock_get_wt.return_value = {"branch": "", "path": ""}
-
-        result = run_verify_switch("42")
-        assert result is False
-
-
-# -- Test: legacy fallback (structured WorktreeContext unavailable) -----------
-
-class TestLegacyFallback:
-    """Test that legacy Plan format works via get_plan_worktree fallback."""
 
     @patch("commands.verify_switch.subprocess.run")
-    @patch("commands.verify_switch.get_plan_worktree")
-    @patch("commands.verify_switch.get_plan_field")
     @patch("commands.verify_switch.parse_worktree_context")
     @patch("commands.verify_switch.find_plan")
     @patch("commands.verify_switch.find_workspace_root")
-    def test_legacy_standard_resolves_target_from_project(
+    def test_empty_branch_errors_out(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx,
-        mock_get_field, mock_get_wt, mock_subprocess, tmp_path
+        mock_subprocess, tmp_path
     ):
-        """Legacy standard Plan resolves target via Project Path / Target Project."""
+        """Returns False when WorktreeContext has empty branch."""
         from commands.verify_switch import run_verify_switch
 
-        plan_path = _write_plan(tmp_path, PLAN_LEGACY)
-        ws_root = tmp_path
-        mock_ws_root.return_value = ws_root
-        mock_find_plan.return_value = str(plan_path)
-        mock_parse_ctx.return_value = None
-        mock_get_wt.return_value = {
-            "branch": "feature/test-1-slug",
-            "path": ".worktrees/gesp-feature-test-1-slug",
-        }
-        mock_get_field.side_effect = lambda _path, field: {
-            "Project Type": "standard",
-            "Project Path": None,
-            "Target Project": "gesp",
-        }.get(field)
-
-        mock_subprocess.return_value = MagicMock(returncode=0)
-
-        result = run_verify_switch("42")
-        assert result is True
-
-        # Legacy path was invoked
-        mock_get_wt.assert_called_once_with(str(plan_path))
-
-        # git fetch + checkout run in resolved project repo
-        calls = mock_subprocess.call_args_list
-        assert len(calls) == 2
-        expected_cwd = str(ws_root / "projects" / "gesp")
-        assert calls[0][1]["cwd"] == expected_cwd
-        assert calls[1][1]["cwd"] == expected_cwd
-
-    @patch("commands.verify_switch.subprocess.run")
-    @patch("commands.verify_switch.get_plan_worktree")
-    @patch("commands.verify_switch.get_plan_field")
-    @patch("commands.verify_switch.find_plan")
-    @patch("commands.verify_switch.find_workspace_root")
-    def test_legacy_pipe_format_detected_and_handled(
-        self, mock_ws_root, mock_find_plan,
-        mock_get_field, mock_get_wt, mock_subprocess, tmp_path
-    ):
-        """Real legacy pipe-format plan: parse returns empty repo_root, falls through to legacy."""
-        from commands.verify_switch import run_verify_switch
-
-        plan_path = _write_plan(tmp_path, PLAN_LEGACY)
-        ws_root = tmp_path
-        mock_ws_root.return_value = ws_root
-        mock_find_plan.return_value = str(plan_path)
-        # NOT mocking parse_worktree_context — let it parse the real pipe format
-        # _parse_legacy_worktree returns WorktreeContext with repo_root=Path('')
-        # which becomes Path('.') and triggers the legacy guard
-        mock_get_wt.return_value = {
-            "branch": "feature/test-1-slug",
-            "path": ".worktrees/gesp-feature-test-1-slug",
-        }
-        mock_get_field.side_effect = lambda _path, field: {
-            "Project Type": "standard",
-            "Project Path": None,
-            "Target Project": "gesp",
-        }.get(field)
-
-        mock_subprocess.return_value = MagicMock(returncode=0)
-
-        result = run_verify_switch("42")
-        assert result is True
-
-        # Should have fallen through to legacy path (get_plan_worktree called)
-        mock_get_wt.assert_called_once_with(str(plan_path))
-
-        # git commands run in resolved repo, not workspace root
-        calls = mock_subprocess.call_args_list
-        assert len(calls) == 2
-        expected_cwd = str(ws_root / "projects" / "gesp")
-        assert calls[0][1]["cwd"] == expected_cwd
-        assert calls[1][1]["cwd"] == expected_cwd
-
-    @patch("commands.verify_switch.subprocess.run")
-    @patch("commands.verify_switch.get_plan_worktree")
-    @patch("commands.verify_switch.get_plan_field")
-    @patch("commands.verify_switch.parse_worktree_context")
-    @patch("commands.verify_switch.find_plan")
-    @patch("commands.verify_switch.find_workspace_root")
-    def test_legacy_ontology_uses_wopal_dir(
-        self, mock_ws_root, mock_find_plan, mock_parse_ctx,
-        mock_get_field, mock_get_wt, mock_subprocess, tmp_path
-    ):
-        """Legacy ontology Plan targets .wopal/ directory."""
-        from commands.verify_switch import run_verify_switch
-
-        plan_path = _write_plan(tmp_path, PLAN_LEGACY)
-        ws_root = tmp_path
-        mock_ws_root.return_value = ws_root
-        mock_find_plan.return_value = str(plan_path)
-        mock_parse_ctx.return_value = None
-        mock_get_wt.return_value = {
-            "branch": "feature/test-1-slug",
-            "path": ".worktrees/ontology-issue-1-slug",
-        }
-        mock_get_field.side_effect = lambda _path, field: {
-            "Project Type": "ontology-worktree",
-            "Project Path": ".wopal",
-        }.get(field)
-
-        mock_subprocess.return_value = MagicMock(returncode=0)
-
-        result = run_verify_switch("42")
-        assert result is True
-
-        calls = mock_subprocess.call_args_list
-        assert len(calls) == 2
-        expected_cwd = str(ws_root / ".wopal")
-        assert calls[0][1]["cwd"] == expected_cwd
-        assert calls[1][1]["cwd"] == expected_cwd
-
-    @patch("commands.verify_switch.subprocess.run")
-    @patch("commands.verify_switch.get_plan_worktree")
-    @patch("commands.verify_switch.find_plan")
-    @patch("commands.verify_switch.find_workspace_root")
-    def test_legacy_pipe_format_real_resolves_via_target_project(
-        self, mock_ws_root, mock_find_plan,
-        mock_get_wt, mock_subprocess, tmp_path
-    ):
-        """Real legacy pipe-format without Project Type resolves via Target Project."""
-        from commands.verify_switch import run_verify_switch
-
-        plan_path = _write_plan(tmp_path, PLAN_LEGACY)
-        ws_root = tmp_path
-        mock_ws_root.return_value = ws_root
-        mock_find_plan.return_value = str(plan_path)
-        # NOT mocking parse_worktree_context — real pipe format parsed
-        # NOT mocking get_plan_field — reads Project Type (None) and Target Project (gesp)
-        mock_get_wt.return_value = {
-            "branch": "feature/test-1-slug",
-            "path": ".worktrees/gesp-feature-test-1-slug",
-        }
-
-        mock_subprocess.return_value = MagicMock(returncode=0)
-
-        result = run_verify_switch("42")
-        assert result is True
-
-        # git commands run in resolved repo from Target Project
-        calls = mock_subprocess.call_args_list
-        assert len(calls) == 2
-        expected_cwd = str(ws_root / "projects" / "gesp")
-        assert calls[0][1]["cwd"] == expected_cwd
-        assert calls[1][1]["cwd"] == expected_cwd
-
-    @patch("commands.verify_switch.get_plan_worktree", return_value={"branch": "x", "path": "y"})
-    @patch("commands.verify_switch.get_plan_field")
-    @patch("commands.verify_switch.parse_worktree_context", return_value=None)
-    @patch("commands.verify_switch.find_plan")
-    @patch("commands.verify_switch.find_workspace_root")
-    def test_legacy_no_metadata_errors_out(
-        self, mock_ws_root, mock_find_plan, mock_parse_ctx,
-        mock_get_field, mock_get_wt, tmp_path
-    ):
-        """Legacy Plan without Project Path or Target Project errors out."""
-        from commands.verify_switch import run_verify_switch
-
-        plan_path = _write_plan(tmp_path, PLAN_NO_PROJECT_INFO)
+        plan_path = _write_plan(tmp_path, PLAN_STANDARD)
         mock_ws_root.return_value = tmp_path
         mock_find_plan.return_value = str(plan_path)
-        mock_get_field.return_value = None
+        # WorktreeContext with empty branch — git checkout "" fails
+        ctx = WorktreeContext(
+            enabled=True,
+            project_type="standard",
+            branch="",
+            path=Path(".worktrees/empty-branch"),
+            repo_root=Path("/workspace/projects/gesp"),
+            base_branch="main",
+            merge_target="main",
+            verify_mode="direct",
+            cleanup_policy="archive",
+        )
+        mock_parse_ctx.return_value = ctx
+        mock_subprocess.return_value = MagicMock(returncode=0)
 
         result = run_verify_switch("42")
         assert result is False
+
+
+
 
 
 # -- Test: no --merge references ----------------------------------------------

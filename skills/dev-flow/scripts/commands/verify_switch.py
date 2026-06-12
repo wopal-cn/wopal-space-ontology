@@ -13,7 +13,7 @@ from lib.git import commit_paths, get_dirty_lines, get_relative_path
 from lib.workspace import find_workspace_root, get_ontology_main_repo
 from lib.worktree import parse_worktree_context
 from lib.logging import log_info, log_success, log_error, log_warn, log_step
-from plan import find_plan, get_plan_worktree, get_plan_field
+from plan import find_plan, get_plan_field
 
 
 
@@ -288,60 +288,11 @@ def _switch_standard(
     return True
 
 
-def _switch_legacy(
-    workspace_root: Path,
-    wt: dict,
-    issue: str,
-    project_type: str | None = None,
-    target: str | None = None,
-) -> bool:
-    """Legacy fallback: switch workspace to feature branch.
-
-    Used when WorktreeContext is unavailable. Target must be resolved
-    by the caller (from Project Path / Target Project metadata).
-
-    Args:
-        issue: Issue number or plan name (for guidance output)
-        project_type: Project type from Plan metadata (optional)
-        target: Resolved target directory for git operations (required for standard)
-    Returns:
-        True if switch succeeded
-    """
-    branch = wt.get("branch", "")
-
-    if not branch:
-        log_error("Incomplete worktree metadata: missing branch")
-        return False
-
-    if target is None:
-        log_error(
-            "Legacy Plan: no target directory resolved. "
-            "This should not happen — report as a bug."
-        )
-        return False
-
-    # Fetch
-    if not _git_fetch(target):
-        return False
-
-    # Checkout
-    if not _git_checkout(branch, target):
-        return False
-
-    log_success(f"Switched to '{branch}'")
-    print()
-    log_step("Verification steps:")
-    print(f"  1. Verify the feature branch: '{branch}'")
-    print(f"  2. After verification, merge manually")
-    print(f"  3. Run: flow.sh verify {issue} --confirm")
-    return True
-
-
 def run_verify_switch(issue: str) -> bool:
     """Execute the unified verification switch workflow.
 
     Switches workspace to feature branch for verification:
-    - Reads Plan Worktree metadata (WorktreeContext preferred, legacy fallback)
+    - Reads Plan Worktree metadata (WorktreeContext required)
     - Determines target directory based on project type
     - Executes git fetch + git checkout
     - Standard: cleans up worktree after switch
@@ -360,60 +311,25 @@ def run_verify_switch(issue: str) -> bool:
         log_error(f"Plan not found for issue {issue}")
         return False
 
-    # Try WorktreeContext first (new path)
+    # Parse WorktreeContext — structured format required
     wt_ctx = parse_worktree_context(plan_path)
 
-    # Treat legacy pipe-format as legacy: Path('') resolves to '.' which is unusable
-    if wt_ctx is not None and str(wt_ctx.repo_root) in ('', '.'):
-        wt_ctx = None  # Force fallthrough to legacy handling
-
-    if wt_ctx is not None:
-        branch = wt_ctx.branch
-        project_type = wt_ctx.project_type
-
-        if project_type == "ontology-worktree":
-            return _switch_ontology(workspace_root, wt_ctx, issue, str(plan_path))
-        else:
-            return _switch_standard(workspace_root, wt_ctx, issue, str(plan_path))
-
-    # Legacy fallback — WorktreeContext unavailable
-    wt = get_plan_worktree(plan_path)
-    if not wt:
-        log_error("No worktree field in Plan metadata")
+    if wt_ctx is None:
+        log_error("Plan has no valid Worktree metadata (structured format required)")
+        log_error("Please update the Plan to use structured Worktree format")
         return False
 
-    branch = wt.get("branch", "")
-    wt_path = wt.get("path", "")
+    branch = wt_ctx.branch
+    project_type = wt_ctx.project_type
 
-    if not branch or not wt_path:
-        log_error("Incomplete worktree metadata in Plan")
+    if not branch:
+        log_error("Worktree metadata has empty branch")
         return False
 
-    # Read Project Type from Plan for legacy path
-    legacy_project_type = get_plan_field(plan_path, "Project Type") or None
-
-    # Resolve target directory from Plan metadata
-    if legacy_project_type == "ontology-worktree":
-        legacy_target = str(workspace_root / ".wopal")
+    if project_type == "ontology-worktree":
+        return _switch_ontology(workspace_root, wt_ctx, issue, str(plan_path))
     else:
-        # standard or unknown — default to standard, resolve from Project Path / Target Project
-        pp = get_plan_field(plan_path, "Project Path")
-        tp = get_plan_field(plan_path, "Target Project")
-        if pp:
-            legacy_target = str(workspace_root / pp)
-        elif tp:
-            legacy_target = str(workspace_root / "projects" / tp)
-        else:
-            log_error(
-                "Legacy Plan: cannot determine target directory. "
-                "Missing Project Path and Target Project in Plan metadata."
-            )
-            return False
-
-    return _switch_legacy(
-        workspace_root, wt, issue,
-        project_type=legacy_project_type, target=legacy_target,
-    )
+        return _switch_standard(workspace_root, wt_ctx, issue, str(plan_path))
 
 
 if __name__ == "__main__":
