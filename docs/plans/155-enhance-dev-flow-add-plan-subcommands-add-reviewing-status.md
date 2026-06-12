@@ -8,7 +8,8 @@
 - **Project Path**: .wopal
 - **Project Type**: ontology-worktree
 - **Created**: 2026-06-03
-- **Status**: verifying
+- **Status**: done
+- **Verification Commit**: d29558a
 - **Worktree**:
   - branch: issue-155-flow-add-plan-subcommands-add-reviewing-status
   - path: /Users/sam/coding/wopal/wopal-workspace/.worktrees/ontology-issue-155-flow-add-plan-subcommands-add-reviewing-status
@@ -176,7 +177,7 @@ N/A — 无业务规则变更
   3. 执行 `flow.sh approve <plan> --confirm`，观察状态变为 executing
 - Expected Result: 状态转换正确，submit 和 approve 分工明确
 
-- [ ] 用户已完成上述功能验证并确认结果符合预期
+- [x] 用户已完成上述功能验证并确认结果符合预期
 
 ## Implementation
 
