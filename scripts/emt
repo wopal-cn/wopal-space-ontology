@@ -22,6 +22,7 @@ LOG_DIR="$SPACE_ROOT/.wopal-space/logs"
 SESSION_NAME="em-$(basename "$CWD")"
 
 BACKEND_PORT=4096
+ELLAMAKA_LOG="$LOG_DIR/ellamaka.log"
 BACKEND_LOG="$LOG_DIR/emt-backend.log"
 BACKEND_PID_FILE="$LOG_DIR/emt-backend.pid"
 
@@ -342,17 +343,22 @@ create_session() {
         tmux new-session -s "$name" -c "$CWD" -- \
             ellamaka attach "http://localhost:$BACKEND_PORT" --dir "$CWD" "${WOPAL_SPACE_ARGS[@]}" "${OPENCODE_ARGS[@]}"
     else
-        local tmux_env=() debug_args=()
+        local debug_args=()
         if [ "$DEBUG_MODE" = true ]; then
-            tmux_env=(-e "WOPAL_PLUGIN_LOG_LEVEL=$LOG_LEVEL" -e "WOPAL_PLUGIN_LOG_FILE=$LOG_DIR/wopal-plugins-debug.log")
-            debug_args=(--log-level DEBUG)
-        fi
-        if [ -n "$LOG_MODULES" ]; then
-            tmux_env+=(-e "WOPAL_PLUGIN_LOG_MODULES=$LOG_MODULES")
+            debug_args=(--log-level DEBUG --print-logs)
         fi
 
-        tmux new-session -s "$name" -c "$CWD" "${tmux_env[@]}" -- \
-            ellamaka "${debug_args[@]}" "${WOPAL_SPACE_ARGS[@]}" "${OPENCODE_ARGS[@]}"
+        if [ "$DEBUG_MODE" = true ]; then
+            tmux new-session -s "$name" -c "$CWD" \
+                -e "WOPAL_PLUGIN_LOG_LEVEL=$LOG_LEVEL" \
+                -e "WOPAL_PLUGIN_LOG_MODULES=$LOG_MODULES" \
+                -e "WOPAL_PLUGIN_LOG_FILE=$LOG_DIR/wopal-plugins-debug.log" \
+                -e "WOPAL_DEBUG_LOG_DIR=$LOG_DIR" \
+                -- bash -c 'exec ellamaka "$@" 2>> "'"$ELLAMAKA_LOG"'"' _ "${debug_args[@]}" "${WOPAL_SPACE_ARGS[@]}" "${OPENCODE_ARGS[@]}"
+        else
+            tmux new-session -s "$name" -c "$CWD" -- \
+                ellamaka "${WOPAL_SPACE_ARGS[@]}" "${OPENCODE_ARGS[@]}"
+        fi
     fi
 }
 

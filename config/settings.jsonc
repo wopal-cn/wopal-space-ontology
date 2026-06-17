@@ -80,5 +80,20 @@
     // "skills": {
     //   "paths": ["/Users/sam/coding/wopal/wopal-workspace/.agents/skills"]
     // },
+  },
+  "tui": {
+    "plugin": [
+      [
+        "../plugins/tui-ellamaka.tsx",
+        {
+          "enabled": true,
+          "label": "WOPALSPACE"
+        }
+      ]
+    ],
+    "attention": {
+      "enabled": true,
+      "sound": true
+    }
   }
 }
