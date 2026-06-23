@@ -247,7 +247,7 @@ wopal skills list
 
 ## Tips
 
-1. **Ontology 协作必读** — 贡献/同步上游前读 `references/upstream-sync.md`（仓库拓扑、分支命名、agent 工作流）
+1. **Ontology 协作必读** — 贡献/同步上游前读 `references/ontology-maintenance.md`（check 结果解读、下行同步、上行贡献 PR 流程、冲突解决）
 2. **能力分层必读** — 修改、裁剪或下放 ontology 能力（plugin/skill/agent）前读 `references/capability-layers.md`（层级模型、同步契约、删除安全）
 3. **Agent 驱动的工作流** — ontology 协作操作遵循「读取状态 → 与用户讨论 → 构建命令」模式。先执行 `wopal ontology status` 了解当前状态，再与用户确认后再构建 CLI 命令。不要跳过状态读取步骤。
 4. **Edit in workspace** — `.wopal/skills/<name>/` 可直接编辑

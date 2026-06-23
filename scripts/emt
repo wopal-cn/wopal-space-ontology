@@ -12,21 +12,72 @@ export OPENCODE_EXPERIMENTAL=true
 
 hash -r 2>/dev/null || true
 
+if ! command -v ellamaka > /dev/null 2>&1; then
+    echo "emt: 找不到 ellamaka 命令，请检查 PATH 或 WOPAL_HOME/bin" >&2
+    exit 1
+fi
+if ! command -v tmux > /dev/null 2>&1; then
+    echo "emt: 找不到 tmux 命令，请安装 tmux" >&2
+    exit 1
+fi
+if ! command -v python3 > /dev/null 2>&1; then
+    echo "emt: 找不到 python3 命令" >&2
+    exit 1
+fi
+if ! command -v curl > /dev/null 2>&1; then
+    echo "emt: 找不到 curl 命令" >&2
+    exit 1
+fi
+if ! command -v lsof > /dev/null 2>&1; then
+    echo "emt: 找不到 lsof 命令" >&2
+    exit 1
+fi
+
+if ! command -v tmux > /dev/null 2>&1; then
+    echo "emt: 找不到 tmux 命令，请安装 tmux" >&2
+    exit 1
+fi
+
 SCRIPT_PATH="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 AUTO_APPROVE_SCRIPT="$SCRIPT_DIR/oc-auto-approve.py"
 
 CWD="$(pwd)"
-SPACE_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
-LOG_DIR="$SPACE_ROOT/.wopal-space/logs"
+
+detect_wopal_space_root() {
+  local dir="$1"
+  while true; do
+    if [ -f "$dir/.wopal/.git" ]; then
+      echo "$dir"
+      return 0
+    fi
+    [ "$dir" = "/" ] && break
+    [ "$dir" = "$HOME" ] && break
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
+
+WOPAL_HOME_DIR="${WOPAL_HOME:-$HOME/.wopal}"
+GLOBAL_LOG_DIR="$WOPAL_HOME_DIR/logs"
+BACKEND_STATE_DIR="$WOPAL_HOME_DIR/ellamaka/state"
+
+if SPACE_ROOT="$(detect_wopal_space_root "$CWD")"; then
+  SPACE_LOG_DIR="$SPACE_ROOT/.wopal-space/logs"
+else
+  SPACE_LOG_DIR=""
+fi
+
+mkdir -p "$GLOBAL_LOG_DIR" "$BACKEND_STATE_DIR"
+[ -n "$SPACE_LOG_DIR" ] && mkdir -p "$SPACE_LOG_DIR"
+
 SESSION_NAME="em-$(basename "$CWD")"
 
 BACKEND_PORT=4096
-ELLAMAKA_LOG="$LOG_DIR/ellamaka.log"
-BACKEND_LOG="$LOG_DIR/emt-backend.log"
-BACKEND_PID_FILE="$LOG_DIR/emt-backend.pid"
+BACKEND_PID_FILE="$BACKEND_STATE_DIR/emt-backend.pid"
+ELLAMAKA_LOG="${SPACE_LOG_DIR:-$GLOBAL_LOG_DIR}/ellamaka.log"
 
-NO_AUTO_APPROVE=false DEBUG_MODE=false ATTACH_MODE=false NO_WOPAL_SPACE=false
+NO_AUTO_APPROVE=false DEBUG_MODE=false ATTACH_MODE=false DISABLE_WOPALSPACE=false
 DEBUG_MODULES=""
 TRACE_MODE=false TRACE_MODULES=""
 COMMAND=""
@@ -64,7 +115,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --help|-h) OPENCODE_ARGS+=(--help); shift ;;
         --no-auto-approve) NO_AUTO_APPROVE=true; shift ;;
-        -ns) NO_WOPAL_SPACE=true; shift ;;
+        -ns) DISABLE_WOPALSPACE=true; shift ;;
 
         --trace)
             TRACE_MODE=true; DEBUG_MODE=true
@@ -109,8 +160,8 @@ fi
 # "all" = 不做模块过滤，留空让 logger 视为 null（不过滤）
 [[ "$LOG_MODULES" == "all" ]] && LOG_MODULES=""
 
-if [ "$NO_WOPAL_SPACE" = true ]; then
-    WOPAL_SPACE_ARGS=(--no-wopal-space)
+if [ "$DISABLE_WOPALSPACE" = true ]; then
+    WOPAL_SPACE_ARGS=(--disable-wopalspace)
 else
     WOPAL_SPACE_ARGS=()
 fi
@@ -124,44 +175,77 @@ is_backend_running() {
 wait_backend() {
     for ((i = 0; i < 60; i++)); do
         curl -sf "http://127.0.0.1:$BACKEND_PORT/health" > /dev/null 2>&1 && return 0
+        # 等待期间检查后端是否已崩溃
+        if [ -f "$BACKEND_PID_FILE" ]; then
+            local check_pid
+            read -r check_pid < "$BACKEND_PID_FILE"
+            if ! kill -0 "$check_pid" 2>/dev/null; then
+                echo "" >&2
+                echo "emt: 后端在启动期间崩溃 (PID $check_pid)" >&2
+                local check_log
+                { read -r _; read -r _; read -r check_log || true; } < "$BACKEND_PID_FILE"
+                if [ -n "$check_log" ] && [ -f "$check_log" ]; then
+                    echo "emt: 日志尾部 ($check_log):" >&2
+                    tail -30 "$check_log" >&2
+                fi
+                rm -f "$BACKEND_PID_FILE"
+                return 2
+            fi
+        fi
         sleep 0.5
     done
     return 1
 }
 
-start_backend() {
-    mkdir -p "$LOG_DIR"
+# 检查刚启动的后端是否存活，若已崩溃则清理残留并输出日志尾部
+verify_backend_alive() {
+    local pid="$1" log="$2"
+    sleep 1
+    if ! kill -0 "$pid" 2>/dev/null; then
+        echo "" >&2
+        echo "emt: 后端启动失败 (PID $pid 已退出)" >&2
+        if [ -f "$log" ]; then
+            echo "emt: 日志尾部 ($log):" >&2
+            tail -30 "$log" >&2
+        fi
+        rm -f "$BACKEND_PID_FILE" "$log"
+        exit 1
+    fi
+}
 
+start_backend() {
     local log_level="INFO"
     [ "$DEBUG_MODE" = true ] && log_level="DEBUG"
 
     local serve_args=(serve --port $BACKEND_PORT --mdns --mdns-domain ellamaka.local --print-logs --log-level $log_level "${WOPAL_SPACE_ARGS[@]}")
 
-    nohup env \
-        WOPAL_PLUGIN_LOG_LEVEL="${LOG_LEVEL}" \
-        WOPAL_PLUGIN_LOG_MODULES="${LOG_MODULES}" \
-        WOPAL_PLUGIN_LOG_FILE="$LOG_DIR/wopal-plugins-debug.log" \
-        ellamaka "${serve_args[@]}" > "$BACKEND_LOG" 2>&1 &
+    # serve 日志路由：非 debug → 全局，debug → 空间
+    local backend_log="$GLOBAL_LOG_DIR/emt-backend.log"
+    local plugin_log_file=""
+    if [ "$DEBUG_MODE" = true ]; then
+        backend_log="${SPACE_LOG_DIR:-$GLOBAL_LOG_DIR}/emt-backend.log"
+        plugin_log_file="${SPACE_LOG_DIR:-$GLOBAL_LOG_DIR}/wopal-plugins-debug.log"
+    fi
 
-    # 记录 PID 和启动目录，stop 时用于校验
-    { echo $!; echo "$CWD"; } > "$BACKEND_PID_FILE"
+    local env_vars=(WOPAL_HOME="$WOPAL_HOME_DIR")
+    [ -n "$LOG_LEVEL" ] && env_vars+=(WOPAL_PLUGIN_LOG_LEVEL="$LOG_LEVEL")
+    [ -n "$LOG_MODULES" ] && env_vars+=(WOPAL_PLUGIN_LOG_MODULES="$LOG_MODULES")
+    [ -n "$plugin_log_file" ] && env_vars+=(WOPAL_PLUGIN_LOG_FILE="$plugin_log_file")
+
+    nohup env "${env_vars[@]}" ellamaka "${serve_args[@]}" > "$backend_log" 2>&1 &
+    local serve_pid=$!
+
+    # 记录 PID、启动目录、后端日志路径
+    { echo "$serve_pid"; echo "$CWD"; echo "$backend_log"; } > "$BACKEND_PID_FILE"
+
+    verify_backend_alive "$serve_pid" "$backend_log"
 }
 
 stop_backend() {
-    local pid="" start_dir="" has_pid_file=false
+    local pid="" start_dir="" backend_log=""
 
     if [ -f "$BACKEND_PID_FILE" ]; then
-        has_pid_file=true
-        { read -r pid; read -r start_dir; } < "$BACKEND_PID_FILE"
-
-        local current_dir="$(pwd)"
-        if [ "$current_dir" != "$start_dir" ]; then
-            echo "emt: 当前目录与启动目录不一致，无法停止后端" >&2
-            echo "  启动目录: $start_dir" >&2
-            echo "  当前目录: $current_dir" >&2
-            echo "  请 cd 到 $start_dir 后执行 emt stop" >&2
-            exit 1
-        fi
+        { read -r pid; read -r start_dir; read -r backend_log || true; } < "$BACKEND_PID_FILE"
     fi
 
     local port_pid
@@ -172,7 +256,7 @@ stop_backend() {
         return
     fi
 
-    rm -f "$BACKEND_PID_FILE" "$BACKEND_LOG" "$LOG_DIR/wopal-plugins-debug.log" || true
+    rm -f "$BACKEND_PID_FILE" "$backend_log" || true
 
     for p in $pid $port_pid; do
         [ -n "$p" ] && kill "$p" 2>/dev/null || true
@@ -215,10 +299,12 @@ show_status() {
             tmux has-session -t "=$monitor" 2>/dev/null && status="监控中 ($monitor)"
             echo "  $s"
             echo "    目录: $session_dir | 状态: $status"
-            if [ -d "$session_dir/logs" ]; then
+            local log_dir="$session_dir/.wopal-space/logs"
+            [ ! -d "$log_dir" ] && log_dir="$session_dir/logs"
+            if [ -d "$log_dir" ]; then
                 local log_count
-                log_count=$(find "$session_dir/logs" -name "*.log" -type f 2>/dev/null | wc -l | tr -d ' ')
-                [ "$log_count" -gt 0 ] && echo "    日志: $session_dir/logs ($log_count 个)"
+                log_count=$(find "$log_dir" -name "*.log" -type f 2>/dev/null | wc -l | tr -d ' ')
+                [ "$log_count" -gt 0 ] && echo "    日志: $log_dir ($log_count 个)"
             fi
         done
     fi
@@ -241,14 +327,14 @@ show_status() {
     echo ""
     echo "后端服务:"
     if is_backend_running; then
-        local bpid="(unknown)" bdir=""
+        local bpid="(unknown)" bdir="" blog=""
         if [ -f "$BACKEND_PID_FILE" ]; then
-            { read -r bpid; read -r bdir; } < "$BACKEND_PID_FILE"
+            { read -r bpid; read -r bdir; read -r blog || true; } < "$BACKEND_PID_FILE"
         fi
         echo "  运行中 → http://127.0.0.1:$BACKEND_PORT"
         [ -n "$bpid" ] && echo "  PID: $bpid"
         [ -n "$bdir" ] && echo "  目录: $bdir"
-        [ -f "$BACKEND_LOG" ] && echo "  日志: $BACKEND_LOG"
+        [ -n "$blog" ] && [ -f "$blog" ] && echo "  日志: $blog"
     else
         echo "  未运行"
     fi
@@ -261,13 +347,17 @@ case "$COMMAND" in
     stop)   stop_backend; exit 0 ;;
     help)   show_help; exit 0 ;;
     serve)
-        mkdir -p "$LOG_DIR"
         [ "$DEBUG_MODE" = true ] && {
             echo "emt: 调试模式 [$LOG_LEVEL${LOG_MODULES:+:$LOG_MODULES}] → logs/"
         }
         start_backend
         echo -n "emt: 等待后端就绪"
-        wait_backend && echo " OK" || echo " 超时"
+        wait_backend
+        case $? in
+            0) echo " OK" ;;
+            1) local _pid _cwd _log; { read -r _pid; read -r _cwd; read -r _log || true; } < "$BACKEND_PID_FILE"; echo " 超时"; echo "emt: 后端可能仍在启动中，查看日志: ${_log:-未知}" ;;
+            *) exit 1 ;;
+        esac
         echo "emt: 后端已启动 → http://127.0.0.1:$BACKEND_PORT"
         exit 0
         ;;
@@ -304,7 +394,7 @@ start_auto_approve() {
         return
     fi
 
-    local log_arg="$([ -d "$LOG_DIR" ] && echo "$LOG_DIR")"
+    local log_arg="$([ -d "$SPACE_LOG_DIR" ] && echo "$SPACE_LOG_DIR" || echo "$GLOBAL_LOG_DIR")"
     local debug_flag="$([ "$DEBUG_MODE" = true ] && echo true || echo false)"
 
     nohup python3 "$AUTO_APPROVE_SCRIPT" start "$session" "$debug_flag" "10" "$log_arg" \
@@ -323,7 +413,6 @@ create_session() {
         esac
     fi
 
-    mkdir -p "$LOG_DIR"
     [ "$DEBUG_MODE" = true ] && echo "emt: 调试模式 [$LOG_LEVEL${LOG_MODULES:+:$LOG_MODULES}] → logs/"
 
     echo "emt: 创建会话 \"$name\"$([ "$ATTACH_MODE" = true ] && echo " [attach]") → $CWD"
@@ -340,7 +429,8 @@ create_session() {
             echo "emt: 连接已有后端 :$BACKEND_PORT"
         fi
 
-        tmux new-session -s "$name" -c "$CWD" -- \
+        tmux new-session -s "$name" -c "$CWD" \
+            -e "WOPAL_HOME=$WOPAL_HOME_DIR" -- \
             ellamaka attach "http://localhost:$BACKEND_PORT" --dir "$CWD" "${WOPAL_SPACE_ARGS[@]}" "${OPENCODE_ARGS[@]}"
     else
         local debug_args=()
@@ -349,14 +439,17 @@ create_session() {
         fi
 
         if [ "$DEBUG_MODE" = true ]; then
+            local tui_log_dir="${SPACE_LOG_DIR:-$GLOBAL_LOG_DIR}"
             tmux new-session -s "$name" -c "$CWD" \
+                -e "WOPAL_HOME=$WOPAL_HOME_DIR" \
                 -e "WOPAL_PLUGIN_LOG_LEVEL=$LOG_LEVEL" \
                 -e "WOPAL_PLUGIN_LOG_MODULES=$LOG_MODULES" \
-                -e "WOPAL_PLUGIN_LOG_FILE=$LOG_DIR/wopal-plugins-debug.log" \
-                -e "WOPAL_DEBUG_LOG_DIR=$LOG_DIR" \
+                -e "WOPAL_PLUGIN_LOG_FILE=$tui_log_dir/wopal-plugins-debug.log" \
+                -e "WOPAL_DEBUG_LOG_DIR=$tui_log_dir" \
                 -- bash -c 'exec ellamaka "$@" 2>> "'"$ELLAMAKA_LOG"'"' _ "${debug_args[@]}" "${WOPAL_SPACE_ARGS[@]}" "${OPENCODE_ARGS[@]}"
         else
-            tmux new-session -s "$name" -c "$CWD" -- \
+            tmux new-session -s "$name" -c "$CWD" \
+                -e "WOPAL_HOME=$WOPAL_HOME_DIR" -- \
                 ellamaka "${WOPAL_SPACE_ARGS[@]}" "${OPENCODE_ARGS[@]}"
         fi
     fi
