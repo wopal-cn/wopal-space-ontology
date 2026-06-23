@@ -9,8 +9,9 @@
 
 | Date | Type | Summary |
 |---|---|---|
+| 2026-06-18 | Major | §6.8 完全重写：从版本化 manifest 驱动改为规则驱动设计。核心 6 条规则：单向下行合并、top-down 顺序、贡献走 squash merge 不强制 update、冲突即停、update 逻辑原子、配置隔离。去掉 manifest/版本号/ownership pattern/install/release/validate/apply 等机制，回归标准 git 工作流。命令族收敛为 6 个（ontology status/update/contribute + space status/update/contribute）。 |
+| 2026-06-17 | Major | §6.8 完全重写：从 git merge 驱动改为版本化 manifest 驱动同步。新增 Manifest 结构（ontology.yaml + space-manifest.yaml）、版本号规则（main 三位 + type 四位）、Release 流程、Update 机制（变更集应用 + ownership 保留）、Apply 机制（双向文件迁移）、Contribute 机制（临时分支隔离 + 选择性 apply + PR）、Space Update 机制。去掉 clone/fork 二分法、四层检测机制、git merge 同步。命令族新增 install、release、validate。 |
 | 2026-06-13 | Updated | §6.9 Agent Ontology Maintenance Workflow — 状态解读、更新决策、能力提升、多级 fork 维护和 safe-apply/contribute 工作流。补充 `/ontology-maintain` 命令。 |
-| 2026-06-13 | Updated | §6.8 — 重构 `ontology status`/`space status` 输出规范 |
 | 2026-05-31 | Updated | 收敛 base capabilities + space overlay：setup 从 ontology main 物化 base，space overlay 同名覆盖。 |
 | 2026-05-30 | Updated | 将 Git source / worktree 分发细节下沉到 `docs/DISTRIBUTION.md`。 |
 | 2026-05-29 | Updated | 明确 STRUCTURE compact schema、Design Document Layering 与 `/init` 消费 `wopal space scan` JSON 的维护边界。 |
@@ -471,17 +472,15 @@ Ontology 通过两层模型为 WopalSpace 提供可覆盖的能力分发：
 
 ### 6.8 Ontology 协作模型
 
-Ontology 以 Git 分支承载能力演化，形成自上而下的能力层级。每一层相对其父层，角色等同于特性分支——在本层做变更，通过 PR 贡献到父层。`wopal ontology` 命令族在两种模式下提供检查、更新和贡献操作。
+Ontology 以 Git 分支承载能力演化，形成自上而下的能力层级。同步机制基于**规则驱动**——用一套明确的操作规则约束用户和 agent 的行为，CLI 作为流程守卫强制执行规则，避免复杂的场景穷举验证。
 
-#### 分支层级
+#### 分层结构
 
 三层分支，自上而下叠加能力：
 
-- **通用类型分支（main）**：所有类型空间共享的基础能力，等同于 type/common。
-- **能力类型分支（type/*）**：在通用基线之上叠加特定类型的能力。如 type/coding 叠加编码类空间的能力，type/content 叠加自媒体类空间的能力。
-- **空间分支（space/*）**：在能力分支之上叠加单个空间的定制。如 space/wopal-workspace 基于 type/coding。
-
-空间分支是能力分支的超集，能力分支是通用类型分支的超集。每一层都完整包含父层的所有内容，加上自己特有的能力。
+- **通用基线（main）**：所有类型空间共享的基础能力。跟踪上游 main。
+- **能力类型分支（type/*）**：在 main 之上叠加特定类型的能力。type/* 是 main 的超集——包含 main 全部内容 + 类型能力。跟踪上游 type/*。
+- **空间分支（space/*）**：在 type/* 之上叠加单个空间的定制。space/* 是 type/* 的超集——包含 type/* 全部内容 + 空间定制。是 type/* 的实例分支。
 
 分支命名约定：
 
@@ -489,210 +488,109 @@ Ontology 以 Git 分支承载能力演化，形成自上而下的能力层级。
 |------|------|------|
 | 通用基线 | `main` | 所有空间共享 |
 | 能力分支 | `type/<name>` | 上游维护或用户自建 |
-| 空间分支 | `space/<space-name>` | 绑定到特定空间 |
-| 贡献分支 | `contribute/<target>/<topic>` | 临时，PR 合并后删除 |
+| 空间分支 | `space/<name>` | 绑定到特定空间 |
 | 开发分支 | `feature/<name>` | dev-flow worktree 使用，临时 |
 
-拓扑示意：
+#### Source 模型
+
+Ontology source 是去中心化的——任何 GitHub 仓库都可以是 source，没有权威中心。
+
+- 官方 upstream（`wopal-cn/wopal-space-ontology`）是默认 source
+- 任何人 fork 后可以自主发布，成为他人的 source
+- 用户可以安装多个 ontology source，创建 space 时选择哪个 source 和 type 分支
+- source 质量靠 GitHub star 和 fork 数量自然涌现，用户自行判断
+- `wopal ontology install <github-url>` 从任意仓库安装
+
+用户安装 source 后，local 工作副本位于 `~/.wopal/ontologies/<source-name>/`，包含 main 和 type/* 分支。space 创建时锁定所属 source 和 type 分支。
+
+#### 核心规则
+
+本体协作由 6 条核心规则约束。CLI 命令和 agent 操作指南都必须保证这些规则的执行。
+
+**规则 1：单向下行合并**
 
 ```
-上游 (wopal-cn/wopal-space-ontology)
-  ├── main                ← 通用基线
-  ├── type/coding         ← 编码类型能力分支
-  └── type/content        ← 自媒体类型能力分支
-
-~/.wopal/ontologies/wopal-space-ontology/  (本地仓库)
-  ├── main                ← 上游 main 镜像
-  ├── type/coding         ← 上游 type/coding 镜像
-  └── space/wopal-workspace  ← 空间分支（基于 type/coding）
-
-<space>/.wopal/           ← 对应 space/<space-name> 分支的 worktree
+upstream/main → main → type/coding → space/<name>
 ```
 
-fork 模式下，用户副本（`<user>/wopal-space-ontology`）作为 origin 插入上游和本地仓库之间，承担副本镜像角色。分支层级结构保持一致。
+- 下行更新只走这条链，用 `git merge`
+- 禁止反向 merge：space→type、type→main、local→upstream
+- 上行只用 squash merge（同仓库贡献）或 PR（跨仓库贡献）
 
-#### 两种模式
+**规则 2：top-down 顺序**
 
-用户与上游 ontology 的关系分为两种模式，决定使用门槛和贡献能力：
+更新必须从最上层开始，逐层往下：
 
-| 模式 | 定位 | 同步链 |
-|------|------|--------|
-| **Clone**（默认） | 消费：获取上游更新 | `上游 → 本地能力分支 → 空间分支`（两层下行）|
-| **Fork** | 消费 + 贡献 | `上游 → 用户副本 → 本地能力分支 → 空间分支`（三层下行）|
+`ontology update` 内部：
+1. merge `upstream/main → main`
+2. merge `main → type/coding`
+3. 任一步冲突即停
 
-clone 模式降低使用门槛，大多数用户的选择。fork 模式适合活跃贡献者，多一层副本镜像，贡献流程更直接。两种模式下分支命名和下行同步操作一致。
+`space update` 前置守卫：
+- 检查 type/coding 是否已合并最新 main
+- 未合并 → 拒绝执行，提示"请先 `ontology update`"
 
-上游 canonical URL：`https://github.com/wopal-cn/wopal-space-ontology`。
+跳步会产生复杂历史，是错的根源。
 
-#### 更新流程（下行同步）
+**规则 3：贡献走 squash merge，不强制先 update**
 
-更新是把上游的新内容应用到用户的空间分支。这是最常用的操作。
+上行贡献分两个场景：
 
-**内容流动的三层关系**：上游维护各 type/* 始终包含 main 的最新内容；用户从远程拉取 main 和 type/* 到本地；再从本地 type/* 应用到空间分支。
+**同仓库（space → type/coding）**：用 `git merge --squash`。把 space 相对 type/coding 的全部变更压成一次暂存，不自动提交。预览后排除不该贡献的文件，用户确认后 commit。
 
-**第一步：ontology update（HOME 级，同步本体仓库）**
+**跨仓库（fork → upstream）**：创建临时分支基于 upstream 最新 → `git merge --squash` fork 分支 → 预览排除 → commit → `gh pr create`。
 
-从远程拉取 main 和所有 type/* 分支的最新内容到本地仓库。基于 check 的四层检测结果驱动——只同步有 downstream 信号的内容，不盲目 merge。
+贡献前不强制 update——squash merge 只带 diff，PR 用临时分支隔离，fork 分支不被碰，不需要先同步。
 
-clone 模式：fetch origin，对有 downstream 信号的分支执行 merge（允许 merge commit）。
+**规则 4：冲突即停**
 
-fork 模式：fetch upstream + origin，两层同步——先同步 fork 副本镜像，再同步到本地。完成后 push 副本镜像确保三层对齐。
+任何 merge / squash merge 冲突：
+- CLI 立即停止
+- 报告冲突文件列表
+- agent 手动编辑 → `git add` + `git commit` 完成
+- 永远不自动解决
 
-完成后，本地仓库拥有最新的 main 和 type/* 镜像。这一步操作本体仓库，发生在空间之外。
+**规则 5：update 多步顺序执行**
 
-**第二步：space update（Space 级，应用到空间）**
+`ontology update` 内部多步（main merge + type/coding merge）按顺序执行。任一步冲突 → 停在该点，不继续后续步骤。agent 手动解决冲突并 commit 完成该步 merge 后，重跑 `ontology update`，CLI 跳过已完成的步骤，从下一步继续。
 
-从本地能力类型分支（type/*）同步到当前空间分支。在 space worktree 中执行 merge，允许 merge commit。check 的第四层（merge-tree 冲突预测）在执行前判断冲突——clean 时自动 merge，有冲突时报告冲突文件由 agent 解决。
-
-**两步之间的关系**：先更新本体仓库（拿到最新能力分支），再应用到空间。中间可以检查更新内容、验证兼容性。两条命令解耦，分别在不同上下文执行。
-
-**超集不变量**：main 的变更需要手动下行到 type/*。上游维护者负责把 main 的内容合并到各 type/* 分支，确保 type/* 始终是 main 的超集。fork 用户在自己仓库上贡献 main 层变更后，同样需要手动执行这步，然后 push 到副本。check 的 D5 段检测超集是否成立——FAIL 时需要 merge main 到 type/* 修复。
-
-**合并策略**：允许 merge commit，不限制 fast-forward。能力分支和空间分支有自定义提交是常态，fast-forward 在多数场景下不可行。
-
-#### 检查流程（双向检查）
-
-检查帮助用户发现需要操作的信号。判断基于**内容一致性**——比较分支的完整内容状态，而非提交数量。合并采纳方式导致提交历史天然不同，比较提交数量会产生虚假的"有更新"报告。
-
-**向下检查（有无更新需要同步）**：
-
-逐层检查同步链上是否有待同步的内容。四类比较覆盖完整的下行链路：
-
-fork 模式：
-
-| # | 比较 | 类型 | 语义 |
-|---|------|------|------|
-| 1 | 上游 main/type/* ↔ 副本 main/type/* | 同镜像 | 副本镜像是否落后上游 |
-| 2 | 副本 main/type/* ↔ 本地 main/type/* | 同镜像 | 本地是否落后副本 |
-| 3 | 本地 main → 本地 type/* | 跨层父→子 | 能力分支是否包含通用基线全部内容（超集不变量）|
-| 4 | 本地 type/* → 空间分支 | 跨层父→子 | 空间分支是否落后能力类型分支 |
-
-clone 模式去掉比较 1、2 中的副本层（直接上游↔本地），比较 3、4 不变。
-
-**比较 3（超集不变量）的核心价值**：用户通常在 type→space 分支工作，产生的变更 PR 到 type。但 main（公共基线）的演进对 type 不可见——如果 main 变了而 type 没有及时下行传播，type 分支会长期落后 main，积压大量公共变更。超集不变量检查及时发现这种不同步，避免公共能力变更被遗漏。
-
-**新增能力分支检测**：除了已有分支的内容更新，还检查上游是否有本地尚未安装的新能力分支（如上游新增了 type/security）。检测到新分支时报告"新能力分支可用"，建议通过 ontology update 安装。
-
-**比较机制（四层组合，适用于所有层级）**：
-
-判断内容差异不能依赖 commit 比对（`git cherry` / patch-ID）。squash merge 导致同一变更在不同分支上有不同 SHA，两个分支内容可以完全一致但 commit 历史不同——commit 比对会产生虚假的"有差异"报告。比较必须基于**文件内容**，分四层逐步深入：
-
-第一层——内容指纹门控（`git rev-parse <ref>^{tree}`）：比较分支的完整内容指纹（tree hash）。指纹相同则内容完全一致，标记"一致"并跳过后续分析。指纹不同则进入第二层。
-
-第二层——文件内容比对（`git diff <A> <B> --diff-filter`）：逐文件比较内容差异，区分三种类型：`A`（一方有、另一方没有）、`M`（两边都有但内容不同）、`D`（一方删除）。
-
-第三层——差异方向判断（`merge-base` + `git log`）：对每个有差异的文件，判断方向和时效性。`git cat-file -e <merge-base>:<file>` 检查文件在共同祖先是否存在——存在说明是一方主动删的（上行信号），不存在说明是另一方新增的（下行信号）。`git log <merge-base>..<upstream> -- <file>` 检查上游在共同祖先之后是否更新过——未更新说明删除不会过时，更新过说明可能错过上游变更。
-
-第四层——合并冲突预测（`git merge-tree --write-tree <child> <parent>`）：对有差异的分支对，无副作用地预测 merge 结果。这个命令不改变工作树、不创建 commit，只输出 merge 后的 tree hash 或冲突文件列表。agent 据此判断 merge 能否安全自动执行，还是需要手动解决冲突。
-
-四层组合才能准确回答"这个差异要不要管"和"处理起来会不会冲突"。任何单一命令都无法一步到位——`git diff` 发现差异但不判断方向，`merge-base` 判断方向但不发现差异，`git log` 看历史但不比较内容，`git merge-tree` 预测冲突但不告诉你差异的含义。
-
-`git cherry`（patch-ID）仅作为辅助工具：在需要识别"哪个 commit 产生了某文件差异"以便 cherry-pick 时使用，不作为内容差异判断的依据。
-
-检测到差异时，按分支维度逐环节列出完整信息（文件清单、差异类型、方向判断），不输出操作建议——CLI 没有语义判断能力，无法区分"该同步的下行差异"和"本地主动变更"。
- 
-**向上检查（有无待贡献或待同步的变更）**：
-
-发现两类信号：
-
-1. **空间分支上有未贡献的变更**：空间分支相对对应能力类型分支，有哪些文件内容还没有回流？通过文件内容比对（`git diff`）识别空间分支独有的文件，再用 `merge-base` 判断方向（区分空间新增 vs 能力分支删除的）。帮助用户判断"我积累了哪些值得贡献的通用变更"。
-
-2. **能力类型分支与副本/上游的一致性**：fork 模式下，本地能力类型分支相对副本是否有未推送的变更？副本相对上游是否有待同步的差异？帮助用户判断"我的贡献是否已经传播到位"。
-
-**操作建议由 agent 判断**：
-
-check 只输出完整差异信息（文件清单、差异类型、方向判断），不输出操作建议。CLI 没有语义判断能力，无法区分"该同步的下行差异"和"本地主动变更"——例如 fork 主动重构删除的文件，diff 会报告"上游有、本地没有"，但不应同步。操作建议由 agent 基于完整信息推导。
-
-**触发方式**：手动运行 `ontology check`。
-
-#### 贡献流程（上行贡献）
-
-贡献是把空间分支上的通用变更回流到父层。仅面向 fork 模式用户。
-
-**核心设计决策**：所有上行回流采用 PR merge（squash merge），不直接本地 merge。space 相当于 type/coding 的特性分支，PR merge 保证父层提交历史清晰——每个 PR 在父层产生一个干净的提交，不会混入空间的定制变更。
-
-**上行链条**：上行是链条，内容必须逐级向上流动，顺序不能跳过：
-
-| 段 | 方向 | 操作方式 |
-|----|------|---------|
-| U1 | space → type/coding | PR（squash merge），保证 type 分支历史清晰 |
-| U2/U3 | local → origin | push |
-| U4/U5 | origin → upstream | PR（跨仓库） |
-
-U1 完成后才能 U2/U3（push 回流后的变更），U2/U3 完成后才能 U4/U5（从 fork 向上游发 PR）。
-
-**贡献路径**——根据变更的适用范围决定目标层：
-
-| 变更适用范围 | 贡献到 | 方式 |
-|-------------|--------|------|
-| 同类空间通用（如所有 coding 类空间）| 对应能力分支（type/coding）| 直接 PR 或精选 PR |
-| 所有空间通用 | 通用基线（main）| 精选 PR（贡献分支）|
-| 本空间特有 | 不贡献 | 留在空间分支 |
-
-**直接 PR**：空间分支相对父层的差异全是通用变更时，直接从空间分支创建 PR 到父层。配置隔离约定保证了差异天然干净。PR 采用合并采纳（squash merge），每个 PR 在父层产生一个清晰的提交。
-
-**精选 PR**：空间分支上混合了通用变更和空间私有变更时，或需要跨层贡献（如 coding 空间向 main 贡献单个修复）时，使用贡献分支精选：
-
-1. 从目标层创建贡献分支（如 `contribute/main/<topic>`）
-2. cherry-pick 想贡献的提交到贡献分支
-3. PR 贡献分支到目标层
-
-贡献分支是临时分支，PR 合并后删除。它让你精准贡献——只贡献想贡献的变更，不受源分支上其他内容的干扰。
-
-**逐层传播**：变更进入通用类型分支（main）后，需要手动下行传播到能力类型分支。仓库维护者执行 `apply --from main --to type/coding`，把 main 的变更合并到能力分支，然后 push。其他用户通过日常更新流程（ontology update + space update）获得传播后的内容。
-
-**提交描述规范**：PR 采用合并采纳，提交标题遵循 Conventional Commits 格式。GitHub 自动追加 PR 编号（如 `feat(dev-flow): add validation shortcuts (#123)`），提供来源追溯。父层的提交历史呈现为每个 PR 一个提交的清晰序列。
-
-#### 配置隔离约定
+**规则 6：配置隔离与 .gitignore 一致性**
 
 空间分支相对父层的差异只包含能力变更，由配置文件的分层约定保证：
 
 - `settings.jsonc`：公共配置，随分支传播，所有层级共享。
-- `settings.local.json`：空间私有配置，被 git 忽略，保留在本地文件系统。
+- `settings.local.jsonc`：空间私有配置，被 git 忽略，保留在本地文件系统。
 
-因此，空间分支向父层的 PR 天然干净——只包含能力层面的变更。
+每个分支（main、type/*、space/*）都有自己的 `.gitignore`，声明该分支忽略的文件清单。分支间基本一致，差异不大。space 分支的 `.gitignore` 必须与其所属 type/* 分支一致——如果不一致，视为当前变更，需要同步一致（squash merge 上行或 reset 回来）。这保证被忽略的私有文件在 merge 时不受影响。
 
 #### 命令总览
 
-ontology 维护涉及以下命令。详细参数和输出格式见 wopal-cli 设计文档。
+| 命令 | 方向 | 底层操作 | CLI 守卫 |
+|------|------|---------|---------|
+| `ontology status` | — | 下行/上行全链路 git log/diff 展示差异 + `git merge-tree` 预测 merge 结果 | — |
+| `ontology update` | 下行 | `git merge upstream/main → main` + `git merge main → type/coding` | 强制顺序，冲突即停 |
+| `ontology contribute` | 上行 | 创建临时分支 + squash merge + PR | fork 分支不被碰 |
+| `space status` | — | 当前 space 相关的完整链路 git log/diff 展示差异 + `git merge-tree` 预测 merge 结果 | — |
+| `space update` | 下行 | `git merge type/coding → space` | 前置检查 type 已更新 |
+| `space contribute` | 上行 | `git merge --squash space → type/coding` | 预览排除，不自动提交 |
 
-**检查与查看**：
-
-- `ontology check`——基于内容一致性检测各层级更新状态。只读，手动触发。向下看有无更新，向上看有无未推送变更。
-- `ontology status`——查看当前空间的分支身份和同步状态。
-- `ontology list`——查看所有已注册的 ontology 源的全局视图。
-
-**更新**：
-
-- `ontology update`——从上游或副本同步能力分支到本地仓库（HOME 级）。
-- `space update`——从本地能力分支同步到空间分支（Space 级）。
-
-**贡献**：
-
-- `contribute`——精选提交到贡献分支，提交 PR 到父层。
-- `apply`——分支间通用合并工具，适用于需要手动控制方向的场景。
-
-**约束**：贡献仅 fork 模式；所有上行回流采用 PR merge（squash merge）；下行同步允许 merge commit，不限制 fast-forward。
+所有命令 context-aware——在 space 目录运行时自动定位关联的 ontology source 和 type 分支。用户不需要切到 ontology repo。
 
 #### AI 辅助流程
 
-Agent 是本体维护的决策中枢。CLI 输出四层检测的结构化事实，agent 解读后与用户讨论，再构造命令执行。详细操作规则（什么信号用什么命令、上下行执行步骤、冲突解决策略、贡献路径选择）见 space-master 技能的本体维护操作指南。
+Agent 是本体维护的决策中枢。CLI 输出分支差异的结构化事实，agent 解读后与用户讨论，再构造命令执行。详细操作规则见 space-master 技能的本体维护操作指南。
 
-**决策框架**（基于 check 四层检测信号）：
+**决策框架**：
 
-1. worktree 有未提交变更 → 先提交
-2. check 有 downstream 信号（D1-D4）+ merge-tree clean → 执行 ontology update
-3. check 有 downstream 信号 + merge-tree conflicts → cherry-pick 具体变更，agent 手动解决冲突
-4. D5 超集检查 FAIL → merge main 到 type/coding 修复超集违反
-5. D6 显示 space 落后 type/coding → 执行 space update
-6. check 有 upstream 信号（U1）→ 与用户讨论哪些空间变更有普遍价值，值得贡献
-7. U1 确认贡献 → 按 U1 → U2/U3 → U4/U5 链条逐级上行
+1. `ontology status` 显示 upstream → local 落后 → 执行 `ontology update`
+2. update 冲突 → agent 手动解决冲突文件，重跑 update 继续
+3. `space status` 显示 type/coding → space 落后 → 执行 `space update`
+4. space 有修改想贡献到 type → `space contribute`（squash merge + 预览排除）
+5. 想贡献回 upstream → `ontology contribute`（临时分支 + PR）
 
-**冲突处理**：check 的第四层（merge-tree 冲突预测）在执行前判断冲突。clean 时 CLI 自动 merge；conflicts 时报告冲突文件，agent 手动编辑解决（保留双方有价值的改动），然后 `git add` + `git commit` 完成 merge。
+**冲突处理**：所有冲突（update、contribute）统一由 agent 解决。CLI 报告冲突文件，agent 手动编辑后继续命令。
 
-**多级副本链**：用户的副本可被他人 fork 为上游。CLI 自动从 `upstream` remote 拉取，多级副本链对 CLI 透明。
-
-**`/ontology-maintain` 命令**：Agent 使用此命令触发完整维护流程——check（四层检测）→ 分析建议（按决策框架排序）→ 报告确认（等待用户确认）→ 执行操作（每次操作后验证）。
+**`/ontology-maintain` 命令**：Agent 使用此命令触发完整维护流程——status（差异对比）→ 分析建议（按决策框架排序）→ 报告确认（等待用户确认）→ 执行操作（每次操作后验证）。
 
 ---
 ## 7. Data and State Model

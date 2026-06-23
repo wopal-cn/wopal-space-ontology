@@ -83,8 +83,29 @@ let _memorySystem: {
   llm: import("./llm-client").LLMClient;
 } | null = null;
 
+/** Check required env vars for memory system. Returns list of missing var names. */
+function diagnoseMemoryEnv(): string[] {
+  const required = [
+    "WOPAL_LLM_BASE_URL",
+    "WOPAL_LLM_API_KEY",
+    "WOPAL_EMBEDDING_BASE_URL",
+    "WOPAL_EMBEDDING_MODEL",
+  ];
+  return required.filter((v) => !process.env[v]);
+}
+
 async function ensureMemorySystem(): Promise<typeof _memorySystem> {
   if (_memorySystem) return _memorySystem;
+
+  const missing = diagnoseMemoryEnv();
+  if (missing.length > 0) {
+    coreLogger.warn(
+      `Memory system disabled: missing env vars (${missing.join(", ")}). ` +
+      `Set them in $WOPAL_HOME/.env or <space>/.wopal/.env. ` +
+      `Set WOPAL_MEMORY_ENABLED=false to suppress this warning.`
+    );
+    return null;
+  }
 
   try {
     const { MemoryStore } = await import("./memory/store");
