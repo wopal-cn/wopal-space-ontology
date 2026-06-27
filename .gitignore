@@ -38,7 +38,6 @@ package.json
 .LSOverride
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo
