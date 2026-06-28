@@ -114,6 +114,20 @@ def _extract_project_metadata_from_body(issue_info: dict) -> tuple[str | None, s
     return project_type, project_path
 
 
+def _derive_project_path(project: str | None, declared_path: str | None) -> str:
+    """Derive Project Path, auto-filling from project name when not declared.
+
+    Standard projects follow the ``projects/<name>`` convention. When the
+    Issue body does not declare a Project Path explicitly, we derive it from
+    the Target Project so that verify/archive can locate the correct git repo.
+    """
+    if declared_path:
+        return declared_path
+    if project:
+        return f"projects/{project}"
+    return ""
+
+
 def _extract_product_phase_from_body(issue_info: dict) -> tuple[str | None, str | None]:
     """Extract Product and Phase from Issue body metadata section.
 
@@ -260,7 +274,7 @@ def create_plan_from_template(
     issue_value = str(issue_number) if issue_number else ""
     type_value = plan_type
     project_value = project
-    project_path_value = project_path or ""
+    project_path_value = _derive_project_path(project, project_path)
     project_type_value = project_type or ""
     product_value = product or ""
     phase_value = phase or ""

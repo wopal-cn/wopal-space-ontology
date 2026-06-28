@@ -13,16 +13,16 @@ ontology 使用三层分支结构承载不同粒度的能力：
 ```
 main                    ← 通用能力，所有空间共享
   └── type/<name>       ← 类型特定能力，某类空间共享
-        └── space/<user>/<name>  ← 空间实例定制，单个空间独享
+        └── space/<name>  ← 空间实例定制，单个空间独享
 ```
 
 | 层级 | 分支命名 | 定位 | 变更权限 |
 |------|---------|------|---------|
 | 通用层 | `main` | 所有空间共享的基线能力 | 维护者提交 + PR 审核 |
 | 类型层 | `type/<name>` | 某类空间共享的能力变体 | 维护者提交 + PR 审核 |
-| 空间层 | `space/<user>/<name>` | 单个空间实例的定制 | 空间所有者直接编辑 |
+| 空间层 | `space/<name>` | 单个空间实例的定制 | 空间所有者直接编辑 |
 
-`main` 是 ontology 的权威分支。`type/<name>` 从 `main` 分出，承载特定场景的定制。`space/<user>/<name>` 从 `type/<name>` 分出，是当前运行的空间实例。
+`main` 是 ontology 的权威分支。`type/<name>` 从 `main` 分出，承载特定场景的定制。`space/<name>` 从 `type/<name>` 分出，是当前运行的空间实例。
 
 ---
 
@@ -32,16 +32,16 @@ main                    ← 通用能力，所有空间共享
 |------|------|---------|---------|
 | **通用能力** | 跨所有空间共享、稳定 | `main` | 核心 agent 定义、基础技能、空间模板、wopal-plugin |
 | **类型能力** | 某类空间共享、该类型的定制 | `type/<name>` | 前端项目空间的专属技能、特定技术栈的规则变体 |
-| **空间能力** | 单个空间独享、实例级定制 | `space/<user>/<name>` | 用户个人偏好命令、空间专属配置覆盖、实验性技能 |
-| **孵化能力** | 从空间层起步，验证后提升 | 先 `space/<user>/<name>`，后 `type/<name>` 或 `main` | 大多数新能力 |
+| **空间能力** | 单个空间独享、实例级定制 | `space/<name>` | 用户个人偏好命令、空间专属配置覆盖、实验性技能 |
+| **孵化能力** | 从空间层起步，验证后提升 | 先 `space/<name>`，后 `type/<name>` 或 `main` | 大多数新能力 |
 
 核心原则：**能力在空间中孵化，成熟后提升到类型层或通用层**。
 
-不需要事先判断一个能力属于哪个层级。新能力一律从 `space/<user>/<name>` 开始。使用一段时间后，根据实际需求决定是否提升：
+不需要事先判断一个能力属于哪个层级。新能力一律从 `space/<name>` 开始。使用一段时间后，根据实际需求决定是否提升：
 
 - 多个同类空间都需要 → 提升到 `type/<name>`
 - 所有空间都需要 → 提升到 `main`
-- 仅当前空间使用 → 保留在 `space/<user>/<name>`
+- 仅当前空间使用 → 保留在 `space/<name>`
 
 ---
 
@@ -68,7 +68,7 @@ main ──merge──→ type/<name>
 ### 契约 2：类型层 → 空间层
 
 ```
-type/<name> ──merge──→ space/<user>/<name>
+type/<name> ──merge──→ space/<name>
 ```
 
 **场景**：类型层有了更新，当前空间实例需要跟进。
@@ -85,7 +85,7 @@ type/<name> ──merge──→ space/<user>/<name>
 ### 契约 3：空间层 → 类型层（贡献）
 
 ```
-space/<user>/<name> ──cherry-pick + PR──→ type/<name>
+space/<name> ──cherry-pick + PR──→ type/<name>
 ```
 
 **场景**：空间中孵化出一个能力，适合提升到类型层。
@@ -101,7 +101,7 @@ space/<user>/<name> ──cherry-pick + PR──→ type/<name>
 ### 契约 4：空间层 → 通用层（贡献）
 
 ```
-space/<user>/<name> ──cherry-pick + PR──→ main
+space/<name> ──cherry-pick + PR──→ main
 ```
 
 **场景**：空间中孵化出一个能力，适合提升到通用层。
@@ -124,10 +124,10 @@ space/<user>/<name> ──cherry-pick + PR──→ main
 
 | 场景 | 行为 | 处理方式 |
 |------|------|---------|
-| `main` 删除文件 | 删除通过 sync 传播到 `type/<name>` 和 `space/<user>/<name>` | 正常接受，这是维护者的意图 |
-| `type/<name>` 删除文件 | 删除通过 update 传播到 `space/<user>/<name>` | 正常接受，类型层决定该类型不需要该能力 |
-| `space/<user>/<name>` 删除文件 | **不会**传播到 `type/<name>` 或 `main` | 安全——贡献是 cherry-pick，不是 merge |
-| `space/<user>/<name>` 隐藏能力 | 通过 ellamaka 配置禁用或"不引用即不加载" | 优先于删除，避免影响后续同步 |
+| `main` 删除文件 | 删除通过 sync 传播到 `type/<name>` 和 `space/<name>` | 正常接受，这是维护者的意图 |
+| `type/<name>` 删除文件 | 删除通过 update 传播到 `space/<name>` | 正常接受，类型层决定该类型不需要该能力 |
+| `space/<name>` 删除文件 | **不会**传播到 `type/<name>` 或 `main` | 安全——贡献是 cherry-pick，不是 merge |
+| `space/<name>` 隐藏能力 | 通过 ellamaka 配置禁用或"不引用即不加载" | 优先于删除，避免影响后续同步 |
 
 ### 向上 merge 前的检查
 
@@ -152,7 +152,7 @@ $WOPAL_HOME/{agents,skills,commands,rules,plugins}
     ← 通用基础能力（跨空间共享）
 
 <space>/.wopal/{agents,skills,commands,rules,plugins}
-    ← space/<user>/<name> 分支的 worktree
+    ← space/<name> 分支的 worktree
     ← 空间定制与扩展
 ```
 

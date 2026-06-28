@@ -81,6 +81,7 @@ def _make_standard_ctx():
 class TestOntologySwitch:
     """Test verify-switch for ontology-worktree: checkout .wopal/ to feature branch."""
 
+    @patch("commands.verify_switch.get_current_branch", return_value="space/wopal-workspace")
     @patch("commands.verify_switch.commit_paths", return_value=True)
     @patch("commands.verify_switch.get_ontology_main_repo", return_value=Path("/home/.wopal/ontologies/wopal-space-ontology"))
     @patch("commands.verify_switch.subprocess.run")
@@ -89,7 +90,7 @@ class TestOntologySwitch:
     @patch("commands.verify_switch.find_workspace_root")
     def test_checkout_wopal_to_feature_branch(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
-        mock_get_main_repo, mock_commit_paths, tmp_path
+        mock_get_main_repo, mock_commit_paths, mock_get_branch, tmp_path
     ):
         """Ontology: checkouts .wopal/ to feature branch after confirmation."""
         from commands.verify_switch import run_verify_switch
@@ -135,6 +136,7 @@ class TestOntologySwitch:
         # commit_paths should have been called
         mock_commit_paths.assert_called_once()
 
+    @patch("commands.verify_switch.get_current_branch", return_value="space/wopal-workspace")
     @patch("commands.verify_switch.commit_paths", return_value=True)
     @patch("commands.verify_switch.get_ontology_main_repo", return_value=Path("/home/.wopal/ontologies/wopal-space-ontology"))
     @patch("commands.verify_switch.subprocess.run")
@@ -143,7 +145,7 @@ class TestOntologySwitch:
     @patch("commands.verify_switch.find_workspace_root")
     def test_checkout_runs_in_wopal_directory(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
-        mock_get_main_repo, mock_commit_paths, tmp_path
+        mock_get_main_repo, mock_commit_paths, mock_get_branch, tmp_path
     ):
         """Ontology: fetch and checkout run in .wopal/ directory.
         Dirty check and worktree remove run elsewhere."""
@@ -173,6 +175,7 @@ class TestOntologySwitch:
         # checkout in .wopal/
         assert calls[4][1]["cwd"] == str(ws_root / ".wopal")
 
+    @patch("commands.verify_switch.get_current_branch", return_value="space/wopal-workspace")
     @patch("commands.verify_switch.commit_paths", return_value=True)
     @patch("commands.verify_switch.get_ontology_main_repo", return_value=Path("/home/.wopal/ontologies/wopal-space-ontology"))
     @patch("commands.verify_switch.subprocess.run")
@@ -181,7 +184,7 @@ class TestOntologySwitch:
     @patch("commands.verify_switch.find_workspace_root")
     def test_checkout_failure_returns_false(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
-        mock_get_main_repo, mock_commit_paths, tmp_path
+        mock_get_main_repo, mock_commit_paths, mock_get_branch, tmp_path
     ):
         """Ontology: returns False when git checkout fails."""
         from commands.verify_switch import run_verify_switch
@@ -206,6 +209,7 @@ class TestOntologySwitch:
         result = run_verify_switch("10")
         assert result is False
 
+    @patch("commands.verify_switch.get_current_branch", return_value="space/wopal-workspace")
     @patch("commands.verify_switch.commit_paths", return_value=True)
     @patch("commands.verify_switch.get_ontology_main_repo", return_value=Path("/home/.wopal/ontologies/wopal-space-ontology"))
     @patch("commands.verify_switch.subprocess.run")
@@ -214,7 +218,7 @@ class TestOntologySwitch:
     @patch("commands.verify_switch.find_workspace_root")
     def test_fetch_failure_returns_false(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
-        mock_get_main_repo, mock_commit_paths, tmp_path
+        mock_get_main_repo, mock_commit_paths, mock_get_branch, tmp_path
     ):
         """Ontology: returns False when git fetch fails."""
         from commands.verify_switch import run_verify_switch
@@ -431,6 +435,7 @@ class TestStandardSwitch:
 class TestVerificationGuidance:
     """Test that verification guidance is printed after successful switch."""
 
+    @patch("commands.verify_switch.get_current_branch", return_value="space/wopal-workspace")
     @patch("commands.verify_switch.commit_paths", return_value=True)
     @patch("commands.verify_switch.get_ontology_main_repo", return_value=Path("/home/.wopal/ontologies/wopal-space-ontology"))
     @patch("commands.verify_switch.subprocess.run")
@@ -439,7 +444,7 @@ class TestVerificationGuidance:
     @patch("commands.verify_switch.find_workspace_root")
     def test_ontology_prints_guidance(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
-        mock_get_main_repo, mock_commit_paths, tmp_path, capsys
+        mock_get_main_repo, mock_commit_paths, mock_get_branch, tmp_path, capsys
     ):
         """Ontology: prints verification guidance after switch."""
         from commands.verify_switch import run_verify_switch
@@ -456,8 +461,8 @@ class TestVerificationGuidance:
         output = capsys.readouterr().out
         # Verify correct verify command (issue ref, not branch name)
         assert "flow.sh verify 10 --confirm" in output
-        # Verify correct merge guidance (checkout integration branch first)
-        assert "git checkout space/main" in output
+        # Verify correct merge guidance (checkout current space branch, dynamically detected)
+        assert "git checkout space/wopal-workspace" in output
         assert "git merge issue-10-slug" in output
         # Verify merge is in the correct repo
         assert "/home/.wopal/ontologies/wopal-space-ontology" in output
@@ -831,6 +836,7 @@ class TestDispatchFromRealPlan:
     the full parse→dispatch chain: Plan metadata → WorktreeContext → switch function.
     """
 
+    @patch("commands.verify_switch.get_current_branch", return_value="space/wopal-workspace")
     @patch("commands.verify_switch.commit_paths", return_value=True)
     @patch("commands.verify_switch.get_ontology_main_repo", return_value=Path("/home/.wopal/ontologies/wopal-space-ontology"))
     @patch("commands.verify_switch.subprocess.run")
@@ -838,7 +844,7 @@ class TestDispatchFromRealPlan:
     @patch("commands.verify_switch.find_workspace_root")
     def test_ontology_plan_dispatches_via_metadata_project_type(
         self, mock_ws_root, mock_find_plan, mock_subprocess,
-        mock_get_main_repo, mock_commit_paths, tmp_path
+        mock_get_main_repo, mock_commit_paths, mock_get_branch, tmp_path
     ):
         """PLAN_ONTOLOGY has Project Type in Metadata, NOT in Worktree block.
         verify_switch must read it from Metadata and dispatch to ontology path."""
@@ -945,6 +951,7 @@ class TestDirtyCheckOnVerifySwitch:
         assert "WARN" in output
         assert "uncommitted" in output
 
+    @patch("commands.verify_switch.get_current_branch", return_value="space/wopal-workspace")
     @patch("commands.verify_switch.commit_paths", return_value=True)
     @patch("commands.verify_switch.get_ontology_main_repo", return_value=Path("/home/.wopal/ontologies/wopal-space-ontology"))
     @patch("commands.verify_switch.subprocess.run")
@@ -953,7 +960,7 @@ class TestDirtyCheckOnVerifySwitch:
     @patch("commands.verify_switch.find_workspace_root")
     def test_ontology_dirty_warns_but_proceeds(
         self, mock_ws_root, mock_find_plan, mock_parse_ctx, mock_subprocess,
-        mock_get_main_repo, mock_commit_paths, tmp_path, capsys
+        mock_get_main_repo, mock_commit_paths, mock_get_branch, tmp_path, capsys
     ):
         """Ontology: dirty .wopal/ warns but switch still succeeds."""
         from commands.verify_switch import run_verify_switch

@@ -257,7 +257,7 @@ Plan 在不同阶段归属于不同分支。
 
 | 阶段 | 归属分支 | Plan 状态 | 说明 |
 |------|---------|----------|------|
-| `planning` | 集成分支（main 或 space/main） | `planning` | Plan 基线在集成分支上提交 |
+| `planning` | 集成分支（main 或 space/<name>） | `planning` | Plan 基线在集成分支上提交 |
 | `approve --confirm` | 集成分支 → 创建 feature 分支 | `executing` | 先在集成分支提交 executing + Worktree 元数据，再创建 worktree |
 | 实施（executing） | feature 分支 | `executing` | 实施在 feature 分支的 worktree 中进行 |
 | `complete` | feature 分支 | `verifying` | Plan-only 提交活动 Plan（脏实施树报错退出） |

@@ -256,12 +256,20 @@ function inferAgentScope(relativePath: string): string | undefined {
 }
 
 /**
- * Discover markdown rule files from standard directories
- * Searches recursively in:
- * - ~/.wopal/rules/ (primary global, fallback: $XDG_CONFIG_HOME/wopal/rules/)
- * - .wopal/rules/ (in project directory if provided)
+ * Discover markdown rule files from standard directories.
+ * Searches recursively in (lowest → highest priority):
+ * 1. ~/.wopal/rules/ (global, fallback: $XDG_CONFIG_HOME/wopal/rules/)
+ * 2. <WOPAL_SPACE_ROOT>/.wopal/rules/ (space-level, when WOPAL_SPACE_ROOT is set)
+ * 3. <projectDir>/.wopal/rules/ (project-local, if provided)
  * Finds all .md and .mdc files including nested subdirectories.
  * Direct subdirectories are interpreted as agent scopes (e.g., rules/fae/*.md → agentScope="fae").
+ *
+ * Deduplication and override semantics:
+ * - Rules are keyed by relativePath (e.g. "typescript.md", "fae/astro.md").
+ * - Among global candidates, the first occurrence of a relativePath wins.
+ * - Space-level rules override global rules with the same relativePath.
+ * - Project-local rules override both global and space-level rules.
+ * - When space rules dir equals project-local dir, only one scan is performed.
  *
  * @param projectDir - Optional project directory for local rules discovery
  * @param rulesDebugLog - Debug log function for rules module (if omitted, no logs)
@@ -270,9 +278,24 @@ export async function discoverRuleFiles(
   projectDir?: string,
   rulesDebugLog?: LoggerInstance,
 ): Promise<DiscoveredRule[]> {
-  const files: DiscoveredRule[] = [];
+  // Keyed by relativePath to deduplicate and to allow project-local override.
+  const ruleMap = new Map<string, DiscoveredRule>();
+  const overriddenKeys: string[] = [];
 
-  // Discover global rules from all candidate directories
+  const buildEntry = (
+    filePath: string,
+    relativePath: string,
+  ): DiscoveredRule => {
+    const entry: DiscoveredRule = { filePath, relativePath };
+    const agentScope = inferAgentScope(relativePath);
+    if (agentScope) {
+      entry.agentScope = agentScope;
+    }
+    return entry;
+  };
+
+  // Discover global rules from all candidate directories.
+  // Among global candidates, the first occurrence of a relativePath wins.
   const globalCandidates = getGlobalRulesDirCandidates();
   for (const globalRulesDir of globalCandidates) {
     const globalRules = await scanDirectoryRecursively(
@@ -280,22 +303,32 @@ export async function discoverRuleFiles(
       globalRulesDir,
     );
     for (const { filePath, relativePath } of globalRules) {
-      // Deduplicate by filePath (avoid duplicate entries if same path appears in multiple candidates)
-      if (!files.some((f) => f.filePath === filePath)) {
-        const agentScope = inferAgentScope(relativePath);
-        const entry: DiscoveredRule = {
-          filePath,
-          relativePath,
-        };
-        if (agentScope) {
-          entry.agentScope = agentScope;
-        }
-        files.push(entry);
+      if (!ruleMap.has(relativePath)) {
+        ruleMap.set(relativePath, buildEntry(filePath, relativePath));
       }
     }
   }
 
-  // Discover project-local rules (recursively) if project directory is provided
+  const spaceRoot = process.env.WOPAL_SPACE_ROOT;
+  if (spaceRoot) {
+    const spaceRulesDir = path.join(spaceRoot, ".wopal", "rules");
+    const projectRulesDir = projectDir
+      ? path.resolve(path.join(projectDir, ".wopal", "rules"))
+      : undefined;
+    if (path.resolve(spaceRulesDir) !== projectRulesDir) {
+      const spaceRules = await scanDirectoryRecursively(
+        spaceRulesDir,
+        spaceRulesDir,
+      );
+      for (const { filePath, relativePath } of spaceRules) {
+        if (ruleMap.has(relativePath)) {
+          overriddenKeys.push(relativePath);
+        }
+        ruleMap.set(relativePath, buildEntry(filePath, relativePath));
+      }
+    }
+  }
+
   if (projectDir) {
     const projectRulesDir = path.join(projectDir, ".wopal", "rules");
     const projectRules = await scanDirectoryRecursively(
@@ -303,23 +336,26 @@ export async function discoverRuleFiles(
       projectRulesDir,
     );
     for (const { filePath, relativePath } of projectRules) {
-      const agentScope = inferAgentScope(relativePath);
-      const entry: DiscoveredRule = {
-        filePath,
-        relativePath,
-      };
-      if (agentScope) {
-        entry.agentScope = agentScope;
+      if (ruleMap.has(relativePath)) {
+        overriddenKeys.push(relativePath);
       }
-      files.push(entry);
+      ruleMap.set(relativePath, buildEntry(filePath, relativePath));
     }
   }
 
-  // Single-line summary log
-  if (rulesDebugLog && files.length > 0) {
-    rulesDebugLog.info(
-      `Discovered ${files.length} rule file(s): ${files.map((r) => r.relativePath).join(", ")}`,
-    );
+  const files = Array.from(ruleMap.values());
+
+  if (rulesDebugLog) {
+    if (overriddenKeys.length > 0) {
+      rulesDebugLog.debug(
+        `Project rules overriding global: ${overriddenKeys.join(", ")}`,
+      );
+    }
+    if (files.length > 0) {
+      rulesDebugLog.info(
+        `Discovered ${files.length} rule file(s): ${files.map((r) => r.relativePath).join(", ")}`,
+      );
+    }
   }
 
   return files;

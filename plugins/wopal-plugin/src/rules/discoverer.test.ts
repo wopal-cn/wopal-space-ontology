@@ -1,7 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import path from "path";
 import os from "os";
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  writeFileSync,
+  rmSync,
+  symlinkSync,
+} from "fs";
 import {
   discoverRuleFiles,
   parseRuleMetadata,
@@ -317,6 +323,118 @@ describe("discoverRuleFiles", () => {
         expect(files).toHaveLength(2);
         expect(files.some((f) => f.filePath.includes("global.md"))).toBe(true);
         expect(files.some((f) => f.filePath.includes("local.md"))).toBe(true);
+      } finally {
+        process.env.HOME = originalHome;
+      }
+    });
+
+    it("should override global rule with project-local rule of same relativePath", async () => {
+      // Arrange - both global and project contain typescript.md
+      writeFileSync(
+        path.join(globalRulesDir, "typescript.md"),
+        "# Global TS Rule",
+      );
+      const projectDir = path.join(testDir, "project");
+      mkdirSync(projectDir, { recursive: true });
+      const projRulesDir = path.join(projectDir, ".wopal", "rules");
+      mkdirSync(projRulesDir, { recursive: true });
+      writeFileSync(
+        path.join(projRulesDir, "typescript.md"),
+        "# Project TS Rule",
+      );
+
+      const originalHome = process.env.HOME;
+      process.env.HOME = testDir;
+
+      try {
+        // Act
+        const files = await discoverRuleFiles(projectDir);
+
+        // Assert - only one typescript.md, and it must be the project-local copy
+        const tsRules = files.filter(
+          (f) => f.relativePath === "typescript.md",
+        );
+        expect(tsRules).toHaveLength(1);
+        expect(tsRules[0].filePath).toBe(
+          path.join(projRulesDir, "typescript.md"),
+        );
+      } finally {
+        process.env.HOME = originalHome;
+      }
+    });
+
+    it("should override global agent-scoped rule with project-local rule of same relativePath", async () => {
+      // Arrange - both have fae/astro.md
+      const globalFaeDir = path.join(globalRulesDir, "fae");
+      mkdirSync(globalFaeDir, { recursive: true });
+      writeFileSync(path.join(globalFaeDir, "astro.md"), "# Global Fae Astro");
+
+      const projectDir = path.join(testDir, "project");
+      mkdirSync(projectDir, { recursive: true });
+      const projFaeDir = path.join(projectDir, ".wopal", "rules", "fae");
+      mkdirSync(projFaeDir, { recursive: true });
+      writeFileSync(
+        path.join(projFaeDir, "astro.md"),
+        "# Project Fae Astro",
+      );
+
+      const originalHome = process.env.HOME;
+      process.env.HOME = testDir;
+
+      try {
+        // Act
+        const files = await discoverRuleFiles(projectDir);
+
+        // Assert - only one fae/astro.md, project version wins, agentScope preserved
+        const astroRules = files.filter(
+          (f) => f.relativePath === "fae/astro.md",
+        );
+        expect(astroRules).toHaveLength(1);
+        expect(astroRules[0].filePath).toBe(
+          path.join(projFaeDir, "astro.md"),
+        );
+        expect(astroRules[0].agentScope).toBe("fae");
+      } finally {
+        process.env.HOME = originalHome;
+      }
+    });
+
+    it("should not duplicate rules when project and global symlink to the same directory", async () => {
+      // Arrange - edge case where ~/.wopal/rules and <project>/.wopal/rules
+      // are both symlinks pointing at the same physical directory.
+      // (Note: wopal-space worktrees are NOT this case — they are independent
+      // physical files sharing only git history. The main dedup scenario is
+      // covered by the override tests above.)
+      const realDir = path.join(testDir, "shared-ontology", "rules");
+      mkdirSync(realDir, { recursive: true });
+      writeFileSync(path.join(realDir, "a.md"), "# A");
+      writeFileSync(path.join(realDir, "b.md"), "# B");
+
+      // Replace the pre-created globalRulesDir with a symlink to the shared dir
+      rmSync(globalRulesDir, { recursive: true, force: true });
+      symlinkSync(realDir, globalRulesDir);
+
+      const projectDir = path.join(testDir, "project");
+      mkdirSync(projectDir, { recursive: true });
+      mkdirSync(path.join(projectDir, ".wopal"), { recursive: true });
+      // setupTestDirs pre-creates <project>/.wopal/rules; remove it before symlinking
+      rmSync(path.join(projectDir, ".wopal", "rules"), {
+        recursive: true,
+        force: true,
+      });
+      symlinkSync(realDir, path.join(projectDir, ".wopal", "rules"));
+
+      const originalHome = process.env.HOME;
+      process.env.HOME = testDir;
+
+      try {
+        // Act
+        const files = await discoverRuleFiles(projectDir);
+
+        // Assert - deduplicated even though both paths resolve to same dir
+        expect(files).toHaveLength(2);
+        const relativePaths = files.map((f) => f.relativePath).sort();
+        expect(relativePaths).toEqual(["a.md", "b.md"]);
       } finally {
         process.env.HOME = originalHome;
       }

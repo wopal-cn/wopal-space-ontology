@@ -39,6 +39,7 @@ package.json
 
 # IDE
 .idea/
+.vscode/settings.json
 *.swp
 *.swo
 
@@ -50,4 +51,3 @@ config/settings.local.jsonc
 
 # tmp
 wsf-file-manifest.json
-
