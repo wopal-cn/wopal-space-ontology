@@ -128,14 +128,15 @@ class TestCheckFeatureBranchMerged:
         wopal_dir.mkdir(parents=True)
         (wopal_dir / ".git").mkdir()
 
-        merged_output = "  space/main\n* issue-10-slug\n"
+        merged_output = "  space/wopal-workspace\n* issue-10-slug\n"
 
         with patch("commands.verify.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout=merged_output,
             )
-            result = _check_feature_branch_merged(tmp_path, str(plan_path))
+            with patch("commands.verify.get_current_branch", return_value="space/wopal-workspace"):
+                result = _check_feature_branch_merged(tmp_path, str(plan_path))
 
         assert result == 0
 
@@ -149,17 +150,18 @@ class TestCheckFeatureBranchMerged:
         (wopal_dir / ".git").mkdir()
 
         # Three subprocess.run calls: local merged, remote merged, git log --grep
-        not_merged_result = MagicMock(returncode=0, stdout="  space/main\n")
+        not_merged_result = MagicMock(returncode=0, stdout="  space/wopal-workspace\n")
         empty_result = MagicMock(returncode=0, stdout="")
 
         with patch("commands.verify.subprocess.run") as mock_run:
             mock_run.side_effect = [not_merged_result, empty_result, empty_result]
-            with patch("commands.verify.log_error") as mock_log:
-                result = _check_feature_branch_merged(tmp_path, str(plan_path))
+            with patch("commands.verify.get_current_branch", return_value="space/wopal-workspace"):
+                with patch("commands.verify.log_error") as mock_log:
+                    result = _check_feature_branch_merged(tmp_path, str(plan_path))
 
         assert result == 1
         mock_log.assert_any_call(
-            "Feature branch 'issue-10-slug' not yet merged to space/main. "
+            "Feature branch 'issue-10-slug' not yet merged to space/wopal-workspace. "
             "Please merge first."
         )
 
@@ -228,7 +230,7 @@ class TestCheckFeatureBranchMerged:
         assert "--merged" in cmd
         assert "main" in cmd
 
-        # Ontology → space/main
+        # Ontology → current .wopal/ branch (dynamically detected)
         mock_run.reset_mock()
         plan_path_ont = _write_plan(
             tmp_path, PLAN_VERIFYING_ONTOLOGY, name="10-ont.md"
@@ -239,10 +241,42 @@ class TestCheckFeatureBranchMerged:
 
         with patch("commands.verify.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
-                returncode=0, stdout="  space/main\n* issue-10-slug\n"
+                returncode=0, stdout="  space/wopal-workspace\n* issue-10-slug\n"
             )
-            _check_feature_branch_merged(tmp_path, str(plan_path_ont))
+            with patch("commands.verify.get_current_branch", return_value="space/wopal-workspace"):
+                _check_feature_branch_merged(tmp_path, str(plan_path_ont))
 
         cmd = mock_run.call_args[0][0]
         assert "--merged" in cmd
-        assert "space/main" in cmd
+        assert "space/wopal-workspace" in cmd
+
+    def test_ontology_integration_branch_is_dynamic_current_branch(self, tmp_path):
+        """Ontology integration branch is the current .wopal/ branch, detected
+        at runtime — not a hardcoded value.
+
+        Regression: previously hardcoded 'space/main', which broke non-main
+        spaces (e.g. space/wopal-workspace, space/gesp-space)."""
+        from commands.verify import _check_feature_branch_merged
+
+        plan_path = _write_plan(tmp_path, PLAN_VERIFYING_ONTOLOGY, name="10-dyn.md")
+        wopal_dir = tmp_path / ".wopal"
+        wopal_dir.mkdir(parents=True)
+        (wopal_dir / ".git").mkdir()
+
+        # Simulate a different space name to prove the value is dynamic
+        current_space_branch = "space/gesp-space"
+
+        with patch("commands.verify.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout=f"  {current_space_branch}\n* issue-10-slug\n",
+            )
+            with patch("commands.verify.get_current_branch", return_value=current_space_branch) as mock_branch:
+                result = _check_feature_branch_merged(tmp_path, str(plan_path))
+
+        assert result == 0
+        # get_current_branch must have been called with .wopal/ repo root
+        mock_branch.assert_called_once_with(str(wopal_dir))
+        # git branch --merged must use the dynamically detected branch
+        cmd = mock_run.call_args[0][0]
+        assert current_space_branch in cmd

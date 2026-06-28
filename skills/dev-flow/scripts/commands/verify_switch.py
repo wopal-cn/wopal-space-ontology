@@ -9,7 +9,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from lib.git import commit_paths, get_dirty_lines, get_relative_path
+from lib.git import commit_paths, get_current_branch, get_dirty_lines, get_relative_path
 from lib.workspace import find_workspace_root, get_ontology_main_repo
 from lib.worktree import parse_worktree_context
 from lib.logging import log_info, log_success, log_error, log_warn, log_step
@@ -184,7 +184,9 @@ def _switch_ontology(
     """
     wopal_dir = workspace_root / ".wopal"
     branch = wt_ctx.branch
-    merge_target = "space/main"
+    # Merge target is the current space layer branch (space/<name>), detected
+    # at runtime before checkout — .wopal/ worktree currently sits on it.
+    merge_target = get_current_branch(str(wopal_dir))
     wt_path = str(_resolve_wt_path(wt_ctx.path, workspace_root))
 
     # Get repo_root from ontology main repo for guidance message

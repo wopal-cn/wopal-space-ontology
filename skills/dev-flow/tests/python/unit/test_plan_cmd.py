@@ -34,6 +34,7 @@ from commands.plan import (
     _cmd_plan_list_local_only,
     _cmd_plan_list_with_issue,
     _cmd_plan_status,
+    _derive_project_path,
     cmd_plan,
     register_plan_parser,
 )
@@ -405,6 +406,29 @@ class TestCmdPlanCheck(unittest.TestCase):
             with patch('commands.plan.check_doc_plan', side_effect=ValidationError("Plan has issues")):
                 result = cmd_plan(args)
                 self.assertEqual(result, 1)
+
+
+class TestDeriveProjectPath(unittest.TestCase):
+    """Test _derive_project_path auto-fill logic."""
+
+    def test_returns_declared_path(self):
+        self.assertEqual(
+            _derive_project_path("wopal-cli", "projects/wopal-cli"),
+            "projects/wopal-cli",
+        )
+
+    def test_auto_fills_from_project_name(self):
+        self.assertEqual(
+            _derive_project_path("wopal-cli", None),
+            "projects/wopal-cli",
+        )
+
+    def test_declared_overrides_project(self):
+        """ontology-worktree declares '.wopal', must not be overridden."""
+        self.assertEqual(_derive_project_path("wopal-cli", ".wopal"), ".wopal")
+
+    def test_empty_when_nothing_known(self):
+        self.assertEqual(_derive_project_path(None, None), "")
 
 
 if __name__ == '__main__':
