@@ -56,6 +56,18 @@ class TestCheckDocPlan(unittest.TestCase):
         with self.assertRaises(ValidationError):
             check_doc_plan(plan_file)
 
+    def test_missing_project_path_with_target_rejected(self):
+        """Plan with Target Project but no Project Path must be rejected."""
+        plan_file = str(CHECK_DOC_DIR / "plan-new-missing-project-path.md")
+        with self.assertRaises(ValidationError) as ctx:
+            check_doc_plan(plan_file)
+        self.assertIn("Project Path", str(ctx.exception))
+
+    def test_missing_project_path_without_target_passes(self):
+        """Plan without Target Project does not require Project Path."""
+        plan_file = str(CHECK_DOC_DIR / "plan-new-valid.md")
+        check_doc_plan(plan_file)
+
 
 class TestCheckTaskStructure(unittest.TestCase):
 

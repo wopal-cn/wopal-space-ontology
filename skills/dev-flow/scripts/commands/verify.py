@@ -35,7 +35,7 @@ from plan import (
     get_plan_project_path,
     get_plan_worktree,
 )
-from lib.git import commit_paths
+from lib.git import commit_paths, get_current_branch
 from lib.worktree import resolve_active_plan, ResolveActivePlanError
 from validation import (
     ValidationError,
@@ -185,19 +185,21 @@ def _check_feature_branch_merged(workspace_root: Path, plan_path: str) -> int:
 
     feature_branch = wt_meta["branch"]
 
-    # Determine integration branch based on project type
-    project_type = get_plan_field(plan_path, "Project Type")
-    if project_type == "ontology-worktree":
-        integration_branch = "space/main"
-    else:
-        integration_branch = "main"
-
     # Determine repo root for git operations
     project_path = get_plan_project_path(plan_path)
     if project_path:
         repo_root = str(_Path(workspace_root) / project_path)
     else:
         repo_root = str(workspace_root)
+
+    # Determine integration branch based on project type
+    project_type = get_plan_field(plan_path, "Project Type")
+    if project_type == "ontology-worktree":
+        # .wopal/ worktree sits on the current space layer branch (space/<name>),
+        # detected at runtime — there is no fixed integration branch name.
+        integration_branch = get_current_branch(repo_root)
+    else:
+        integration_branch = "main"
 
     # Prefer Verification Commit SHA — works even if branch ref is deleted
     verification_commit = get_plan_field(plan_path, "Verification Commit")

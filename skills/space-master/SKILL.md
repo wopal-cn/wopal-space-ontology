@@ -66,7 +66,7 @@ dev-flow 是默认开发流程。WSF 仅用于产品级里程碑管理。
 
 ## Ontology 日常开发
 
-`.wopal/` 是运行时 worktree（branch: `space/main`），直接编辑立即影响正在运行的插件。
+`.wopal/` 是运行时 worktree，所在分支即当前空间的空间层分支 `space/<name>`（本空间为 `space/wopal-workspace`）。直接编辑立即影响正在运行的插件。
 
 ### 决策树：是否需要隔离开发？
 
@@ -74,9 +74,9 @@ dev-flow 是默认开发流程。WSF 仅用于产品级里程碑管理。
 需要隔离开发？
 ├─ YES → 创建 worktree
 │    cd ~/.wopal/ontologies/wopal-space-ontology
-│    git worktree add ../.worktrees/ontology-<issue> -b feature/<name>
+│    git worktree add ../.worktrees/ontology-<issue> -b feature/<name> space/<name>
 │    → 在 worktree 开发/测试/验证
-│    → 合并回 space/<user>/<name>（见下方 Worktree 合并流程）
+│    → 合并回 space/<name>（见下方 Worktree 合并流程）
 │
 ├─ NO → 直接编辑 .wopal/
 │    → 立即影响运行插件（无需重启即可生效）
@@ -86,14 +86,14 @@ dev-flow 是默认开发流程。WSF 仅用于产品级里程碑管理。
 ### Worktree 合并流程
 
 ```bash
-# 1. 主仓库合并 feature 分支
+# 1. 主仓库合并 feature 分支到当前空间层分支
 cd ~/.wopal/ontologies/wopal-space-ontology
-git checkout space/<user>/<name>
-git merge ../.worktrees/ontology-<issue>/main
+git checkout space/<name>
+git merge feature/<name>
 
-# 2. 运行时层同步
+# 2. 运行时层同步（.wopal worktree 即 space/<name> 分支）
 cd <space-path>/.wopal/
-git merge main --no-edit
+git merge feature/<name>
 
 # 3. 清理 worktree
 cd ~/.wopal/ontologies/wopal-space-ontology
@@ -113,7 +113,7 @@ wopal ontology save -m "feat(scope): description"
 
 ### 能力分层与下放
 
-分支层级关系（main → type/* → space/<user>/*）、同步契约、能力孵化与提升流程见 `references/capability-layers.md`。
+分支层级关系（main → type/* → space/*）、同步契约、能力孵化与提升流程见 `references/capability-layers.md`。
 
 **核心铁律**：保持分支层级间的 merge 可达性。space 分支删除了上层能力文件时，先恢复再执行同步。
 

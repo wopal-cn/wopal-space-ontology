@@ -162,7 +162,7 @@ flow.sh verify-switch <issue>
 
 ```bash
 cd <repo_root>
-git checkout main        # standard 项目；ontology-worktree 用 space/main
+git checkout main        # standard 项目；ontology-worktree 用 space/<name>
 git merge <feature_branch>
 ```
 
