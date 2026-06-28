@@ -169,6 +169,13 @@ def check_user_validation_new(content: str) -> list[str]:
 def _check_project_path(content: str) -> str | None:
     m = re.search(r'^-\s+\*\*Project Path\*\*:\s*(.+)$', content, re.MULTILINE)
     if not m:
+        # Project Path is required when Target Project is declared.
+        # Without it, verify/archive cannot locate the correct git repo.
+        has_target = re.search(
+            r'^-\s+\*\*Target Project\*\*:\s*(.+)$', content, re.MULTILINE
+        )
+        if has_target:
+            return "Project Path is required when Target Project is declared"
         return None
 
     declared = _strip_md(m.group(1))

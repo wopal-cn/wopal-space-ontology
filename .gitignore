@@ -38,8 +38,8 @@ package.json
 .LSOverride
 
 # IDE
-.vscode/
 .idea/
+.vscode/settings.json
 *.swp
 *.swo
 
@@ -51,4 +51,3 @@ config/settings.local.jsonc
 
 # tmp
 wsf-file-manifest.json
-

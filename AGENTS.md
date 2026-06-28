@@ -93,7 +93,7 @@ Applies to semantic content in: `agents/`, `rules/`, `commands/`, `templates/`, 
 
 dev-flow 技能的 worktree Plan 生命周期遵循 **Plan 分支归属** 契约：
 
-- `planning` 和已批准的 `executing` 基线位于集成分支（main 或 space/main）
+- `planning` 和已批准的 `executing` 基线位于集成分支（main 或 space/<name>）
 - `approve --confirm` 先在集成分支提交 `executing` + Worktree 元数据，再创建 worktree
 - `complete` 在 feature 分支上提交 Plan-only commit（`verifying`），脏实施树报错退出
 - 用户验证在 feature 分支上进行
