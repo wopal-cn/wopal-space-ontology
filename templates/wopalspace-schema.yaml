@@ -25,6 +25,8 @@ space:
       target: AGENTS.md
     - template: gitignore
       target: .gitignore
+    - template: BOOTSTRAP.md
+      target: BOOTSTRAP.md
   dirs:
     - path: projects
     - path: contents
