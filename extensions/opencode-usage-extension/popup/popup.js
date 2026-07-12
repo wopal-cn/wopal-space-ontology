@@ -542,7 +542,7 @@ $("#importAccountsFile").addEventListener("change", async (event) => {
     }
     // Import replaces accounts from external data — invalidate any stale
     // browser capture so the accounts tab returns to its initial state and
-    // the user can freshly "获取登录状态" instead of seeing the pre-import
+    // the user can freshly "刷新登录状态" instead of seeing the pre-import
     // "账号已添加" message.
     pendingCapture = null;
     await send({ type: "clearCaptured" }).catch(() => {});
@@ -604,21 +604,45 @@ async function fetchCurrentLoginState() {
   const btn = $("#refreshCapture");
   pendingCapture = null;
   btn.disabled = true;
-  btn.textContent = "获取中…";
-  const captured = await send({ type: "triggerCapture" });
-  btn.disabled = false;
-  btn.textContent = "获取登录状态";
-  if (!captured.ok) {
-    await refreshCaptureStatus(captured.error || "获取登录状态失败，请确认当前页面已登录。", true);
-    return;
+  btn.textContent = "刷新中…";
+  // User clicked the "刷新登录状态" button — allow reload. They accept
+  // the popup will close if the cache is stale and a reload is needed.
+  // Add a popup-side timeout: when reload is needed the tab navigates and
+  // the popup usually closes, but background tabs keep the popup alive —
+  // don't let the button hang forever waiting for SW.
+  const timeoutMs = 20000;
+  const timeout = new Promise((resolve) => {
+    setTimeout(() => resolve({ ok: false, error: "TIMEOUT" }), timeoutMs);
+  });
+  try {
+    const captured = await Promise.race([
+      send({ type: "captureFromActiveTab", allowReload: true }),
+      timeout,
+    ]);
+    if (captured.error === "TIMEOUT") {
+      btn.disabled = false;
+      btn.textContent = "刷新登录状态";
+      await refreshCaptureStatus("刷新登录状态超时，请确认 opencode.ai 已登录后重试。", true);
+      return;
+    }
+    btn.disabled = false;
+    btn.textContent = "刷新登录状态";
+    if (!captured.ok) {
+      await refreshCaptureStatus(captured.error || "刷新登录状态失败，请确认当前页面已登录。", true);
+      return;
+    }
+    pendingCapture = captured.capture || null;
+    const state = await send({ type: "getAccounts" });
+    if (state.ok) {
+      accountsCache = state.accounts;
+      accountHealthCache = state.health || {};
+    }
+    await refreshCaptureStatus();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = "刷新登录状态";
+    await refreshCaptureStatus(`刷新登录状态出错：${e.message || "未知错误"}`, true);
   }
-  pendingCapture = captured.capture || null;
-  const state = await send({ type: "getAccounts" });
-  if (state.ok) {
-    accountsCache = state.accounts;
-    accountHealthCache = state.health || {};
-  }
-  await refreshCaptureStatus();
 }
 
 async function refreshCaptureStatus(errorText = "", allowManual = false) {
@@ -638,10 +662,10 @@ async function refreshCaptureStatus(errorText = "", allowManual = false) {
     showSave = false,
     saveText = "保存",
     showRefresh = false,
-    refreshText = "获取登录状态",
+    refreshText = "刷新登录状态",
     refreshAction = "capture",
     showManual = false,
-    helpText = "切到已登录的 opencode.ai 页面后，先获取登录状态，再添加或更新账号。",
+    helpText = "切到已登录的 opencode.ai 页面后，先刷新登录状态，再添加或更新账号。",
   }) {
     statusEl.className = `capture-status ${type}`;
     statusEl.textContent = text;
@@ -669,74 +693,126 @@ async function refreshCaptureStatus(errorText = "", allowManual = false) {
     showState({
       text: "当前标签页不是 OpenCode，可先打开 OpenCode 并登录。",
       showRefresh: true,
-      refreshText: "登录 OpenCode",
+      refreshText: "登录 OpenCode Go",
       refreshAction: "open_go",
       showSave: false,
       showManual: false,
-      helpText: "点击下方按钮前往 OpenCode 登录页，完成登录后回到这里获取登录状态。如需注册新账号，请使用「注册/登录新账号」入口。",
+      helpText: "点击下方按钮前往 OpenCode 登录页，完成登录后回到这里刷新登录状态。如需注册新账号，请使用「注册/登录新账号」入口。",
     });
     return;
   }
 
-  if (!pendingCapture && activePath.startsWith("/auth")) {
+  // On /auth page: user hasn't logged in yet. No point capturing — just guide.
+  if (activePath.startsWith("/auth")) {
+    pendingCapture = null;
     showState({
       text: "请先完成 OpenCode 登录，登录成功后会自动跳转到 workspace 页面。",
       showRefresh: true,
-      refreshText: "已完成登录，获取状态",
+      refreshText: "已完成登录，刷新状态",
       refreshAction: "capture",
       showSave: false,
       showManual: false,
-      helpText: "登录成功后页面会自动跳转到 workspace，届时点击下方按钮即可获取登录状态。若仍停留在登录页，请先完成登录。",
+      helpText: "登录成功后页面会自动跳转到 workspace，届时回到这里即可自动刷新登录状态。若仍停留在登录页，请先完成登录。",
     });
     return;
   }
 
-  if (errorText) {
-    showState({
-      text: errorText,
-      showRefresh: true,
-      refreshText: "获取登录状态",
-      refreshAction: "capture",
-      showManual: allowManual,
-      helpText: "必须先成功登录，才能保存账号。如果刚完成登录，可再次获取登录状态；若登录已失效，请使用「注册/登录新账号」入口重新登录。",
-    });
-    return;
-  }
+  // On workspace page: auto-capture silently. No reload, no button click needed.
+  const wsMatch = String(activeTab?.url || "").match(/\/workspace\/(wrk_[A-Z0-9]+)/);
+  if (wsMatch) {
+    // If we already have a fresh pending capture for this tab, don't re-capture.
+    const tabId = activeTab?.id;
+    const cacheFresh = pendingCapture?.cookie && pendingCapture?.workspaceId === wsMatch[1];
+    if (!cacheFresh) {
+      const captured = await send({ type: "captureFromActiveTab" });
+      if (captured.ok) {
+        pendingCapture = captured.capture || null;
+        const state = await send({ type: "getAccounts" });
+        if (state.ok) {
+          accountsCache = state.accounts;
+          accountHealthCache = state.health || {};
+        }
+      } else if (captured.error === "NO_CACHE") {
+        // Silent mode hit a cache miss. Don't treat as error — just show
+        // "可刷新登录状态" and let user click the button to trigger reload.
+        const isAcctPage = String(activeTab?.url || "").includes("_acct=");
+        showState({
+          text: errorText || (isAcctPage
+            ? "当前是扩展打开的账号页面，可刷新登录状态切换回浏览器原生登录态。"
+            : "当前 workspace 页面可刷新登录状态。"),
+          showRefresh: true,
+          refreshText: "刷新登录状态",
+          refreshAction: "capture",
+          showSave: false,
+          showManual: allowManual,
+          helpText: isAcctPage
+            ? "点击下方「刷新登录状态」会跳转到 opencode.ai/auth 以浏览器当前登录态自动登录，popup 会关闭。刷新后回到这里即可继续。"
+            : "点击下方「刷新登录状态」会重新加载当前 opencode.ai 页面以捕获登录信息（popup 会关闭）。如已登录，刷新后回到这里即可继续。",
+        });
+        return;
+      } else if (errorText) {
+        // Caller-supplied error wins over auto-capture failure.
+        showState({
+          text: errorText,
+          showRefresh: true,
+          refreshText: "刷新登录状态",
+          refreshAction: "capture",
+          showManual: allowManual,
+          helpText: "必须先成功登录，才能保存账号。如果刚完成登录，可再次刷新登录状态；若登录已失效，请使用「注册/登录新账号」入口重新登录。",
+        });
+        return;
+      }
+    }
 
-  if (!pendingCapture?.cookie || !pendingCapture?.workspaceId) {
+    if (!pendingCapture?.cookie || !pendingCapture?.workspaceId) {
+      showState({
+        text: errorText || "未能捕获登录状态，请确认已登录后重试。",
+        showRefresh: true,
+        refreshText: "刷新登录状态",
+        refreshAction: "capture",
+        showManual: allowManual,
+        helpText: "必须先成功登录，才能保存账号。如已登录但仍失败，可使用「注册/登录新账号」入口重新登录。",
+      });
+      return;
+    }
+
+    const existing = getExistingAccountByWorkspace(pendingCapture.workspaceId);
+    const unchanged = existing && sameLoginCookie(existing.cookie, pendingCapture.cookie);
+    const existingInvalid = existing && isAccountAuthInvalid(existing.id);
     showState({
-      text: "当前标签页可获取登录状态。",
+      text: existing
+        ? existingInvalid
+          ? `账号「${existing.name}」的已保存登录状态已失效，可更新账号。`
+          : `账号「${existing.name}」已添加，当前已保存状态仍可用。`
+        : "已获取当前登录状态，可直接添加账号。",
+      type: existingInvalid ? "idle" : "ok",
+      showPreview: true,
+      workspaceText: pendingCapture.workspaceId,
+      showSave: !!existingInvalid || !existing,
+      saveText: existing ? "更新账号" : "添加账号",
       showRefresh: true,
-      refreshText: "获取登录状态",
+      refreshText: existing && !existingInvalid ? "注册/登录新账号" : "刷新登录状态",
+      refreshAction: existing && !existingInvalid ? "logout_and_go" : "capture",
       showManual: false,
-      helpText: "必须先成功登录，才能保存账号。如果检测失败，可打开/刷新登录页后完成登录，再回来检查登录状态。",
+      helpText: existing && !existingInvalid
+        ? unchanged
+          ? "当前账号已添加，且当前登录状态与已保存状态一致。如需继续添加其他账号，可退出当前 OpenCode 会话后注册或登录新账号。"
+          : "检测到新的登录状态，但当前已保存状态仍可用。如需继续添加其他账号，可退出当前 OpenCode 会话后注册或登录新账号。"
+        : "登录状态确认成功后，即可添加或更新账号。",
     });
     return;
   }
 
-  const existing = getExistingAccountByWorkspace(pendingCapture.workspaceId);
-  const unchanged = existing && sameLoginCookie(existing.cookie, pendingCapture.cookie);
-  const existingInvalid = existing && isAccountAuthInvalid(existing.id);
+  // On opencode.ai but not /auth and not /workspace — unknown page.
+  pendingCapture = null;
   showState({
-    text: existing
-      ? existingInvalid
-        ? `账号「${existing.name}」的已保存登录状态已失效，可更新账号。`
-        : `账号「${existing.name}」已添加，当前已保存状态仍可用。`
-      : "已获取当前登录状态，可直接添加账号。",
-    type: existingInvalid ? "idle" : "ok",
-    showPreview: true,
-    workspaceText: pendingCapture.workspaceId,
-    showSave: !!existingInvalid || !existing,
-    saveText: existing ? "更新账号" : "添加账号",
+    text: "当前不在 workspace 页面，无法刷新登录状态。",
     showRefresh: true,
-    refreshText: existing && !existingInvalid ? "注册/登录新账号" : "重新获取",
-    refreshAction: existing && !existingInvalid ? "logout_and_go" : "capture",
+    refreshText: "登录 OpenCode Go",
+    refreshAction: "open_go",
+    showSave: false,
     showManual: false,
-    helpText: existing && !existingInvalid
-      ? unchanged
-        ? "当前账号已添加，且当前登录状态与已保存状态一致。如需继续添加其他账号，可退出当前 OpenCode 会话后注册或登录新账号。"
-        : "检测到新的登录状态，但当前已保存状态仍可用。如需继续添加其他账号，可退出当前 OpenCode 会话后注册或登录新账号。"
-      : "登录状态确认成功后，即可添加或更新账号。",
+    helpText: "请切到 opencode.ai 的 workspace 页面后再刷新登录状态。",
   });
 }
 
@@ -746,18 +822,28 @@ $("#refreshAll").addEventListener("click", async () => {
   btn.classList.add("spinning");
   const r = await send({ type: "queryAll" });
   btn.classList.remove("spinning");
-  if (r.ok) {
-    const state = await send({ type: "getAccounts" });
-    const accounts = state.ok ? state.accounts : accountsCache;
-    accountsCache = accounts;
-    accountHealthCache = state.ok ? state.health || {} : accountHealthCache;
-    renderUsage(accounts, r.results);
-    renderManageList(accounts);
-    updateAccountCount(accounts.length);
-    // Sync the capture panel so its "登录失效" status matches the freshly
-    // refreshed health badges on the account list above.
-    if ($("#tab-accounts")?.classList.contains("active")) {
-      await refreshCaptureStatus();
+  if (!r.ok) return;
+  const state = await send({ type: "getAccounts" });
+  const accounts = state.ok ? state.accounts : accountsCache;
+  accountsCache = accounts;
+  accountHealthCache = state.ok ? state.health || {} : accountHealthCache;
+  renderUsage(accounts, r.results);
+  renderManageList(accounts);
+  updateAccountCount(accounts.length);
+  // Sync the capture panel so its "登录失效" status matches the freshly
+  // refreshed health badges on the account list above. Clear pendingCapture
+  // so refreshCaptureStatus re-reads from the webRequest cache instead of
+  // showing stale popup-memory state. This never reloads the tab.
+  if ($("#tab-accounts")?.classList.contains("active")) {
+    pendingCapture = null;
+    await refreshCaptureStatus();
+    // Brief feedback so the user sees something happened. The capture panel
+    // already re-rendered above; this just confirms the refresh landed.
+    const statusEl = $("#captureStatus");
+    if (statusEl.style.display === "block") {
+      const origText = statusEl.textContent;
+      statusEl.textContent = "✓ 已刷新";
+      setTimeout(() => { if (statusEl.textContent === "✓ 已刷新") statusEl.textContent = origText; }, 1200);
     }
   }
 });
