@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "OpenCode Usage Monitor",
+  "version": "1.0.0",
+  "description": "Monitor OpenCode Go usage across multiple accounts. Auto-captures cookies, no DevTools needed.",
+  "permissions": [
+    "cookies",
+    "storage",
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess",
+    "webRequest",
+    "tabs",
+    "alarms",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://opencode.ai/*",
+    "https://auth.opencode.ai/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
