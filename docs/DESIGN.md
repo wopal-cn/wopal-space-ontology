@@ -9,6 +9,8 @@
 
 | Date | Type | Summary |
 |---|---|---|
+| 2026-07-05 | Updated | §2 新增"浏览器扩展"能力域；§4 新增 §4.9 浏览器扩展体系，记录 opencode-usage-extension 项目结构与功能 |
+| 2026-06-28 | Major | §6.8 优化 ontology contribute 的参数契约与生命周期设计：采用单一的 --type <type> 物理防范空间分支越界 PR；新增 --abort fuzzy 批量与精准清理，配合 --resume 确保冲突挂起时的本体软链接稳定性。 |
 | 2026-06-18 | Major | §6.8 完全重写：从版本化 manifest 驱动改为规则驱动设计。核心 6 条规则：单向下行合并、top-down 顺序、贡献走 squash merge 不强制 update、冲突即停、update 逻辑原子、配置隔离。去掉 manifest/版本号/ownership pattern/install/release/validate/apply 等机制，回归标准 git 工作流。命令族收敛为 6 个（ontology status/update/contribute + space status/update/contribute）。 |
 | 2026-06-17 | Major | §6.8 完全重写：从 git merge 驱动改为版本化 manifest 驱动同步。新增 Manifest 结构（ontology.yaml + space-manifest.yaml）、版本号规则（main 三位 + type 四位）、Release 流程、Update 机制（变更集应用 + ownership 保留）、Apply 机制（双向文件迁移）、Contribute 机制（临时分支隔离 + 选择性 apply + PR）、Space Update 机制。去掉 clone/fork 二分法、四层检测机制、git merge 同步。命令族新增 install、release、validate。 |
 | 2026-06-13 | Updated | §6.9 Agent Ontology Maintenance Workflow — 状态解读、更新决策、能力提升、多级 fork 维护和 safe-apply/contribute 工作流。补充 `/ontology-maintain` 命令。 |
@@ -41,6 +43,7 @@ ontology 拥有的目标态能力组：
 | 运行时插件 | wopal-plugin 提供规则注入、任务委派、记忆系统、上下文管理四大能力，7 个 plugin tools | 仅限插件内部，不侵入技能/规则/命令 |
 | 模板体系 | 空间初始化模板（结构、守则、用户档案）+ 文档模板（PRD/DESIGN/phase/AGENTS） | 不持有空间运行态实例 |
 | 辅助脚本 | ontology 维护、git hooks 与辅助自动化脚本 | 仅承担辅助维护动作 |
+| 浏览器扩展 | 独立 Chrome 扩展（如 OpenCode Usage Monitor），提供辅助工具能力，通过 ontology 仓库分发 | 不侵入 ontology 核心模块，遵循 `.wopal/rules/chrome-extension.md` 规范 |
 
 ---
 
@@ -157,6 +160,27 @@ wopal-plugin 由 TypeScript 编写，Bun 执行，基于 EllaMaka Plugin SDK。
 | 空间级（私有）| `.wopal/config/settings.local.jsonc` | 当前空间 | 否（git 忽略）| 覆盖公共默认值的本地配置 |
 
 空间级公共配置与全局配置合并生效，空间级私有配置覆盖前两者。详见 §6.8 配置隔离约定。
+
+### 4.9 浏览器扩展体系
+
+ontology 管理独立的浏览器扩展工具，提供辅助能力。扩展位于 `.wopal/extensions/` 目录，遵循 `.wopal/rules/chrome-extension.md` 规范。
+
+| 扩展 | 职责 | 载体 |
+|------|------|------|
+| OpenCode Usage Monitor | 多账号 OpenCode 用量监控：自动捕获 Cookie、DNR 规则注入、Alarm 轮询、通知系统 | `.wopal/extensions/opencode-usage-extension/` |
+
+扩展特征：
+- **独立性**：每个扩展是独立的 Chrome MV3 项目，拥有自己的 `manifest.json`、`AGENTS.md` 和开发规范
+- **分发方式**：通过 ontology git 仓库分发，用户手动"加载已解压扩展"安装
+- **无构建工具链**：纯 JavaScript ES Modules，无需编译
+- **规则遵循**：所有扩展开发必须遵守 `.wopal/rules/chrome-extension.md` 中的 MV3 规范
+
+当前扩展 `opencode-usage-extension` 核心功能：
+- 多账号 Cookie 自动捕获（webRequest 只读观察）
+- DNR 动态规则注入（每账号一条规则，ID 从 1000 起）
+- Alarm 周期性轮询用量数据
+- 4 类通知（认证失效、用量警告、额度用尽、额度恢复）
+- 账号导入导出（JSON 格式）
 
 ---
 
@@ -569,12 +593,19 @@ upstream/main → main → type/coding → space/<name>
 |------|------|---------|---------|
 | `ontology status` | — | 下行/上行全链路 git log/diff 展示差异 + `git merge-tree` 预测 merge 结果 | — |
 | `ontology update` | 下行 | `git merge upstream/main → main` + `git merge main → type/coding` | 强制顺序，冲突即停 |
-| `ontology contribute` | 上行 | 创建临时分支 + squash merge + PR | fork 分支不被碰 |
+| `ontology contribute` | 上行 | 创建临时分支 + squash merge + PR | `--type <type>` 物理隔绝空间分支，支持 `--resume` 和 `--abort` 挂起恢复 |
 | `space status` | — | 当前 space 相关的完整链路 git log/diff 展示差异 + `git merge-tree` 预测 merge 结果 | — |
 | `space update` | 下行 | `git merge type/coding → space` | 前置检查 type 已更新 |
 | `space contribute` | 上行 | `git merge --squash space → type/coding` | 预览排除，不自动提交 |
 
-所有命令 context-aware——在 space 目录运行时自动定位关联的 ontology source 和 type 分支。用户不需要切到 ontology repo。
+所有命令 context-aware——在 space 目录运行时自动定位关联 of 关联的 ontology source 和 type 分支。用户不需要切到 ontology repo。
+
+##### 贡献生命周期守卫（Resume & Abort）
+
+为了最大化保护本地本体主仓库的稳定性（防止全局 Agent 依赖的软链接因合并冲突或分支切走而失效），`ontology contribute` 采用**临时工作树挂起与生命周期恢复/放弃**的闭环设计：
+- **隔离合并**：在独立的临时工作树中执行 squash merge，主仓库始终保持干净的 `main` 分支。
+- **冲突挂起与恢复**：若发生冲突，工作树挂起，用户解决并 commit 后，使用 `--resume` 恢复执行，自动完成 Push、PR 创建和收尾清理。
+- **一键放弃与清理**：若要放弃本次贡献，使用 `--abort` 参数。支持指定 `--message` 精准清理，或不指定 `--message` 进行按类型的模糊批量清理。
 
 #### AI 辅助流程
 
@@ -640,3 +671,4 @@ Runtime 维护由 ontology commands 驱动：`/init`（结构校准）、`/wopal
 | `projects/wopal-cli/docs/DESIGN.md` | wopal-cli 子系统设计 — 统一操作入口 |
 | `.wopal/docs/DISTRIBUTION.md` | ontology 的 Git source、worktree、template handoff 与 runtime loading 契约 |
 | `.wopal/docs/BUSINESS_RULES.md` | 本体业务规则 |
+| `.wopal/extensions/opencode-usage-extension/AGENTS.md` | OpenCode Usage Monitor 浏览器扩展开发规范 |
