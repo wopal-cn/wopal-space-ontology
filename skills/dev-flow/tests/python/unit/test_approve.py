@@ -28,11 +28,11 @@ def _make_approve_mocks(status="planning"):
     """
     values = {
         "find_workspace_root": Path("/ws"),
-        "find_plan": "/ws/.wopal/docs/plans/42-fix-test.md",
+        "find_plan": "/ws/.wopal-space/plans/space-ontology/42-fix-test.md",
         "parse_plan_status": status,
         "check_doc_plan": None,
         "get_plan_issue": 42,
-        "get_plan_project": "ontology",
+        "get_plan_project": "space-ontology",
         "get_plan_field": "ontology-worktree",
         "resolve_project_path": Path("/ws/.wopal"),
         "detect_space_repo": "wopal-space-ontology",
@@ -57,7 +57,7 @@ class TestApproveNoConfirm(unittest.TestCase):
         result = cmd_approve(args)
         self.assertEqual(result, 1)
 
-    @patch("commands.approve.find_plan", return_value="/ws/.wopal/docs/plans/42-fix-test.md")
+    @patch("commands.approve.find_plan", return_value="/ws/.wopal-space/plans/space-ontology/42-fix-test.md")
     @patch("commands.approve.find_workspace_root", return_value=Path("/ws"))
     def test_approve_no_confirm_errors(self, mock_ws, mock_find):
         from commands.approve import cmd_approve
@@ -65,7 +65,7 @@ class TestApproveNoConfirm(unittest.TestCase):
         result = cmd_approve(args)
         self.assertEqual(result, 1)
 
-    @patch("commands.approve.find_plan", return_value="/ws/.wopal/docs/plans/42-fix-test.md")
+    @patch("commands.approve.find_plan", return_value="/ws/.wopal-space/plans/space-ontology/42-fix-test.md")
     @patch("commands.approve.find_workspace_root", return_value=Path("/ws"))
     @patch("commands.approve.log_error")
     def test_approve_no_confirm_shows_submit_message(self, mock_log_error, mock_ws, mock_find):
@@ -106,7 +106,7 @@ class TestApproveConfirmFromReviewing(unittest.TestCase):
 class TestApproveBlockedStatus(unittest.TestCase):
     """Test approve --confirm blocked by wrong status."""
 
-    @patch("commands.approve.find_plan", return_value="/ws/.wopal/docs/plans/42-fix-test.md")
+    @patch("commands.approve.find_plan", return_value="/ws/.wopal-space/plans/space-ontology/42-fix-test.md")
     @patch("commands.approve.find_workspace_root", return_value=Path("/ws"))
     @patch("commands.approve.parse_plan_status", return_value="executing")
     def test_approve_confirm_rejects_executing(self, mock_parse, mock_ws, mock_find):
@@ -115,7 +115,7 @@ class TestApproveBlockedStatus(unittest.TestCase):
         result = cmd_approve(args)
         self.assertEqual(result, 1)
 
-    @patch("commands.approve.find_plan", return_value="/ws/.wopal/docs/plans/42-fix-test.md")
+    @patch("commands.approve.find_plan", return_value="/ws/.wopal-space/plans/space-ontology/42-fix-test.md")
     @patch("commands.approve.find_workspace_root", return_value=Path("/ws"))
     @patch("commands.approve.parse_plan_status", return_value="done")
     def test_approve_confirm_rejects_done(self, mock_parse, mock_ws, mock_find):
@@ -124,7 +124,7 @@ class TestApproveBlockedStatus(unittest.TestCase):
         result = cmd_approve(args)
         self.assertEqual(result, 1)
 
-    @patch("commands.approve.find_plan", return_value="/ws/.wopal/docs/plans/42-fix-test.md")
+    @patch("commands.approve.find_plan", return_value="/ws/.wopal-space/plans/space-ontology/42-fix-test.md")
     @patch("commands.approve.find_workspace_root", return_value=Path("/ws"))
     @patch("commands.approve.parse_plan_status", return_value="verifying")
     def test_approve_confirm_rejects_verifying(self, mock_parse, mock_ws, mock_find):

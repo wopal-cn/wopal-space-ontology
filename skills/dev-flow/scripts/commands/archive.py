@@ -49,13 +49,11 @@ from issue import (
 )
 from lib.git import (
     merge_branch,
-    push_branch,
     has_uncommitted_changes,
     commit_paths,
     push_repo,
     get_relative_path,
 )
-from plan import push_project_changes, push_ontology_worktree
 from lib.worktree import clean_worktree
 from lib.project import resolve_plan_location
 
@@ -569,22 +567,16 @@ def cmd_archive(args: argparse.Namespace) -> int:
         log_success(f"Plan synced to Issue #{plan_issue}")
 
     # 3. Detect worktree and handle cleanup
-    #    Archive never commits implementation code — dirty trees block the command.
+    #    Archive never commits or pushes implementation code.
     worktree_handled = False
-    project_pushed = False
-    ontology_pushed = False
 
     # Read Project Type from Plan metadata
     project_type_str = get_plan_field(plan_path, "Project Type")
     is_ontology_worktree = project_type_str == "ontology-worktree"
 
     if is_ontology_worktree:
-        # Ontology worktree: push .wopal/ changes (committed during complete/verify)
-        log_step("Ontology worktree project detected — pushing .wopal/ changes")
-        if not push_ontology_worktree(workspace_root):
-            log_error("Failed to push ontology worktree changes")
-            return 1
-        ontology_pushed = True
+        log_step("Ontology worktree project detected")
+        log_warn("请手动 push .wopal/ 变更: cd .wopal && git push")
     elif project:
         project_path = resolve_project_path(plan_path, project, workspace_root)
 
@@ -632,11 +624,9 @@ def cmd_archive(args: argparse.Namespace) -> int:
                                 log_error("Resolve merge conflicts before archiving")
                             return 1
 
-                        # Push merged main
-                        if push_branch(str(project_path), 'main'):
-                            log_success("Merged main pushed to origin")
-                        else:
-                            log_warn("Failed to push merged main")
+                        # Merge succeeded — remind user to push
+                        log_success("Feature branch merged to main")
+                        log_warn(f"请手动 push: cd {project_path} && git push origin main")
 
                     # Always cleanup — clean_worktree is safe when the
                     # worktree directory is gone; it still deletes the
@@ -649,17 +639,12 @@ def cmd_archive(args: argparse.Namespace) -> int:
                     )
                     worktree_handled = True
             else:
-                # No worktree → push project changes (committed during complete)
+                # No worktree — remind user to push project changes
                 if has_uncommitted_changes(str(project_path)):
                     log_error(f"Project {project} has uncommitted changes — archive does not commit implementation code")
                     log_error("Commit changes first, then re-run archive")
                     return 1
-                log_step(f"Pushing project changes in {project}...")
-                if push_project_changes(str(project_path)):
-                    project_pushed = True
-                else:
-                    log_error("Failed to push project changes")
-                    return 1
+                log_warn(f"请手动 push 项目变更: cd {project_path} && git push")
 
     # 4. Cache Product/Phase metadata before Plan is moved
     product_meta = get_plan_field(plan_path, "Product")
@@ -745,10 +730,6 @@ def cmd_archive(args: argparse.Namespace) -> int:
         print(f"  Issue: #{plan_issue} (closed)")
     if worktree_handled:
         print(f"  Worktree: cleaned up")
-    if project_pushed:
-        print(f"  Project: changes pushed")
-    if ontology_pushed:
-        print(f"  Ontology: .wopal/ changes pushed")
 
     return 0
 

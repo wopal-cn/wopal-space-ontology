@@ -44,6 +44,8 @@ flow.sh issue create --title "feat(scope): description" --project <name>
 - `fix(dev-flow): handle expired tokens`
 - `perf(sync): reduce issue body rewrite cost`
 
+**标题语言规则**：标题使用英文（遵循项目仓库规范）。body 内容使用用户偏好语言编写（与 Plan 文档一致）。
+
 ## Issue body 五段结构
 
 所有 Issue body 统一使用以下五段式结构（按顺序）：
@@ -117,6 +119,4 @@ flow.sh sync <issue> --body-only
 
 - 新 Plan 必须先通过 `flow.sh plan ...` 生成或定位，禁止手写创建文件
 - `--project` 是必填参数，Plan 目录由其决定
-- **标准项目**：`projects/<project>/docs/plans/`
-- **ontology-worktree**：`.wopal/docs/plans/`
-- `docs/projects/<project>/plans/` 是 **DEPRECATED** 只读回退，禁止新写入
+- 所有项目统一存放在 `.wopal-space/plans/<项目名>/`

@@ -66,10 +66,12 @@ class TestFindWorkspaceRoot(unittest.TestCase):
             find_workspace_root(start=orphan)
 
     def test_real_workspace_root(self):
-        """I1: find_workspace_root returns actual workspace root from real space."""
+        """I1: find_workspace_root returns a valid workspace root with .wopal/.git."""
         result = find_workspace_root()
-        expected = Path("/Users/sam/coding/wopal/wopal-workspace")
-        self.assertEqual(result, expected)
+        wopal_git = result / ".wopal" / ".git"
+        self.assertTrue(wopal_git.exists(), f"Expected .wopal/.git at {result}")
+        self.assertTrue(wopal_git.is_file(), f"Expected .wopal/.git to be a worktree file")
+        self.assertEqual(result.resolve(), result)
 
 
 class TestDetectSpaceRepo(unittest.TestCase):
