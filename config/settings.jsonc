@@ -1,7 +1,7 @@
 {
   "ellamaka": {
     "default_agent": "wopal",
-    "autoupdate": false,
+    "autoupdate": true,
     "plugin": [],
     "permission": {
       "external_directory": {
