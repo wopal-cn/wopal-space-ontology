@@ -9,17 +9,20 @@ description: <One-line stable description of the current project or directory mo
 
 Canonical references:
 
-- PRD: `<path-or-N/A>`
-- DESIGN: `<path-or-N/A>`
-- Business Rules: `<path-or-N/A>`
-- Referral Rules: `<path-or-N/A>`
+<!-- List only documents that actually exist and are directly relevant to this scope. Do not write N/A placeholders. -->
+- PRD: `<path-when-relevant>`
+- DESIGN: `<path-when-relevant>`
+- Business Rules: `<path-when-relevant>`
+- Referral Rules: `<path-when-relevant>`
 
 ## 2. Architecture and Directories
 
-<Brief architecture description; may include a concise runtime flow>
+<Brief current architecture description; may include a concise runtime flow>
 
 | Directory | Responsibility |
 |---|---|
+
+<!-- The directory table lists only paths that currently exist. Durable target-structure constraints belong in Implementation Rules, not as current directory facts. -->
 
 ## 3. Development Commands (build format test)
 
@@ -33,8 +36,8 @@ Canonical references:
 
 ## 5. Testing
 
-- <For code projects, follow TDD: write a failing test first, then implement code to make it pass>
-- <project-specific testing rules>
+- <For testable pure logic, follow TDD: write a failing test first, then implement code to make it pass>
+- <state which project logic must be covered by automated tests and which host APIs, external systems, or real runtime boundaries require manual verification>
 
 ## 6. User-Supplied Rules
 

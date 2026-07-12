@@ -135,4 +135,4 @@
 
 ### 工程规范
 
-- **历史文档不追溯**：`projects/**/docs/plans/done/` 等历史记录不追溯修改
+- **历史文档不追溯**：`.wopal-space/plans/**/done/` 等历史记录不追溯修改
