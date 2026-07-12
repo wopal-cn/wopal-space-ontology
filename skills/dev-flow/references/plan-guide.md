@@ -150,6 +150,8 @@ User Validation 只承载人工感知验证项：UI / UX、交互体验、业务
 - [ ] 用户已完成上述功能验证并确认结果符合预期
 ```
 
+`plan check` 在提交或审批前验证 User Validation 中存在至少一个场景和最终确认 checkbox。checkbox 在人工验收完成前保持未勾选；`verify --confirm` 只接受用户已勾选的结果。
+
 ---
 
 ## Metadata 填写规则

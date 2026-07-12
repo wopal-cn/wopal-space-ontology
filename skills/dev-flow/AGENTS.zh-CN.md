@@ -49,12 +49,12 @@ description: Issue/Plan-driven development workflow CLI — state-machine comman
 
 每个命令有前置状态要求，非法转换报错。新增命令必须声明前置/后置状态。
 
+`plan check` 验证 Plan 中声明的 Status 属于该状态机。User Validation 节存在时，校验器要求至少一个场景和最终确认 checkbox；`verify` 阶段负责确认该 checkbox 已由用户勾选。
+
 ### Plan Directory Rules
 
 - `--project` 是 `plan` 命令必填参数
-- 标准项目：`projects/<project>/docs/plans/`
-- ontology-worktree：`.wopal/docs/plans/`
-- `docs/projects/<project>/plans/` 已废弃，禁止新写入
+- 所有项目：`.wopal-space/plans/<项目名>/`
 - Plan 文件必须通过 `flow.sh plan ...` 生成或定位，禁止手写创建
 
 ### Script Conventions

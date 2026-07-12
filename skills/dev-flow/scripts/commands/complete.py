@@ -32,7 +32,7 @@ from plan import (
 )
 from lib.git import is_repo_dirty, commit_paths, get_dirty_lines
 from plan import resolve_project_path
-from lib.worktree import resolve_active_plan, parse_worktree_context, ResolveActivePlanError
+from lib.worktree import resolve_active_plan, parse_worktree_context, ResolveActivePlanError, ActivePlanInfo
 from validation import (
     ValidationError,
     check_acceptance_criteria,
@@ -125,6 +125,33 @@ def _build_plan_only_commit_msg(plan_issue: int | None, plan_name: str) -> str:
         prefix = "docs(plan): complete plan "
         msg = prefix + plan_name[:max_total - len(prefix)]
     return msg
+
+
+def _resolve_code_repo(
+    plan_path: str,
+    workspace_root: Path,
+    active: "ActivePlanInfo",
+) -> Path:
+    """Resolve the code repository path for dirty checking.
+
+    Plan files live in space repo (.wopal-space/plans/); implementation code
+    lives in the project repo or worktree. This returns the code repo path.
+    """
+    wt_meta = get_plan_worktree(plan_path)
+    if wt_meta and wt_meta.get("path"):
+        wt_path = Path(wt_meta["path"])
+        if not wt_path.is_absolute():
+            wt_path = workspace_root / wt_path
+        if wt_path.exists():
+            return wt_path
+
+    project = get_plan_project(plan_path)
+    if project:
+        code_path = resolve_project_path(plan_path, project, workspace_root)
+        if code_path:
+            return code_path
+
+    return active.commit_repo_root
 
 
 # ============================================
@@ -278,13 +305,13 @@ def cmd_complete(args: argparse.Namespace) -> int:
         return 1
 
     # 7. Dirty working tree check — block if uncommitted implementation code exists.
-    # Plan file dirty is allowed here: AC checkbox marks are Plan-only changes
-    # that complete will commit together with the status transition.
-    if is_repo_dirty(str(active.commit_repo_root), ignore_paths=[str(active.active_plan_path)]):
+    # Plan files live in space repo; code lives in project repo or worktree.
+    code_repo = _resolve_code_repo(plan_path, workspace_root, active)
+    if is_repo_dirty(str(code_repo)):
         log_error("实施工作树有未提交的变更 — complete 不提交实施代码")
         log_error("")
         log_error("请先提交或储藏未提交的变更:")
-        log_error(f"  cd {active.commit_repo_root} && git status")
+        log_error(f"  cd {code_repo} && git status")
         log_error("")
         log_error("实施代码提交是实施 agent (fae) 的职责，complete 只提交 Plan 状态变更")
         return 1

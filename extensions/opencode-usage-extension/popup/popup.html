@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenCode 用量</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <!-- 顶部品牌栏 + 全局刷新 -->
+    <header class="app-header">
+      <div class="brand">
+        <img src="../icons/icon48.png" alt="" class="brand-icon" />
+        <span class="brand-name">OpenCode 用量</span>
+      </div>
+      <button id="refreshAll" class="icon-btn" title="刷新所有账号">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      </button>
+    </header>
+
+    <!-- 标签栏 -->
+    <nav class="tabs">
+      <button class="tab active" data-tab="usage">用量</button>
+      <button class="tab" data-tab="accounts">账号</button>
+      <button class="tab" data-tab="settings">设置</button>
+    </nav>
+
+    <!-- 用量面板 -->
+    <section id="tab-usage" class="tab-panel active">
+      <div id="authHealthBanner" class="auth-health-banner" style="display:none"></div>
+      <div class="usage-actions">
+        <button id="usageNewAccount" class="btn btn-ghost btn-block">登录/注册新账户</button>
+      </div>
+      <div id="summaryBar" class="summary-bar" style="display:none"></div>
+      <div id="accountList" class="account-list">
+        <div class="empty-state">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg>
+          <p>尚无账号数据</p>
+          <p class="sub">前往「账号」标签页添加</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 账号管理面板 -->
+    <section id="tab-accounts" class="tab-panel">
+      <div id="accountManageList" class="account-manage-list"></div>
+      <div class="account-tools">
+        <button id="importAccounts" class="btn btn-ghost btn-block">导入</button>
+        <button id="backupAccounts" class="btn btn-ghost btn-block">备份</button>
+      </div>
+      <input id="importAccountsFile" type="file" accept="application/json,.json" hidden />
+
+      <div class="add-section">
+        <div id="captureStatus" class="capture-status" style="display:none"></div>
+        <div id="capturePreview" class="capture-preview" style="display:none">
+          <div class="capture-row"><span>Workspace</span><code id="captureWs"></code></div>
+        </div>
+        <button id="saveAccount" class="btn btn-primary btn-block" disabled style="display:none">
+          保存
+        </button>
+        <button id="refreshCapture" class="btn btn-block btn-ghost" style="display:none">
+          刷新登录状态
+        </button>
+        <div id="manualSection" class="manual-section" style="display:none">
+          <div class="divider"><span>自动捕获失败？手动添加</span></div>
+          <div class="manual-form">
+            <input id="manualWs" type="text" placeholder="Workspace ID (wrk_…)" class="input" />
+            <textarea id="manualCookie" rows="2" placeholder="Cookie 请求头值" class="input textarea"></textarea>
+            <input id="manualName" type="text" placeholder="名称（可选）" class="input" />
+            <button id="saveManual" class="btn btn-block">手动保存</button>
+          </div>
+        </div>
+        <a id="toggleManual" class="toggle-manual" href="#" style="display:none">自动捕获失败？手动添加</a>
+        <p id="captureHelp" class="help-text">
+          切到已登录的 opencode.ai 页面后，先刷新登录状态，再添加或更新账号。
+        </p>
+      </div>
+    </section>
+
+    <!-- 设置面板 -->
+    <section id="tab-settings" class="tab-panel">
+      <div class="settings-section">
+        <label class="setting-row">
+          <span class="setting-label">用量警告阈值</span>
+          <span class="setting-control">
+            <input id="warnPercent" type="number" min="1" max="100" value="90" class="input input-sm" />
+            <span class="suffix">%</span>
+          </span>
+        </label>
+        <label class="setting-row">
+          <span class="setting-label">后台监测</span>
+          <span class="setting-control">
+            <span class="toggle">
+              <input id="monitorEnabled" type="checkbox" />
+              <span class="toggle-slider"></span>
+            </span>
+          </span>
+        </label>
+        <label class="setting-row">
+          <span class="setting-label">轮询间隔</span>
+          <span class="setting-control">
+            <input id="pollInterval" type="number" min="1" value="5" class="input input-sm" />
+            <span class="suffix">分钟</span>
+          </span>
+        </label>
+      </div>
+      <button id="saveSettings" class="btn btn-block">保存设置</button>
+
+      <div class="settings-section">
+        <div class="section-title">诊断</div>
+        <div class="diag-actions">
+          <button id="runDiag" class="btn btn-block btn-ghost">运行诊断</button>
+          <button id="testNotification" class="btn btn-ghost">测试通知</button>
+          <button id="copyDiag" class="btn btn-ghost" style="display:none">复制</button>
+        </div>
+        <pre id="diagOutput" class="diag-output" style="display:none"></pre>
+      </div>
+    </section>
+
+    <!-- 底部状态栏 -->
+    <footer class="status-bar">
+      <span id="accountCount">—</span>
+      <span id="statusText">--:--:--</span>
+    </footer>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

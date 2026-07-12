@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 
 from lib.workspace import find_workspace_root
+from workflow import PLAN_STATES
 
 
 class ValidationError(Exception):
@@ -85,6 +86,7 @@ def check_doc_plan(plan_file: str) -> None:
     issues.extend(check_task_structure(content))
     issues.extend(check_agent_verification(content))
     issues.extend(check_user_validation_new(content))
+    issues.extend(check_plan_status(content))
 
     p = _check_project_path(content)
     if p:
@@ -159,10 +161,24 @@ def check_user_validation_new(content: str) -> list[str]:
     if not section:
         return []
 
+    issues = []
+    if not re.findall(r'^####\s+', section, re.MULTILINE):
+        issues.append("User Validation: no scenario found")
+
+    if not re.search(r'^\s*-\s+\[[ x]\]\s+用户已完成', section, re.MULTILINE):
+        issues.append("User Validation: final checkbox missing")
+
     for p in FORBIDDEN_UV_PATTERNS:
         m = re.search(p, section, re.IGNORECASE)
         if m:
-            return [f"User Validation: automated command found ('{m.group()}')"]
+            issues.append(f"User Validation: automated command found ('{m.group()}')")
+    return issues
+
+
+def check_plan_status(content: str) -> list[str]:
+    match = re.search(r'^- \*\*Status\*\*:\s*(\w+)', content, re.MULTILINE)
+    if match and match.group(1) not in PLAN_STATES:
+        return [f"Status: unsupported state '{match.group(1)}'"]
     return []
 
 

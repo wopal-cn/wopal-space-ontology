@@ -11,6 +11,7 @@
 import unittest
 import sys
 import os
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -117,6 +118,34 @@ class TestCheckUserValidationNew(unittest.TestCase):
     def test_user_val_contains_npm_test(self):
         errors = check_user_validation_new(self._fixture("plan-new-user-val-has-commands.md"))
         self.assertTrue(any("automated" in e.lower() for e in errors), f"{errors}")
+
+    def test_user_val_without_scenario_rejected(self):
+        content = self._fixture("plan-new-valid.md").replace("#### Scenario 1:", "Scenario 1:")
+        errors = check_user_validation_new(content)
+        self.assertTrue(any("scenario" in e.lower() for e in errors), f"{errors}")
+
+    def test_user_val_without_final_checkbox_rejected(self):
+        content = self._fixture("plan-new-valid.md").replace(
+            "- [ ] 用户已完成上述功能验证并确认结果符合预期", "用户已完成上述功能验证并确认结果符合预期"
+        )
+        errors = check_user_validation_new(content)
+        self.assertTrue(any("checkbox" in e.lower() for e in errors), f"{errors}")
+
+
+class TestPlanStatusValidation(unittest.TestCase):
+
+    def test_unsupported_status_rejected(self):
+        content = (CHECK_DOC_DIR / "plan-new-valid.md").read_text(encoding="utf-8")
+        content = content.replace("**Status**: planning", "**Status**: authorized")
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as file:
+            file.write(content)
+            plan_file = file.name
+        try:
+            with self.assertRaises(ValidationError) as context:
+                check_doc_plan(plan_file)
+            self.assertIn("Status", str(context.exception))
+        finally:
+            os.unlink(plan_file)
 
 
 if __name__ == '__main__':

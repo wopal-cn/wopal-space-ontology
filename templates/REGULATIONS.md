@@ -135,4 +135,4 @@ Memory only has value when actively retrieved. Proactive recall is required in t
 
 ### Engineering Standards
 
-- **Historical documents are not retroactively modified**: Records in `projects/**/docs/plans/done/` and similar paths are not retroactively changed
+- **Historical documents are not retroactively modified**: Records in `.wopal-space/plans/**/done/` and similar paths are not retroactively changed

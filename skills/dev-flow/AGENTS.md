@@ -49,12 +49,12 @@ Runtime dependencies: bash 3.x+, `gh` CLI, `jq`, Python 3
 
 Each command requires a prerequisite state; invalid transitions error out. New commands must declare their prerequisite and resulting states.
 
+`plan check` validates that a Plan's declared Status belongs to this state machine. When a User Validation section is present, the checker requires at least one scenario and a final confirmation checkbox; `verify` confirms that the user has checked it.
+
 ### Plan Directory Rules
 
 - `--project` is a required parameter for the `plan` command
-- Standard projects: `projects/<project>/docs/plans/`
-- ontology-worktree: `.wopal/docs/plans/`
-- `docs/projects/<project>/plans/` is deprecated; writing new plans there is forbidden
+- All projects: `.wopal-space/plans/<project>/`
 - Plan files must be created or located via `flow.sh plan ...`; manual file creation is forbidden
 
 ### Script Conventions
