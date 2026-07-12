@@ -9,7 +9,6 @@ permission:
   context_manage: deny
   skill:
     "*": deny
-    project-worktrees: allow
   doom_loop: deny
   external_directory:
     "*": ask
