@@ -224,13 +224,23 @@ body {
 }
 
 .inline-link-btn {
-  border: none;
-  background: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  padding: 0 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
   color: inherit;
   font: inherit;
   cursor: pointer;
-  text-decoration: underline;
-  padding: 0;
+  text-decoration: none;
+  line-height: 1;
+}
+
+.inline-link-btn:hover {
+  background: #fff;
 }
 
 .account-ws {
@@ -476,9 +486,26 @@ body {
   color: var(--text);
   cursor: pointer;
   transition: all 0.15s;
+  box-shadow: 0 1px 0 rgba(31, 35, 40, 0.03);
 }
 
 .btn:hover { background: var(--surface); border-color: var(--text-tertiary); }
+
+.btn:active,
+.icon-btn:active,
+.inline-link-btn:active,
+.toggle-manual:active {
+  transform: translateY(1px);
+}
+
+.btn:focus-visible,
+.icon-btn:focus-visible,
+.inline-link-btn:focus-visible,
+.toggle-manual:focus-visible,
+.tab:focus-visible {
+  outline: 2px solid var(--primary-light);
+  outline-offset: 1px;
+}
 
 .btn-primary {
   background: var(--primary);
@@ -496,12 +523,16 @@ body {
 .btn-block { width: 100%; }
 
 .btn-ghost {
-  border-color: transparent;
-  background: none;
+  border-color: var(--border-light);
+  background: linear-gradient(180deg, #fff, var(--surface));
   color: var(--text-secondary);
 }
 
-.btn-ghost:hover { background: var(--surface); }
+.btn-ghost:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text);
+}
 
 /* ===== Settings ===== */
 .settings-section {
@@ -621,10 +652,18 @@ body {
   display: block;
   text-align: center;
   font-size: 10px;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   text-decoration: none;
   margin-top: 6px;
   cursor: pointer;
+  padding: 5px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
 }
 
-.toggle-manual:hover { color: var(--primary); }
+.toggle-manual:hover {
+  color: var(--primary);
+  background: var(--surface-2);
+  border-color: var(--border);
+}
