@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 # project.py - Shared project context and Plan location resolver
 #
-# Canonical source for project path model and Plan location resolution.
-# All dev-flow commands should route through this module instead of
-# hardcoding path patterns.
+# All Plan files live under .wopal-space/plans/<project>/ in the space repo.
+# resolve_plan_location() walks up from a Plan file to find its owning repo.
 
 from __future__ import annotations
 
@@ -14,24 +13,11 @@ from enum import Enum
 from pathlib import Path
 
 from lib.git import get_current_branch, get_remote_url
-from lib.workspace import get_ontology_main_repo
 
 
 class ProjectType(Enum):
     STANDARD = "standard"
     ONTOLOGY_WORKTREE = "ontology-worktree"
-
-
-@dataclass
-class ProjectContext:
-    name: str
-    type: ProjectType
-    project_path: Path
-    docs_path: Path
-    docs_repo_path: Path
-    code_repo_path: Path
-    repo_slug: str | None
-    default_branch: str
 
 
 @dataclass
@@ -54,16 +40,6 @@ def _get_repo_slug(path: Path) -> str | None:
     if not url:
         return None
     return _parse_github_url(url)
-
-
-def _is_ontology_project(project_name: str, workspace_root: Path) -> bool:
-    dot_git = workspace_root / ".wopal" / ".git"
-    if not dot_git.exists() or not dot_git.is_file():
-        return False
-    slug = _get_repo_slug(workspace_root / ".wopal")
-    if slug is None:
-        return False
-    return slug.split("/")[-1] == project_name
 
 
 def _get_default_branch(project_path: Path) -> str:
@@ -92,97 +68,19 @@ def _get_default_branch(project_path: Path) -> str:
     return "main"
 
 
-def _resolve_code_repo_path(
-    project_type: ProjectType, project_path: Path, workspace_root: Path,
-) -> Path:
-    if project_type == ProjectType.STANDARD:
-        return project_path.resolve()
-
-    main_repo = get_ontology_main_repo(workspace_root)
-    return main_repo if main_repo else project_path.resolve()
-
-
-def resolve_project_context(
-    project_name: str, workspace_root: Path,
-) -> ProjectContext:
-    if not project_name or not project_name.strip():
-        raise ValueError("Project name is required (empty or missing)")
-
-    if project_name == "wopal-space":
-        raise ValueError(
-            '"wopal-space" is deprecated. '
-            "Cross-project work should be split into per-project Plans."
-        )
-
-    workspace_root = Path(workspace_root).resolve()
-
-    if _is_ontology_project(project_name, workspace_root):
-        ptype = ProjectType.ONTOLOGY_WORKTREE
-        project_path = workspace_root / ".wopal"
-        docs_path = workspace_root / ".wopal" / "docs"
-    else:
-        project_path = workspace_root / "projects" / project_name
-        if not project_path.is_dir():
-            raise ValueError(
-                f"Project '{project_name}' not found at {project_path}. "
-                "Cross-project work should be split into per-project Plans."
-            )
-        ptype = ProjectType.STANDARD
-        docs_path = project_path / "docs"
-
-    code_repo_path = _resolve_code_repo_path(ptype, project_path, workspace_root)
-    repo_slug = _get_repo_slug(project_path)
-
-    if ptype == ProjectType.ONTOLOGY_WORKTREE:
-        default_branch = get_current_branch(str(project_path)) or "main"
-    else:
-        default_branch = _get_default_branch(project_path)
-
-    return ProjectContext(
-        name=project_name,
-        type=ptype,
-        project_path=project_path,
-        docs_path=docs_path,
-        docs_repo_path=code_repo_path,
-        code_repo_path=code_repo_path,
-        repo_slug=repo_slug,
-        default_branch=default_branch,
-    )
-
-
 def resolve_plan_dir(project_name: str, workspace_root: Path) -> Path:
-    ctx = resolve_project_context(project_name, workspace_root)
-    return ctx.docs_path / "plans"
+    return workspace_root / ".wopal-space" / "plans" / project_name
 
 
 def _search_dirs(workspace_root: Path) -> list[Path]:
     dirs: list[Path] = []
 
-    projects_dir = workspace_root / "projects"
-    if projects_dir.is_dir():
-        for project_dir in sorted(projects_dir.iterdir()):
-            plan_dir = project_dir / "docs" / "plans"
-            if plan_dir.is_dir():
-                dirs.append(plan_dir)
-                done = plan_dir / "done"
-                if done.is_dir():
-                    dirs.append(done)
-
-    ontology_plans = workspace_root / ".wopal" / "docs" / "plans"
-    if ontology_plans.is_dir():
-        dirs.append(ontology_plans)
-        done = ontology_plans / "done"
-        if done.is_dir():
-            dirs.append(done)
-
-    # DEPRECATED: legacy read-only compatibility — remove after all Plans migrated
-    legacy_base = workspace_root / "docs" / "projects"
-    if legacy_base.is_dir():
-        for legacy_project in sorted(legacy_base.iterdir()):
-            legacy_plans = legacy_project / "plans"
-            if legacy_plans.is_dir():
-                dirs.append(legacy_plans)
-                done = legacy_plans / "done"
+    plans_root = workspace_root / ".wopal-space" / "plans"
+    if plans_root.is_dir():
+        for project_dir in sorted(plans_root.iterdir()):
+            if project_dir.is_dir():
+                dirs.append(project_dir)
+                done = project_dir / "done"
                 if done.is_dir():
                     dirs.append(done)
 
@@ -224,7 +122,7 @@ def resolve_plan_location(
         repo_root = workspace_root
 
     repo_relative_path = str(plan_path.relative_to(repo_root))
-    is_archived = "/plans/done/" in str(plan_path)
+    is_archived = "/done/" in str(plan_path) and "/plans/" in str(plan_path)
 
     github_repo = _get_repo_slug(repo_root)
     dot_git = repo_root / ".git"

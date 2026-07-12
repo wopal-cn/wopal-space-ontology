@@ -176,9 +176,7 @@ flow.sh plan new --title "..." --project <name> --type <type>  # 无 Issue
 
 完整命令链：`plan new → plan check → rook review → submit → approve --confirm → complete → verify --confirm → archive`。
 
-**Plan 目录**：
-- 标准项目:  `projects/<project>/docs/plans/`；
-- ontology-worktree项目: `.wopal/docs/plans/`。
+**Plan 目录**：统一存放在 `.wopal-space/plans/<项目名>/`。
 
 ### B. Plan 审查与提交
 

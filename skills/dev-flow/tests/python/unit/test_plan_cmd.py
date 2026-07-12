@@ -134,7 +134,7 @@ class TestScanLocalPlans(unittest.TestCase):
         self.ws = Path(self.tmp_dir)
 
         # Create a project plan directory
-        proj_plans = self.ws / "projects" / "wopal-cli" / "docs" / "plans"
+        proj_plans = self.ws / ".wopal-space" / "plans" / "wopal-cli"
         proj_plans.mkdir(parents=True)
         (proj_plans / "100-feat-cli-add-cache-layer.md").write_text(
             PLAN_TEMPLATE_WITH_ISSUE.replace("{plan_name}", "100-feat-cli-add-cache-layer")
@@ -143,7 +143,7 @@ class TestScanLocalPlans(unittest.TestCase):
         )
 
         # Create an ontology plan directory
-        onto_plans = self.ws / ".wopal" / "docs" / "plans"
+        onto_plans = self.ws / ".wopal-space" / "plans" / "space-ontology"
         onto_plans.mkdir(parents=True)
         (onto_plans / "155-enhance-dev-flow.md").write_text(
             PLAN_TEMPLATE_WITH_ISSUE.replace("{plan_name}", "155-enhance-dev-flow")
@@ -166,11 +166,11 @@ class TestScanLocalPlans(unittest.TestCase):
         plans = _scan_local_plans(self.ws)
         onto_plan = [p for p in plans if p['name'] == '155-enhance-dev-flow']
         self.assertEqual(len(onto_plan), 1)
-        self.assertEqual(onto_plan[0]['project'], 'wopal-space-ontology')
+        self.assertEqual(onto_plan[0]['project'], 'space-ontology')
 
     def test_excludes_done_directory(self):
-        done_dir = self.ws / "projects" / "wopal-cli" / "docs" / "plans" / "done"
-        done_dir.mkdir()
+        done_dir = self.ws / ".wopal-space" / "plans" / "wopal-cli" / "done"
+        done_dir.mkdir(parents=True)
         (done_dir / "50-old-done-plan.md").write_text(PLAN_TEMPLATE_NO_ISSUE)
 
         plans = _scan_local_plans(self.ws)

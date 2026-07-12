@@ -31,7 +31,7 @@ class TestSubmitHappyPath(unittest.TestCase):
     @patch("commands.submit.get_plan_issue", return_value=42)
     @patch("commands.submit.get_plan_status", return_value="planning")
     @patch("commands.submit.parse_plan_status", return_value="planning")
-    @patch("commands.submit.find_plan", return_value="/ws/.wopal/docs/plans/42-fix-test.md")
+    @patch("commands.submit.find_plan", return_value="/ws/.wopal-space/plans/space-ontology/42-fix-test.md")
     @patch("commands.submit.find_workspace_root", return_value=Path("/ws"))
     def test_submit_transitions_planning_to_reviewing(
         self, mock_ws, mock_find, mock_parse, mock_get_status,
@@ -40,7 +40,7 @@ class TestSubmitHappyPath(unittest.TestCase):
         args = Namespace(target="42")
         result = cmd_submit(args)
         self.assertEqual(result, 0)
-        mock_update.assert_called_once_with("/ws/.wopal/docs/plans/42-fix-test.md", "reviewing")
+        mock_update.assert_called_once_with("/ws/.wopal-space/plans/space-ontology/42-fix-test.md", "reviewing")
 
     @patch("commands.submit.commit_and_push_plan", return_value=RESULT_OK)
     @patch("commands.submit.update_plan_status", return_value=True)
@@ -48,7 +48,7 @@ class TestSubmitHappyPath(unittest.TestCase):
     @patch("commands.submit.get_plan_issue", return_value=42)
     @patch("commands.submit.get_plan_status", return_value="planning")
     @patch("commands.submit.parse_plan_status", return_value="planning")
-    @patch("commands.submit.find_plan", return_value="/ws/.wopal/docs/plans/42-fix-test.md")
+    @patch("commands.submit.find_plan", return_value="/ws/.wopal-space/plans/space-ontology/42-fix-test.md")
     @patch("commands.submit.find_workspace_root", return_value=Path("/ws"))
     def test_submit_outputs_next_approve_confirm(
         self, mock_ws, mock_find, mock_parse, mock_get_status,
@@ -71,7 +71,7 @@ class TestSubmitHappyPath(unittest.TestCase):
 class TestSubmitWrongStatus(unittest.TestCase):
     """Test submit rejects non-planning status."""
 
-    @patch("commands.submit.find_plan", return_value="/ws/.wopal/docs/plans/42-fix-test.md")
+    @patch("commands.submit.find_plan", return_value="/ws/.wopal-space/plans/space-ontology/42-fix-test.md")
     @patch("commands.submit.find_workspace_root", return_value=Path("/ws"))
     @patch("commands.submit.parse_plan_status", return_value="executing")
     def test_submit_rejects_executing(self, mock_parse, mock_ws, mock_find):
@@ -79,7 +79,7 @@ class TestSubmitWrongStatus(unittest.TestCase):
         result = cmd_submit(args)
         self.assertEqual(result, 1)
 
-    @patch("commands.submit.find_plan", return_value="/ws/.wopal/docs/plans/42-fix-test.md")
+    @patch("commands.submit.find_plan", return_value="/ws/.wopal-space/plans/space-ontology/42-fix-test.md")
     @patch("commands.submit.find_workspace_root", return_value=Path("/ws"))
     @patch("commands.submit.parse_plan_status", return_value="reviewing")
     def test_submit_rejects_reviewing(self, mock_parse, mock_ws, mock_find):
@@ -87,7 +87,7 @@ class TestSubmitWrongStatus(unittest.TestCase):
         result = cmd_submit(args)
         self.assertEqual(result, 1)
 
-    @patch("commands.submit.find_plan", return_value="/ws/.wopal/docs/plans/42-fix-test.md")
+    @patch("commands.submit.find_plan", return_value="/ws/.wopal-space/plans/space-ontology/42-fix-test.md")
     @patch("commands.submit.find_workspace_root", return_value=Path("/ws"))
     @patch("commands.submit.parse_plan_status", return_value="done")
     def test_submit_rejects_done(self, mock_parse, mock_ws, mock_find):
@@ -103,7 +103,7 @@ class TestSubmitValidationFailure(unittest.TestCase):
     @patch("commands.submit.get_plan_issue", return_value=42)
     @patch("commands.submit.get_plan_status", return_value="planning")
     @patch("commands.submit.parse_plan_status", return_value="planning")
-    @patch("commands.submit.find_plan", return_value="/ws/.wopal/docs/plans/42-fix-test.md")
+    @patch("commands.submit.find_plan", return_value="/ws/.wopal-space/plans/space-ontology/42-fix-test.md")
     @patch("commands.submit.find_workspace_root", return_value=Path("/ws"))
     def test_submit_blocks_on_validation_error(
         self, mock_ws, mock_find, mock_parse, mock_get_status,

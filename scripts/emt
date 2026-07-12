@@ -73,8 +73,9 @@ mkdir -p "$GLOBAL_LOG_DIR" "$BACKEND_STATE_DIR"
 
 SESSION_NAME="em-$(basename "$CWD")"
 
-BACKEND_PORT=4096
-BACKEND_PID_FILE="$BACKEND_STATE_DIR/emt-backend.pid"
+BACKEND_PORT_BASE=4096
+BACKEND_PORT=""  # 运行时动态确定
+BACKEND_PID_FILE="$BACKEND_STATE_DIR/ellamaka.pid"
 ELLAMAKA_LOG="${SPACE_LOG_DIR:-$GLOBAL_LOG_DIR}/ellamaka.log"
 
 NO_AUTO_APPROVE=false DEBUG_MODE=false ATTACH_MODE=false DISABLE_WOPALSPACE=false
@@ -82,6 +83,7 @@ DEBUG_MODULES=""
 TRACE_MODE=false TRACE_MODULES=""
 COMMAND=""
 OPENCODE_ARGS=()
+SERVER_PASSWORD=""
 
 # --- 参数解析 ---
 
@@ -91,7 +93,7 @@ emt - 便携式 EllaMaka 启动器
 
 用法:
   emt                    启动会话（名称 = em-<当前目录名>）
-  emt attach [<args>]    attach 模式（共享后端 :4096）
+  emt attach [<args>]    attach 模式（连接已有后端）
   emt serve [--debug]    启动后端服务（不进 tmux）
   emt status             查看会话状态
   emt stop               停止后端服务
@@ -102,6 +104,10 @@ emt - 便携式 EllaMaka 启动器
   --trace [模块]         启用 trace 日志（更详细的诊断，隐含 --debug）
   --no-auto-approve      禁用自动授权
   -ns                    禁用 WopalSpace 模式（原生 opencode 行为）
+  --password <密码>      设置服务器密码（自动绑定 0.0.0.0，支持局域网访问）
+
+端口分配:
+  从 4096 开始自动寻找可用端口，支持多个实例并行
 
 会话选择:
   有运行中的会话时列出，输编号/名称进入，回车新建
@@ -116,6 +122,13 @@ while [[ $# -gt 0 ]]; do
         --help|-h) OPENCODE_ARGS+=(--help); shift ;;
         --no-auto-approve) NO_AUTO_APPROVE=true; shift ;;
         -ns) DISABLE_WOPALSPACE=true; shift ;;
+        --password)
+            if [[ $# -gt 1 ]] && [[ ! "$2" =~ ^- ]]; then
+                SERVER_PASSWORD="$2"; shift 2
+            else
+                echo "emt: --password 需要参数" >&2; exit 1
+            fi
+            ;;
 
         --trace)
             TRACE_MODE=true; DEBUG_MODE=true
@@ -168,13 +181,49 @@ fi
 
 # --- 后端管理 ---
 
+# 从 BASE 开始找可用端口
+find_available_port() {
+    local port=$BACKEND_PORT_BASE
+    local max=$((BACKEND_PORT_BASE + 100))
+    while [ $port -lt $max ]; do
+        if ! lsof -ti :$port > /dev/null 2>&1; then
+            echo $port
+            return 0
+        fi
+        port=$((port + 1))
+    done
+    return 1
+}
+
+# 从 BASE 开始扫描，返回第一个 ellamaka 端口
+find_ellamaka_port() {
+    local port=$BACKEND_PORT_BASE
+    local max=$((BACKEND_PORT_BASE + 100))
+    while [ $port -lt $max ]; do
+        local port_pid
+        port_pid="$(lsof -ti :$port 2>/dev/null)" || true
+        if [ -n "$port_pid" ]; then
+            for pid in $port_pid; do
+                if ps -p "$pid" -o comm= 2>/dev/null | grep -q "ellamaka"; then
+                    echo $port
+                    return 0
+                fi
+            done
+        fi
+        port=$((port + 1))
+    done
+    return 1
+}
+
 is_backend_running() {
-    lsof -ti :"$BACKEND_PORT" > /dev/null 2>&1
+    BACKEND_PORT="$(find_ellamaka_port)" || BACKEND_PORT=""
+    [ -n "$BACKEND_PORT" ]
 }
 
 wait_backend() {
+    local port="$BACKEND_PORT"
     for ((i = 0; i < 60; i++)); do
-        curl -sf "http://127.0.0.1:$BACKEND_PORT/health" > /dev/null 2>&1 && return 0
+        curl -sf "http://127.0.0.1:$port/health" > /dev/null 2>&1 && return 0
         # 等待期间检查后端是否已崩溃
         if [ -f "$BACKEND_PID_FILE" ]; then
             local check_pid
@@ -183,7 +232,7 @@ wait_backend() {
                 echo "" >&2
                 echo "emt: 后端在启动期间崩溃 (PID $check_pid)" >&2
                 local check_log
-                { read -r _; read -r _; read -r check_log || true; } < "$BACKEND_PID_FILE"
+                { read -r _; read -r _; read -r _; read -r check_log || true; } < "$BACKEND_PID_FILE"
                 if [ -n "$check_log" ] && [ -f "$check_log" ]; then
                     echo "emt: 日志尾部 ($check_log):" >&2
                     tail -30 "$check_log" >&2
@@ -217,13 +266,29 @@ start_backend() {
     local log_level="INFO"
     [ "$DEBUG_MODE" = true ] && log_level="DEBUG"
 
+    # 动态获取可用端口
+    BACKEND_PORT="$(find_available_port)" || {
+        echo "emt: 无法找到可用端口 ($BACKEND_PORT_BASE-$((BACKEND_PORT_BASE+100)))" >&2
+        return 1
+    }
+    echo "emt: 使用端口 $BACKEND_PORT"
+
+    # 构建 serve 参数
     local serve_args=(serve --port $BACKEND_PORT --mdns --mdns-domain ellamaka.local --print-logs --log-level $log_level "${WOPAL_SPACE_ARGS[@]}")
 
+    # 如果设置了密码，绑定到 0.0.0.0 支持局域网访问
+    local hostname="127.0.0.1"
+    if [ -n "$SERVER_PASSWORD" ]; then
+        hostname="0.0.0.0"
+        serve_args+=(--hostname "$hostname")
+        echo "emt: 已设置密码，服务绑定到 $hostname (局域网可访问)"
+    fi
+
     # serve 日志路由：非 debug → 全局，debug → 空间
-    local backend_log="$GLOBAL_LOG_DIR/emt-backend.log"
+    local backend_log="$GLOBAL_LOG_DIR/ellamaka-serve.log"
     local plugin_log_file=""
     if [ "$DEBUG_MODE" = true ]; then
-        backend_log="${SPACE_LOG_DIR:-$GLOBAL_LOG_DIR}/emt-backend.log"
+        backend_log="${SPACE_LOG_DIR:-$GLOBAL_LOG_DIR}/ellamaka-serve.log"
         plugin_log_file="${SPACE_LOG_DIR:-$GLOBAL_LOG_DIR}/wopal-plugins-debug.log"
     fi
 
@@ -231,34 +296,50 @@ start_backend() {
     [ -n "$LOG_LEVEL" ] && env_vars+=(WOPAL_PLUGIN_LOG_LEVEL="$LOG_LEVEL")
     [ -n "$LOG_MODULES" ] && env_vars+=(WOPAL_PLUGIN_LOG_MODULES="$LOG_MODULES")
     [ -n "$plugin_log_file" ] && env_vars+=(WOPAL_PLUGIN_LOG_FILE="$plugin_log_file")
+    [ -n "$SERVER_PASSWORD" ] && env_vars+=(OPENCODE_SERVER_PASSWORD="$SERVER_PASSWORD")
 
     nohup env "${env_vars[@]}" ellamaka "${serve_args[@]}" > "$backend_log" 2>&1 &
     local serve_pid=$!
 
-    # 记录 PID、启动目录、后端日志路径
-    { echo "$serve_pid"; echo "$CWD"; echo "$backend_log"; } > "$BACKEND_PID_FILE"
+    # 记录 PID、启动目录、后端日志路径、端口、主机名、密码
+    { echo "$serve_pid"; echo "$CWD"; echo "$backend_log"; echo "$BACKEND_PORT"; echo "$hostname"; echo "$SERVER_PASSWORD"; } > "$BACKEND_PID_FILE"
 
     verify_backend_alive "$serve_pid" "$backend_log"
 }
 
 stop_backend() {
-    local pid="" start_dir="" backend_log=""
+    local pid="" start_dir="" backend_log="" port=""
 
     if [ -f "$BACKEND_PID_FILE" ]; then
-        { read -r pid; read -r start_dir; read -r backend_log || true; } < "$BACKEND_PID_FILE"
+        { read -r pid; read -r start_dir; read -r backend_log; read -r port || true; } < "$BACKEND_PID_FILE"
     fi
 
-    local port_pid
-    port_pid="$(lsof -ti :$BACKEND_PORT 2>/dev/null)" || true
+    # 扫描所有 ellamaka 端口
+    local ellamaka_pids=""
+    local scan_port=$BACKEND_PORT_BASE
+    local max=$((BACKEND_PORT_BASE + 100))
+    while [ $scan_port -lt $max ]; do
+        local port_pid
+        port_pid="$(lsof -ti :$scan_port 2>/dev/null)" || true
+        if [ -n "$port_pid" ]; then
+            for p in $port_pid; do
+                if ps -p "$p" -o comm= 2>/dev/null | grep -q "ellamaka"; then
+                    ellamaka_pids="$ellamaka_pids $p"
+                fi
+            done
+        fi
+        scan_port=$((scan_port + 1))
+    done
 
-    if [ -z "$pid" ] && [ -z "$port_pid" ]; then
+    if [ -z "$pid" ] && [ -z "$ellamaka_pids" ]; then
         echo "后端服务未运行"
         return
     fi
 
     rm -f "$BACKEND_PID_FILE" "$backend_log" || true
 
-    for p in $pid $port_pid; do
+    # 只杀 ellamaka 进程
+    for p in $pid $ellamaka_pids; do
         [ -n "$p" ] && kill "$p" 2>/dev/null || true
     done
 
@@ -327,16 +408,30 @@ show_status() {
     echo ""
     echo "后端服务:"
     if is_backend_running; then
-        local bpid="(unknown)" bdir="" blog=""
+        local bpid="(unknown)" bdir="" blog="" bport="$BACKEND_PORT" bhost="127.0.0.1"
         if [ -f "$BACKEND_PID_FILE" ]; then
-            { read -r bpid; read -r bdir; read -r blog || true; } < "$BACKEND_PID_FILE"
+            { read -r bpid; read -r bdir; read -r blog; read -r bport; read -r bhost || true; } < "$BACKEND_PID_FILE"
         fi
-        echo "  运行中 → http://127.0.0.1:$BACKEND_PORT"
+        echo "  运行中 → http://$bhost:$bport"
+        echo "  mDNS: ellamaka.local:$bport"
+        if [ "$bhost" = "0.0.0.0" ]; then
+            local lan_ip
+            lan_ip="$(ifconfig | grep -E 'inet.*broadcast' | grep -v '127.0.0.1' | head -1 | awk '{print $2}' || echo "未知")"
+            echo "  局域网: http://$lan_ip:$bport"
+            echo "  认证: 需要密码"
+        fi
         [ -n "$bpid" ] && echo "  PID: $bpid"
         [ -n "$bdir" ] && echo "  目录: $bdir"
         [ -n "$blog" ] && [ -f "$blog" ] && echo "  日志: $blog"
     else
-        echo "  未运行"
+        # 检查端口是否被其他应用占用
+        local port_pid
+        port_pid="$(lsof -ti :$BACKEND_PORT_BASE 2>/dev/null)" || true
+        if [ -n "$port_pid" ]; then
+            echo "  端口 $BACKEND_PORT_BASE 被占用，但非 ellamaka 进程 (PID: $port_pid)"
+        else
+            echo "  未运行"
+        fi
     fi
 }
 
@@ -429,9 +524,28 @@ create_session() {
             echo "emt: 连接已有后端 :$BACKEND_PORT"
         fi
 
-        tmux new-session -s "$name" -c "$CWD" \
-            -e "WOPAL_HOME=$WOPAL_HOME_DIR" -- \
-            ellamaka attach "http://localhost:$BACKEND_PORT" --dir "$CWD" "${WOPAL_SPACE_ARGS[@]}" "${OPENCODE_ARGS[@]}"
+        # 从 PID 文件读取连接信息
+        local connect_url="" saved_password=""
+        if [ -f "$BACKEND_PID_FILE" ]; then
+            local _pid _dir _log _port _host _pass
+            { read -r _pid; read -r _dir; read -r _log; read -r _port; read -r _host; read -r _pass || true; } < "$BACKEND_PID_FILE"
+            saved_password="$_pass"
+            if [ "$_host" = "0.0.0.0" ]; then
+                local lan_ip
+                lan_ip="$(ifconfig | grep -E 'inet.*broadcast' | grep -v '127.0.0.1' | head -1 | awk '{print $2}' || echo "localhost")"
+                connect_url="http://$lan_ip:$_port"
+            else
+                connect_url="http://localhost:$_port"
+            fi
+        fi
+
+        # 构建 attach 参数
+        local attach_args=()
+        [ -n "$saved_password" ] && attach_args+=(--password "$saved_password")
+
+        tmux new-session -s "$name" -c "$CWD" -- \
+            env "WOPAL_HOME=$WOPAL_HOME_DIR" \
+            ellamaka attach "$connect_url" --dir "$CWD" "${attach_args[@]}" "${WOPAL_SPACE_ARGS[@]}" "${OPENCODE_ARGS[@]}"
     else
         local debug_args=()
         if [ "$DEBUG_MODE" = true ]; then
@@ -440,16 +554,16 @@ create_session() {
 
         if [ "$DEBUG_MODE" = true ]; then
             local tui_log_dir="${SPACE_LOG_DIR:-$GLOBAL_LOG_DIR}"
-            tmux new-session -s "$name" -c "$CWD" \
-                -e "WOPAL_HOME=$WOPAL_HOME_DIR" \
-                -e "WOPAL_PLUGIN_LOG_LEVEL=$LOG_LEVEL" \
-                -e "WOPAL_PLUGIN_LOG_MODULES=$LOG_MODULES" \
-                -e "WOPAL_PLUGIN_LOG_FILE=$tui_log_dir/wopal-plugins-debug.log" \
-                -e "WOPAL_DEBUG_LOG_DIR=$tui_log_dir" \
-                -- bash -c 'exec ellamaka "$@" 2>> "'"$ELLAMAKA_LOG"'"' _ "${debug_args[@]}" "${WOPAL_SPACE_ARGS[@]}" "${OPENCODE_ARGS[@]}"
+            tmux new-session -s "$name" -c "$CWD" -- \
+                env "WOPAL_HOME=$WOPAL_HOME_DIR" \
+                "WOPAL_PLUGIN_LOG_LEVEL=$LOG_LEVEL" \
+                "WOPAL_PLUGIN_LOG_MODULES=$LOG_MODULES" \
+                "WOPAL_PLUGIN_LOG_FILE=$tui_log_dir/wopal-plugins-debug.log" \
+                "WOPAL_DEBUG_LOG_DIR=$tui_log_dir" \
+                bash -c 'exec ellamaka "$@" 2>> "'"$ELLAMAKA_LOG"'"' _ "${debug_args[@]}" "${WOPAL_SPACE_ARGS[@]}" "${OPENCODE_ARGS[@]}"
         else
-            tmux new-session -s "$name" -c "$CWD" \
-                -e "WOPAL_HOME=$WOPAL_HOME_DIR" -- \
+            tmux new-session -s "$name" -c "$CWD" -- \
+                env "WOPAL_HOME=$WOPAL_HOME_DIR" \
                 ellamaka "${WOPAL_SPACE_ARGS[@]}" "${OPENCODE_ARGS[@]}"
         fi
     fi

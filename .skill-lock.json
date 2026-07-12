@@ -9,6 +9,15 @@
       "skillFolderHash": "3cf9a8db32597ba3e24b584a3d696f4e11c7d7b6",
       "installedAt": "2026-06-23T09:43:35.354Z",
       "updatedAt": "2026-06-23T09:43:35.355Z"
+    },
+    "wasteland": {
+      "source": "gastownhall/marketplace",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/gastownhall/marketplace.git",
+      "skillPath": "/plugins/wasteland/skills/wasteland",
+      "skillFolderHash": "54f804482f93df41710929b81240ecf56736a754",
+      "installedAt": "2026-06-29T04:51:24.593Z",
+      "updatedAt": "2026-06-29T04:51:24.593Z"
     }
   }
 }
