@@ -21,7 +21,7 @@ Create or update project-level or directory-level `AGENTS.md`.
 - Use `.wopal/templates/agent-rules.md`. The formal `AGENTS.md` must preserve the template frontmatter `name` and `description`; information already present in frontmatter must not be repeated in the body.
 - `name` identifies the current project or directory module. `description` must be single-line, stable, Markdown-free, describe the current project or directory module responsibility, and serve as the controlled description source for `wopal space scan`.
 - Do not write roadmap, temporary status, completion progress, marketing slogans, or vague vision in `description`. If the description cannot be determined reliably, mark it as "needs confirmation" in the plan.
-- The body must contain only project-specific technical implementation rules. Use current implementation facts, not roadmap speculation.
+- The body must contain only project-specific technical implementation rules. Classify each candidate item first: current fact, durable target-structure constraint, or temporary plan / TODO. Current facts may go into Architecture. Durable target-structure constraints may go into rules. Temporary plans / TODOs must not go into `AGENTS.md`.
 - List only informative canonical references; do not write `N/A` placeholders for nonexistent PRD or `BUSINESS_RULES.md` files. Directory-level `AGENTS.md` must list any DESIGN or PRD document directly relevant to its scope; do not rely solely on parent-level indirect references.
 - The body must not restate DESIGN, frontmatter, or space-wide regulations. Write only project-specific, executable rules that change development behavior.
 - From PRD, extract only scope constraints that affect implementation. If PRD has been merged into DESIGN, reference DESIGN only. From DESIGN, extract the execution chain, directory responsibilities, technology choices, and interface / state / configuration / output / error-handling contracts.
@@ -29,11 +29,11 @@ Create or update project-level or directory-level `AGENTS.md`.
 - From code / config, extract only build, test, typecheck, lint, and format commands, basic development commands, existing framework / library constraints, and local implementation conventions. Do not create a source-code encyclopedia.
 - Merge project technical rules from `rules-context` directly into the appropriate section. If content belongs to PRD, business rules, or a temporary plan, do not put it in the body and explain that after completion.
 - Shorter is better: target 80-150 lines. 300 lines is the hard limit, not the goal. If it would exceed the target, compress content, replace detail with references, or split rules into a closer subdirectory `AGENTS.md`.
-- Preserve basic development / testing commands and applicable verification requirements. The Testing section must include a TDD requirement.
+- Preserve basic development / testing commands and applicable verification requirements. The Testing section must include a TDD requirement and state which logic must be covered by automated tests and which host APIs, external systems, or real runtime boundaries require manual verification only.
 - Use direct, executable imperatives. Make boundaries explicit: what this scope owns and what it must not change.
 - Describe positive facts: what this scope is and owns. Avoid defensive explanations and low-information negative statements.
 - User-preferred language versions must follow the AGENTS template headings; English section headings defined by the template must not be translated.
-- Architecture descriptions should contain only one execution chain and the necessary directory table. Forbid README-style introductions, low-information applicability sentences, PRD vision / user narrative / roadmap, business rule restatements, large copied DESIGN prose, architecture diagrams, directory encyclopedias, API / command catalogs, and links to temporary plans or command logs unless the user explicitly asks for them.
+- Architecture descriptions should contain only one execution chain and the necessary directory table. The directory table must list only paths that currently exist. Durable target-structure constraints belong in rules, not disguised as current directory facts. Forbid README-style introductions, low-information applicability sentences, PRD vision / user narrative / roadmap, business rule restatements, large copied DESIGN prose, architecture diagrams, directory encyclopedias, API / command catalogs, and links to temporary plans or command logs unless the user explicitly asks for them.
 - `User-Supplied Rules` is user-maintained. When generating or updating, do not add, modify, delete, or reorder content in this section (rules migrated from the original specification are excepted, and only appending is allowed).
 - **When updating an existing `AGENTS.md`, all non-obsolete original rules must be preserved.** Rules that fit sections 1-5 go into the corresponding section; rules that do not must be moved verbatim into section 6 (User-Supplied Rules). Deleting an original rule requires explicit, itemized justification in the plan. Code examples, inline comments, and procedural notes are organic parts of the rules and must also be preserved.
 
@@ -83,8 +83,11 @@ Before writing, present the full plan and get explicit user confirmation. The pl
 8. Compression or split strategy if the result may exceed 300 lines
 9. Confirmation that `User-Supplied Rules` will remain unchanged
 10. Low-information content to delete or avoid: `N/A` placeholders for nonexistent documents, text duplicated from DESIGN / frontmatter / global regulations, and long directory / API / command catalogs
+11. For each structure-related item, whether it is a current fact, a durable target constraint, or a temporary plan
 
 When updating an existing `AGENTS.md`, rules and specifications are immutable after initial creation. Any addition, modification, or deletion must first appear as a proposal in the plan and can only be executed after explicit user confirmation.
+
+For a small update to an existing `AGENTS.md` (no frontmatter change, no target-path change, no scope change, and only 1-2 sections adjusted), the plan may be compressed to: target file, affected sections, preserved rules, proposed additions / deletions / merges, confirmation that `User-Supplied Rules` stay unchanged, and the structure-item classification above.
 
 **Output**: Change plan waiting for user confirmation.
 
@@ -107,6 +110,7 @@ When updating an existing `AGENTS.md`, rules and specifications are immutable af
 - [ ] Nonexistent canonical documents are not written as `N/A` placeholders
 - [ ] The body does not repeat DESIGN, frontmatter, or space-wide regulations
 - [ ] The architecture section has no architecture diagram, API catalog, command catalog, or directory encyclopedia
+- [ ] The architecture directory table lists only paths that currently exist; durable target-structure constraints are not presented as current facts
 - [ ] Project-level documents reference subdirectory `AGENTS.md` files instead of copying their details
 - [ ] The document targets 80-150 lines and stays under the 300-line hard limit
 - [ ] Basic development / testing commands are preserved
@@ -114,7 +118,7 @@ When updating an existing `AGENTS.md`, rules and specifications are immutable af
 - [ ] If the user's preferred language is not English, the user-preferred language version was generated first
 - [ ] Canonical documents are referenced instead of copied
 - [ ] No rules were extracted from `BUSINESS_RULES.md` into the body
-- [ ] Testing section includes a TDD requirement
+- [ ] Testing section includes a TDD requirement and identifies which logic must be automated vs which boundaries require manual verification only
 - [ ] User-preferred language version follows the AGENTS template headings and does not translate template-defined English section headings
 - [ ] `User-Supplied Rules` remained unchanged: no additions, modifications, deletions, or reordering (original specification migrations excepted)
 - [ ] All non-obsolete original rules were preserved: rules fitting sections 1-5 placed there, remaining rules moved verbatim to section 6; any deleted rule has explicit justification in the plan

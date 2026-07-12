@@ -73,7 +73,7 @@ wopal_task({
 ```
 
 - Asynchronous and non-blocking; the main session does not wait and can launch multiple tasks
-- Concurrency limit: at most 3 tasks in parallel; additional tasks are queued automatically
+- Concurrency limit: configurable via the wopal plugin; additional tasks queue automatically
 - TTL: auto-cleanup after 30 minutes with no interaction
 
 ### wopal_task_output — inspect status and output
@@ -271,7 +271,7 @@ When multiple agents run in parallel, the file list returned by `output` may inc
 
 | Limit | Response |
 |------|------|
-| Max concurrency is 3 | Additional tasks queue automatically |
+| Concurrency is plugin-configurable | Additional tasks queue automatically |
 | TTL is 30 minutes | Unhandled tasks are auto-cleaned after notification |
 
 ---
