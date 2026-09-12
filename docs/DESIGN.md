@@ -2,8 +2,8 @@
 
 > **Status**: Active
 > **Updated**: 2026-07-31
-> **Parent Architecture**: `docs/products/wopal-space/DESIGN-wopalspace.md`
-> **Parent Product**: `docs/products/wopal-space/PRD-wopalspace.md`
+> **Parent Architecture**: `docs/products/wopal-space/DESIGN.md`
+> **Parent Product**: `docs/products/wopal-space/PRD.md`
 
 ---
 ## 1. Project Role

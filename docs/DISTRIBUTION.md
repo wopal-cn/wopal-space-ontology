@@ -2,7 +2,7 @@
 
 > **Status**: Active
 > **Updated**: 2026-07-05
-> **Parent Architecture**: `../../docs/products/wopal-space/DESIGN-wopalspace.md`
+> **Parent Architecture**: `../../docs/products/wopal-space/DESIGN.md`
 > **Project Design**: `./DESIGN.md`
 
 ---
@@ -145,7 +145,7 @@ ontology 被 materialize 后，ellamaka 在 wopal-space mode 下负责运行时�
 | Document | Purpose |
 |---|---|
 | `../../docs/products/wopal-space/DESIGN-distribution.md` | 产品级分发总设计：R2 架构、缓存策略、完整性模型 |
-| `../../docs/products/wopal-space/DESIGN-wopalspace.md` | 产品级架构与版本体系 |
+| `../../docs/products/wopal-space/DESIGN.md` | 产品级架构与版本体系 |
 | `./DESIGN.md` | ontology 的能力边界、模板、命令、规则与 runtime 维护设计 |
 | `../../projects/wopal-cli/docs/DESIGN.md` | CLI 的 deterministic init 与 runtime handoff 设计 |
 | `../../projects/wopal-cli/docs/DISTRIBUTION.md` | CLI 对 ontology materialization 的消费契约 |
