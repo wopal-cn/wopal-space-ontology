@@ -150,4 +150,4 @@ ontology 被 materialize 后，ellamaka 在 wopal-space mode 下负责运行时�
 | `../../projects/wopal-cli/docs/DESIGN.md` | CLI 的 deterministic init 与 runtime handoff 设计 |
 | `../../projects/wopal-cli/docs/DISTRIBUTION.md` | CLI 对 ontology materialization 的消费契约 |
 | `../../projects/ellamaka/docs/DESIGN.md` | ellamaka 的 wopal-space mode 与 runtime loading 设计 |
-| `../../projects/ellamaka/docs/DISTRIBUTION.md` | ellamaka 对 ontology runtime loading 的消费契约 |
+| `../../projects/ellamaka/docs/DESIGN-distribution.md` | ellamaka 对 ontology runtime loading 的消费契约 |
