@@ -139,7 +139,7 @@ Agent 定位 Issue 的顺序：已知编号 → `issue view`；需要浏览/筛�
 
 ```bash
 # 创建
-flow.sh plan new <issue>                # 从 Issue 创建
+flow.sh plan new <issue> --type <type> --scope <scope> --slug <slug>  # 从 Issue 创建
 flow.sh plan new --title "..." --project <name> --type <type>  # 无 Issue 创建
 # 阶段关联：默认继承 Issue body 的 Product/Phase；--product <name> --phase <id> 可覆盖（须成对，缺一报错；无关联时两项均留空）
 
@@ -157,10 +157,14 @@ flow.sh plan check <plan-name-or-path>  # 校验 Plan 质量（Issue 号 / Plan 
 ### sync
 
 ```bash
-flow.sh sync <issue>           # 全量同步（body + labels）
-flow.sh sync <issue> --body-only    # 仅 body
-flow.sh sync <issue> --labels-only  # 仅 labels
+flow.sh sync <issue>           # 全量同步（三章节 + | Plan | 链接行 + labels）
+flow.sh sync <issue> --body-only    # 仅 body（三章节 + | Plan | 链接行）
+flow.sh sync <issue> --labels-only  # 仅 labels（不触碰 body）
 ```
+
+**同步内容**：body 侧 = 三章节（`## Goal` / `## Scope` / `## Acceptance Criteria`）外科式替换 + `## Related Resources` 的 `| Plan |` 链接行更新；三章节与链接行之外的 Issue body 内容（`## Context`、`## Goal` 前元信息行、`## Depends on` / `## Demo`、其它表格行等）逐字保留，不重写、不规范化。详见 `references/issue-guide.md`。
+
+**自动同步时点**：`approve` / `complete` / `verify` / `archive` 状态推进时自动执行同一同步（与手动命令同一实现，内容同为三章节 + 链接行）；归档后另有一次链接行刷新，将 `| Plan |` 行指向归档后的 Plan 路径。
 
 ### submit
 

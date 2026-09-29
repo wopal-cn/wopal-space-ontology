@@ -7,7 +7,7 @@
 #             set_plan_field, get_plan_worktree, set_plan_worktree
 #   Project:  resolve_project_repo, resolve_project_path, ProjectType
 #   Naming:   validate_plan_name, make_plan_name
-#   Body:     build_issue_body_from_plan, build_plan_link_for_issue
+#   Body:     build_plan_link_for_issue
 #   Find:     find_plan, find_plan_by_name, find_plan_by_issue
 #   Link:     update_issue_plan_link
 
@@ -25,6 +25,7 @@ from lib.git import get_current_branch
 from lib.project import resolve_plan_location, build_plan_blob_url
 from lib import project as _project_resolver
 from labels import normalize_plan_type
+from issue import replace_plan_row_in_body
 
 
 # ============================================
@@ -329,94 +330,6 @@ def make_plan_name(
 # Body (from body.py)
 # ============================================
 
-def _extract_plan_section(plan_file: str, section: str, limit: int = 0) -> str:
-    """Extract a markdown section body from a plan file.
-    
-    Handles fenced code blocks — only matches ## headings outside code blocks.
-    """
-    content = []
-    in_code = False
-    found = False
-    count = 0
-    
-    with open(plan_file, 'r') as f:
-        for line in f:
-            if line.strip().startswith('```'):
-                in_code = not in_code
-                continue
-            
-            if not in_code and line.strip() == f"## {section}":
-                found = True
-                continue
-            
-            if found and not in_code and line.startswith("##") and not line.startswith(f"## {section}"):
-                break
-            
-            if found and not in_code:
-                content.append(line)
-                count += 1
-                if limit > 0 and count >= limit:
-                    break
-    
-    return ''.join(content).strip()
-
-
-def _extract_subsection(plan_file: str, subsection: str) -> str:
-    """Extract a named subsection from a section."""
-    content = []
-    in_subsection = False
-    
-    with open(plan_file, 'r') as f:
-        for line in f:
-            if line.strip() == f"### {subsection}":
-                in_subsection = True
-                continue
-            
-            if in_subsection and (line.startswith("###") or (line.startswith("##") and not line.startswith("###"))):
-                break
-            
-            if in_subsection:
-                content.append(line)
-    
-    return ''.join(content).strip()
-
-
-def _extract_acceptance_criteria(plan_file: str) -> str:
-    """Extract Acceptance Criteria section (including Agent/User sub-sections).
-    
-    Converts numbered checkboxes (1. [ ]) to GitHub-compatible format (- [ ]).
-    """
-    content = []
-    in_section = False
-    
-    with open(plan_file, 'r') as f:
-        for line in f:
-            if line.strip() == "## Acceptance Criteria":
-                in_section = True
-                continue
-            
-            if in_section and line.startswith("## ") and not line.startswith("## Acceptance Criteria"):
-                break
-            
-            if in_section:
-                content.append(line)
-    
-    raw_content = ''.join(content).strip()
-    
-    converted = re.sub(r'^(\s*)(\d+)\.\s+\[\s*\]', r'\1- [ ]', raw_content, flags=re.MULTILINE)
-    converted = re.sub(r'^(\s*)(\d+)\.\s+\[x\]', r'\1- [x]', converted, flags=re.MULTILINE)
-    
-    return converted
-
-
-def _render_issue_section(heading: str, content: str, placeholder: str = "") -> str:
-    """Render a markdown section with heading."""
-    if not content:
-        content = placeholder
-    
-    return f"## {heading}\n\n{content}\n"
-
-
 def build_plan_link_for_issue(plan_file: str, plan_name: str, repo: str, workspace_root: str = None) -> str:
     """Build Plan link row for Issue's Related Resources table.
     
@@ -440,11 +353,6 @@ def build_plan_link_for_issue(plan_file: str, plan_name: str, repo: str, workspa
         github_url = ""
     
     return f"| Plan | [{plan_name}]({github_url}) |"
-
-
-def build_issue_body_from_plan(plan_file: str, plan_name: str, repo: str, workspace_root: str = None) -> str:
-    """Build Plan link for Issue body (delegates to build_plan_link_for_issue)."""
-    return build_plan_link_for_issue(plan_file, plan_name, repo, workspace_root)
 
 
 # ============================================
@@ -541,24 +449,16 @@ def update_issue_plan_link(issue_number: int, plan_file: str, repo: str, workspa
                 text=True,
                 check=True
             )
-            current_body = result.stdout
+            # `gh --jq` appends one trailing newline; strip exactly that one so
+            # the row rewrite preserves the body's real trailing bytes.
+            current_body = result.stdout[:-1] if result.stdout.endswith("\n") else result.stdout
         except (subprocess.CalledProcessError, FileNotFoundError):
             print("Warning: gh CLI not available, skipping Plan link update")
             return
     
-    # Update Plan link in Related Resources table
-    new_body = re.sub(
-        rf'\[{re.escape(plan_name)}\]\([^)]*\)',
-        f'[{plan_name}]({blob_url})',
-        current_body
-    )
-    
-    if new_body == current_body:
-        new_body = re.sub(
-            r'(\| Plan \| \[)[^]]+\]\([^)]*\)',
-            f'| Plan | [{plan_name}]({blob_url})',
-            current_body
-        )
+    # Update the Plan row through the single row-replacement primitive
+    new_body = replace_plan_row_in_body(
+        current_body, f"| Plan | [{plan_name}]({blob_url}) |")
     
     # Update Issue
     edit_args_file = state_dir / 'edit-args.txt'

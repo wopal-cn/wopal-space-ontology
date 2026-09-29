@@ -87,11 +87,18 @@ Issue 标题是**自由文本**，不再强制 `type(scope): description` 格式
 
 只要 Plan 中实际映射到 issue body 的章节发生变化，**必须立即同步**，不应反问用户是否要同步。
 
-**映射关系**：
+**同步内容 = 三章节 + 链接行**。映射关系（只替换章节正文，标题行不动）：
 - Plan `Goal` → Issue `## Goal`
-- Plan `In Scope` / `Out of Scope` → Issue `## Scope`
-- Plan `Acceptance Criteria` → Issue `## Acceptance Criteria`
-- Plan `Related Resources` → Issue `## Related Resources`
+- Plan `In Scope` / `Out of Scope` → Issue `## Scope`（规范渲染为 `### In` + `### Out` 两个子节）
+- Plan `Acceptance Criteria` → Issue `## Acceptance Criteria`（保留 `### Agent Verification` / `### User Validation` 子节；编号式 checkbox 转为 `- [ ]` / `- [x]`）
+
+**链接行**：Issue `## Related Resources` 中的 `| Plan |` 行由同步自动更新（Plan 未批准时为 `| Plan | _待关联_ |`），不来自 Plan 章节映射；行更新仅发生在该章节内，章节缺失时沿用既有兜底追加行为。
+
+**保全承诺**：三章节与链接行之外的内容逐字保留——包括 `## Context`、`## Goal` 前的元信息行、`## Depends on` / `## Demo`、其它表格行等一切非映射内容；同步不做重写、不规范化。
+
+**缺节与 legacy 兜底**：
+- 目标章节在 Issue 中缺失 → 跳过该目标并告警（非致命），其余目标照常同步；不插入缺失章节。
+- Issue 无规范 `## Scope`、但存在 legacy 顶层 `## In Scope` / `## Out of Scope` → 就地更新这两个章节的正文，保留原标题，不做结构重写。
 
 **不需要同步的章节**：`Implementation`、`Technical Context`、`Delegation Strategy` 等仅存在于 Plan 的章节。
 

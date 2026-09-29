@@ -7,12 +7,18 @@
 #   - --confirm from executing/verifying/done status: blocked
 #   - No target: error message
 #   - Parser registration
+#   - Transaction artifacts (real Plan file + real git repos): field rollback
+#     on worktree/commit failure, rollback commit, retry, and the approval
+#     commit carrying the real Base Commit with no uncommitted residue
 
-import unittest
+import subprocess
 import sys
+import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 from argparse import Namespace
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from support.bootstrap import ensure_scripts_path
@@ -81,30 +87,6 @@ class TestApproveNoConfirm(unittest.TestCase):
         )
 
 
-class TestApproveConfirmFromPlanning(unittest.TestCase):
-    """Test approve --confirm from planning status proceeds."""
-
-    def test_approve_confirm_from_planning_proceeds(self):
-        from commands.approve import cmd_approve
-        mocks = _make_approve_mocks(status="planning")
-        with patch.multiple("commands.approve", **mocks):
-            args = Namespace(target="42", confirm=True, no_worktree=True)
-            result = cmd_approve(args)
-            self.assertEqual(result, 0)
-
-
-class TestApproveConfirmFromReviewing(unittest.TestCase):
-    """Test approve --confirm from reviewing status proceeds."""
-
-    def test_approve_confirm_from_reviewing_proceeds(self):
-        from commands.approve import cmd_approve
-        mocks = _make_approve_mocks(status="reviewing")
-        with patch.multiple("commands.approve", **mocks):
-            args = Namespace(target="42", confirm=True, no_worktree=True)
-            result = cmd_approve(args)
-            self.assertEqual(result, 0)
-
-
 class TestApproveBlockedStatus(unittest.TestCase):
     """Test approve --confirm blocked by wrong status."""
 
@@ -134,36 +116,6 @@ class TestApproveBlockedStatus(unittest.TestCase):
         args = Namespace(target="42", confirm=True, no_worktree=False)
         result = cmd_approve(args)
         self.assertEqual(result, 1)
-
-
-class TestApproveRecordsBaseCommit(unittest.TestCase):
-    """approve --confirm 应记录 Base Commit(集成分支 HEAD)到 Plan metadata。"""
-
-    def test_approve_writes_base_commit(self):
-        from commands.approve import cmd_approve
-        mocks = _make_approve_mocks(status="reviewing")
-        with patch.multiple("commands.approve", **mocks):
-            args = Namespace(target="42", confirm=True, no_worktree=True)
-            result = cmd_approve(args)
-            mocks["set_plan_field"].assert_any_call(
-                "/ws/.wopal-space/plans/space-ontology/42-fix-test.md",
-                "Base Commit",
-                "abc123def",
-            )
-        self.assertEqual(result, 0)
-
-    def test_base_commit_uses_integration_branch_head(self):
-        """Base Commit 应取集成分支 HEAD(standard: main)。"""
-        from commands.approve import cmd_approve
-        mocks = _make_approve_mocks(status="reviewing")
-        with patch.multiple("commands.approve", **mocks):
-            args = Namespace(target="42", confirm=True, no_worktree=True)
-            result = cmd_approve(args)
-            mocks["get_branch_head"].assert_any_call(
-                str(mocks["resolve_project_path"].return_value),
-                "main",
-            )
-        self.assertEqual(result, 0)
 
 
 class TestApproveBranchDerivation(unittest.TestCase):
@@ -234,39 +186,6 @@ class TestRegisterApproveParser(unittest.TestCase):
 class TestApproveExistingWorktree(unittest.TestCase):
     """Test approve with --existing-worktree option (evolution mode)."""
 
-    def test_existing_worktree_binds_branch_and_records_worktree_head_as_base_commit(self):
-        """--existing-worktree 应绑定已有 worktree 分支，并将 Base Commit 记录为该分支 HEAD。"""
-        from commands.approve import cmd_approve
-        mocks = _make_approve_mocks(status="reviewing")
-        mocks["get_branch_head"] = MagicMock(return_value="wt_head_sha_999")
-        mocks["get_current_branch"] = MagicMock(return_value="feature/existing-branch")
-        mocks["get_common_git_dir"] = MagicMock(return_value="/ws/.git")
-        mocks["_has_unmerged_files"] = MagicMock(return_value=False)
-
-        with patch.multiple("commands.approve", **mocks):
-            with patch("commands.approve.Path.exists", return_value=True), \
-                 patch("commands.approve.Path.is_dir", return_value=True), \
-                 patch("commands.approve.Path.resolve", side_effect=lambda p: p):
-                args = Namespace(
-                    target="42",
-                    confirm=True,
-                    no_worktree=False,
-                    existing_worktree=".worktrees/ellamaka-feature-existing",
-                )
-                result = cmd_approve(args)
-
-        self.assertEqual(result, 0)
-        mocks["write_worktree_context"].assert_called_once_with(
-            "/ws/.wopal-space/plans/space-ontology/42-fix-test.md",
-            "feature/existing-branch",
-            ".worktrees/ellamaka-feature-existing",
-        )
-        mocks["set_plan_field"].assert_any_call(
-            "/ws/.wopal-space/plans/space-ontology/42-fix-test.md",
-            "Base Commit",
-            "wt_head_sha_999",
-        )
-
     def test_existing_worktree_rejects_unrelated_repo(self):
         """--existing-worktree 传入不属于本项目的其他 Git 仓库时报错拒绝。"""
         from commands.approve import cmd_approve
@@ -318,6 +237,249 @@ class TestApproveExistingWorktree(unittest.TestCase):
                 )
                 result = cmd_approve(args)
         self.assertEqual(result, 1)
+
+
+# ============================================
+# Transaction artifact tests (real Plan file + real git repos)
+# ============================================
+#
+# approve writes Plan fields (Status, Worktree metadata, Base Commit), commits
+# them, then creates the worktree. These tests run the real command against a
+# temp workspace — a git space repo holding a recorded Plan fixture, a temp
+# project repo and a bare origin — and assert at the file/commit artifact
+# level. Only workspace/repo detection, the check-doc gate (fixture 106
+# predates the current checker) and Issue sync (network) are mocked.
+
+FIXTURE_PLAN = (
+    Path(__file__).resolve().parents[2]
+    / "fixtures" / "plans" / "106-fix-dev-flow-valid-issue-plan.md"
+)
+
+# templates/plan.md metadata line; fixture 106 predates it, so the derived
+# input inserts it verbatim after Status (documented derivation — the rest of
+# the recorded sample stays untouched).
+BASE_COMMIT_PLACEHOLDER = (
+    "- **Base Commit**: (approve 时自动记录实施基线,集成分支 HEAD)"
+)
+
+PLAN_NAME = "106-fix-dev-flow-valid-issue-plan"
+PLAN_REL = f".wopal-space/plans/ontology/{PLAN_NAME}.md"
+WORKTREE_BRANCH = f"ontology-{PLAN_NAME}"
+
+
+def _git(*args, cwd, check=True):
+    result = subprocess.run(
+        ["git", *args], cwd=str(cwd), capture_output=True, text=True
+    )
+    if check:
+        assert result.returncode == 0, f"git {args} failed: {result.stderr}"
+    return result
+
+
+def _init_repo(path):
+    path.mkdir(parents=True, exist_ok=True)
+    _git("init", "-b", "main", cwd=path)
+    _git("config", "user.email", "test@test.com", cwd=path)
+    _git("config", "user.name", "Test", cwd=path)
+    (path / "README.md").write_text("# init\n")
+    _git("add", "README.md", cwd=path)
+    _git("commit", "-m", "init", cwd=path)
+
+
+def _make_workspace(tmp_path, status="reviewing", create_project=True):
+    """Temp space workspace: ws repo + bare origin + project repo + Plan.
+
+    Plan content derives from the recorded fixture
+    tests/fixtures/plans/106-fix-dev-flow-valid-issue-plan.md: Status is set
+    to the requested value and the template's Base Commit placeholder line is
+    inserted after it.
+    """
+    ws = tmp_path / "ws"
+    _init_repo(ws)
+    origin = tmp_path / "ws-origin.git"
+    _git("init", "--bare", "-b", "main", str(origin), cwd=tmp_path)
+    _git("remote", "add", "origin", str(origin), cwd=ws)
+
+    if create_project:
+        _init_repo(ws / "projects" / "ontology")
+
+    plan_text = FIXTURE_PLAN.read_text().replace(
+        "- **Status**: planning",
+        f"- **Status**: {status}\n{BASE_COMMIT_PLACEHOLDER}",
+    )
+    plan = ws / PLAN_REL
+    plan.parent.mkdir(parents=True)
+    plan.write_text(plan_text)
+    _git("add", PLAN_REL, cwd=ws)
+    _git("commit", "-m", "add plan", cwd=ws)
+    _git("push", "-u", "origin", "main", cwd=ws)
+    _git("remote", "set-head", "origin", "main", cwd=ws)
+    return ws, plan
+
+
+def _run_approve(ws, *, no_worktree=False, existing_worktree=None):
+    """Run cmd_approve with only the I/O boundary mocked.
+
+    Returns (exit_code, log_error mock) so callers can assert the
+    user-visible messaging.
+    """
+    from commands.approve import cmd_approve
+
+    log_error = MagicMock()
+    with patch.multiple(
+        "commands.approve",
+        find_workspace_root=MagicMock(return_value=ws),
+        detect_space_repo=MagicMock(return_value="test/space"),
+        check_doc_plan=MagicMock(return_value=None),
+        sync_status_label=MagicMock(),
+        sync_plan_to_issue_body=MagicMock(),
+        ensure_issue_labels=MagicMock(),
+        log_error=log_error,
+    ):
+        args = Namespace(
+            target="106",
+            confirm=True,
+            no_worktree=no_worktree,
+            existing_worktree=existing_worktree,
+        )
+        result = cmd_approve(args)
+    return result, log_error
+
+
+def _error_log_text(log_error):
+    return "\n".join(str(call.args[0]) for call in log_error.call_args_list)
+
+
+class TestApproveRollback:
+    """Failure after state fields are written rolls the Plan back to the
+    pre-approval field shape (proposal D-07)."""
+
+    @pytest.mark.parametrize("failure", ["blocking-file", "missing-project"])
+    def test_worktree_failure_rolls_back_plan_fields(self, tmp_path, failure):
+        ws, plan = _make_workspace(
+            tmp_path, create_project=(failure != "missing-project")
+        )
+        original = plan.read_text()
+
+        if failure == "blocking-file":
+            # A file on the worktree path makes `git worktree add` fail (the
+            # approve-probe failure shape).
+            blocked = ws / ".worktrees" / WORKTREE_BRANCH
+            blocked.parent.mkdir(parents=True)
+            blocked.write_text("")
+
+        result, log_error = _run_approve(ws)
+
+        assert result == 1
+        # Status / Worktree / Base Commit rolled back to the prior values.
+        assert plan.read_text() == original
+        # The approval commit landed first; a rollback commit reverses it.
+        subjects = _git("log", "--format=%s", cwd=ws).stdout.splitlines()
+        assert "rollback" in subjects[0]
+        assert "approve" in subjects[1]
+        assert _git("show", f"HEAD:{PLAN_REL}", cwd=ws).stdout == original
+        assert "executing" in _git("show", f"HEAD~1:{PLAN_REL}", cwd=ws).stdout
+        assert _git("status", "--porcelain", "--", PLAN_REL, cwd=ws).stdout == ""
+        # Truthful messaging: rolled back, not executing, real state value.
+        text = _error_log_text(log_error)
+        assert "已回滚" in text
+        assert "未进入 executing" in text
+        assert "reviewing" in text
+
+    def test_retry_after_worktree_failure_succeeds(self, tmp_path):
+        """A failed approve leaves the Plan retryable (exit 1 + rollback)."""
+        ws, plan = _make_workspace(tmp_path)
+        blocked = ws / ".worktrees" / WORKTREE_BRANCH
+        blocked.parent.mkdir(parents=True)
+        blocked.write_text("")
+
+        first, _ = _run_approve(ws)
+        assert first == 1
+
+        blocked.unlink()
+        second, _ = _run_approve(ws)
+
+        assert second == 0
+        assert "- **Status**: executing" in plan.read_text()
+        assert (ws / ".worktrees" / WORKTREE_BRANCH).is_dir()
+        subjects = _git("log", "--format=%s", cwd=ws).stdout.splitlines()
+        assert subjects[0].startswith("docs(plan): approve plan #106")
+
+    def test_commit_failure_rolls_back_plan_fields(self, tmp_path):
+        """Approval-commit failure restores the pre-approval field shape —
+        worktree and index — and leaves no half-committed lifecycle behind
+        (proposal D-07)."""
+        ws, plan = _make_workspace(tmp_path)
+        original = plan.read_text()
+        head_before = _git("rev-parse", "HEAD", cwd=ws).stdout.strip()
+
+        hook = ws / ".git" / "hooks" / "pre-commit"
+        hook.write_text("#!/bin/sh\nexit 1\n")
+        hook.chmod(0o755)
+
+        result, log_error = _run_approve(ws, no_worktree=True)
+
+        assert result == 1
+        assert plan.read_text() == original
+        assert BASE_COMMIT_PLACEHOLDER in plan.read_text()
+        # No commit was created: nothing half-committed.
+        assert _git("rev-parse", "HEAD", cwd=ws).stdout.strip() == head_before
+        # Index and worktree both back to the pre-approval shape: the failed
+        # approval's staging is reset as well (no half-committed residue).
+        assert _git("status", "--porcelain", "--", PLAN_REL, cwd=ws).stdout == ""
+        assert "已回滚" in _error_log_text(log_error)
+
+
+class TestApproveSuccessArtifacts:
+    """Successful approve: the state-transition commit carries the real Base
+    Commit and no uncommitted residue remains (proposal D-08)."""
+
+    @pytest.mark.parametrize(
+        "status,no_worktree",
+        [("planning", True), ("reviewing", True), ("reviewing", False)],
+    )
+    def test_commit_contains_real_base_commit(self, tmp_path, status, no_worktree):
+        ws, plan = _make_workspace(tmp_path, status=status)
+
+        result, _ = _run_approve(ws, no_worktree=no_worktree)
+
+        assert result == 0
+        main_head = _git(
+            "rev-parse", "main", cwd=ws / "projects" / "ontology"
+        ).stdout.strip()
+        committed = _git("show", f"HEAD:{PLAN_REL}", cwd=ws).stdout
+        assert f"- **Base Commit**: {main_head}" in committed
+        assert "- **Status**: executing" in committed
+        assert _git("status", "--porcelain", "--", PLAN_REL, cwd=ws).stdout == ""
+        if no_worktree:
+            assert "- **Worktree**" not in committed
+        else:
+            assert f"  - branch: {WORKTREE_BRANCH}" in committed
+            assert (ws / ".worktrees" / WORKTREE_BRANCH).is_dir()
+
+    def test_existing_worktree_commit_contains_worktree_branch_head(self, tmp_path):
+        """--existing-worktree: Base Commit = that worktree's branch HEAD."""
+        ws, plan = _make_workspace(tmp_path)
+        project = ws / "projects" / "ontology"
+
+        wt = ws / ".worktrees" / "ontology-existing-evo"
+        wt.parent.mkdir(parents=True)
+        _git("worktree", "add", "-b", "ontology-existing-evo", str(wt), cwd=project)
+        (wt / "work.txt").write_text("evolved\n")
+        _git("add", "work.txt", cwd=wt)
+        _git("commit", "-m", "existing evolution work", cwd=wt)
+        wt_head = _git("rev-parse", "HEAD", cwd=wt).stdout.strip()
+
+        result, _ = _run_approve(
+            ws, existing_worktree=".worktrees/ontology-existing-evo"
+        )
+
+        assert result == 0
+        committed = _git("show", f"HEAD:{PLAN_REL}", cwd=ws).stdout
+        assert f"- **Base Commit**: {wt_head}" in committed
+        assert "  - branch: ontology-existing-evo" in committed
+        assert "- **Status**: executing" in committed
+        assert _git("status", "--porcelain", "--", PLAN_REL, cwd=ws).stdout == ""
 
 
 if __name__ == "__main__":

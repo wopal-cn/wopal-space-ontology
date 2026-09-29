@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
-# test_sync_preserves_context.py - Test sync_plan_to_issue preserves Context
+# test_sync_preserves_context.py - Manual sync path (commands.sync) contract
 #
-# Test Case: sync only updates Plan link, does not overwrite Context
+# The manual command delegates to issue.sync_plan_to_issue_body (the single
+# body-sync implementation); these tests pin the adapter behavior: exit codes
+# and the resulting Issue body (three mapped sections + Plan row, with
+# non-mapped content preserved).
+#
+# Fixtures are recorded real samples; see tests/fixtures/sync-sample/SOURCES.md.
 #
 # Scenarios:
-#   1. Plan link updated, Context content preserved
-#   2. Plan link appended when no Related Resources section exists
+#   1. Sync applies the three-section sync + Plan row via the unified
+#      implementation, preserving non-mapped content
+#   2. Plan file missing -> exit code 1
+#   3. gh CLI unavailable -> exit code 0, no Issue write
+#   4. Editing sync preserves the stored body's trailing newlines (the
+#      `gh --jq .body` trailing newline must not be written back)
 
-import unittest
 import sys
-import os
-import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -19,88 +25,120 @@ from support.bootstrap import ensure_scripts_path
 ensure_scripts_path()
 
 from commands.sync import sync_plan_to_issue
+from lib.project import PlanLocation
 
 
-class TestSyncPreservesContext(unittest.TestCase):
-    """Test sync_plan_to_issue preserves Context section"""
+FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "sync-sample"
+SAMPLE_PLAN = FIXTURES / "plan-240.md"
+LEGACY_ISSUE = FIXTURES / "issue-123-legacy.md"
 
-    def _create_plan_file(self, content: str) -> str:
-        """Create a temp plan file and return its path."""
-        f = tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False)
-        f.write(content)
-        f.close()
-        return f.name
 
-    def test_sync_updates_plan_link_preserves_context(self):
-        """sync replaces Plan row but preserves Context section"""
-        plan_content = (
-            "# Plan\n\n"
-            "- **Status**: executing\n"
-            "- **Issue**: #42\n"
-            "- **Target Project**: ontology\n"
+def test_sync_applies_sections_and_row_through_unified_implementation(tmp_path):
+    plan_file = tmp_path / "plan-240.md"
+    plan_file.write_text(SAMPLE_PLAN.read_text())
+
+    full_body = LEGACY_ISSUE.read_text()
+    edited_bodies = []
+
+    def fake_gh(cmd, **kwargs):
+        if cmd[:2] == ["gh", "--version"]:
+            return MagicMock(returncode=0)
+        if cmd[:3] == ["gh", "issue", "view"]:
+            return MagicMock(returncode=0, stdout=full_body)
+        if cmd[:3] == ["gh", "issue", "edit"]:
+            edited_bodies.append(cmd[cmd.index("--body") + 1])
+            return MagicMock(returncode=0)
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    with patch("subprocess.run", side_effect=fake_gh), \
+         patch("commands.sync.shutil.which", return_value=True), \
+         patch("commands.sync.find_workspace_root", return_value=str(tmp_path)), \
+         patch("plan.resolve_plan_location") as mock_loc:
+        mock_loc.return_value = PlanLocation(
+            path=plan_file.resolve(),
+            repo_root=tmp_path.resolve(),
+            repo_relative_path=".wopal-space/plans/wopal-cli/done/plan-240.md",
+            github_repo="sampx/wopal-space",
+            branch="main",
+            is_archived=True,
         )
-        plan_file = self._create_plan_file(plan_content)
+        rc = sync_plan_to_issue("123", str(plan_file), "sampx/wopal-space")
 
-        try:
-            original_body = (
-                "## Context\n\n"
-                "Agent research notes\n\n"
-                "## Related Resources\n\n"
-                "| Plan | old_link |"
-            )
+    assert rc == 0
+    assert len(edited_bodies) == 1
+    body = edited_bodies[0]
 
-            with patch('commands.sync.get_issue_info') as mock_get:
-                mock_get.return_value = {"body": original_body}
-                with patch('commands.sync._build_plan_link') as mock_build:
-                    mock_build.return_value = "| Plan | [new-plan](http://new) |"
-                    with patch('commands.sync.subprocess.run') as mock_run:
-                        mock_run.return_value = MagicMock(returncode=0)
-                        with patch('commands.sync.shutil.which', return_value=True):
-                            with patch('commands.sync.find_workspace_root', return_value='/fake'):
-                                rc = sync_plan_to_issue("42", plan_file, "test/repo")
-                                self.assertEqual(rc, 0)
+    # Goal / Acceptance Criteria synced from the Plan
+    assert "另放宽 `archive` 预检" in body
+    assert "### Agent Verification" in body
+    # Legacy top-level In/Out sections updated in place from the Plan
+    assert "## In Scope\n\n- 记录保全：" in body
+    assert "## Out of Scope\n\n- ontology-evolution 技能正文" in body
+    # Plan row updated from the pending placeholder
+    assert "| Plan | _待关联_ |" not in body
+    assert (
+        "| Plan | [plan-240](https://github.com/sampx/wopal-space/blob/main/"
+        ".wopal-space/plans/wopal-cli/done/plan-240.md) |"
+    ) in body
+    # Non-mapped content preserved
+    assert "## Background" in body
+    assert "当前 WSF 模板中的说明文字是英文" in body
 
-                                # Verify body passed to gh issue edit
-                                call_args = mock_run.call_args[0][0]
-                                body = call_args[call_args.index('--body') + 1]
-                                self.assertIn("Agent research notes", body)
-                                self.assertIn("[new-plan](http://new)", body)
-                                self.assertNotIn("old_link", body)
-        finally:
-            os.unlink(plan_file)
 
-    def test_sync_appends_plan_link_if_missing(self):
-        """sync appends Plan link when no Related Resources section exists"""
-        plan_content = (
-            "# Plan\n\n"
-            "- **Status**: executing\n"
-            "- **Issue**: #42\n"
-            "- **Target Project**: ontology\n"
+def test_edit_preserves_trailing_newlines_of_the_stored_body(tmp_path):
+    """A real `gh --jq .body` read appends one trailing newline; the sync must
+    not write it back — a stored body ending with N newlines stays at N after
+    an editing sync (previously each real edit grew the tail by one)."""
+    plan_file = tmp_path / "plan-240.md"
+    plan_file.write_text(SAMPLE_PLAN.read_text())
+
+    stored = LEGACY_ISSUE.read_text()  # sync edits it: legacy In/Out get updated
+    stored_trailing = len(stored) - len(stored.rstrip("\n"))
+    assert stored_trailing > 0  # the recorded sample ends with newline(s)
+
+    edited_bodies = []
+
+    def fake_gh(cmd, **kwargs):
+        if cmd[:2] == ["gh", "--version"]:
+            return MagicMock(returncode=0)
+        if cmd[:3] == ["gh", "issue", "view"]:
+            # real `gh --jq .body` output = stored body + one trailing newline
+            return MagicMock(returncode=0, stdout=stored + "\n")
+        if cmd[:3] == ["gh", "issue", "edit"]:
+            edited_bodies.append(cmd[cmd.index("--body") + 1])
+            return MagicMock(returncode=0)
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    with patch("subprocess.run", side_effect=fake_gh), \
+         patch("commands.sync.shutil.which", return_value=True), \
+         patch("commands.sync.find_workspace_root", return_value=str(tmp_path)), \
+         patch("plan.resolve_plan_location") as mock_loc:
+        mock_loc.return_value = PlanLocation(
+            path=plan_file.resolve(),
+            repo_root=tmp_path.resolve(),
+            repo_relative_path=".wopal-space/plans/wopal-cli/done/plan-240.md",
+            github_repo="sampx/wopal-space",
+            branch="main",
+            is_archived=True,
         )
-        plan_file = self._create_plan_file(plan_content)
+        rc = sync_plan_to_issue("123", str(plan_file), "sampx/wopal-space")
 
-        try:
-            original_body = "## Context\n\nAgent notes\n\nSome other content"
-
-            with patch('commands.sync.get_issue_info') as mock_get:
-                mock_get.return_value = {"body": original_body}
-                with patch('commands.sync._build_plan_link') as mock_build:
-                    mock_build.return_value = "| Plan | [appended-plan](http://appended) |"
-                    with patch('commands.sync.subprocess.run') as mock_run:
-                        mock_run.return_value = MagicMock(returncode=0)
-                        with patch('commands.sync.shutil.which', return_value=True):
-                            with patch('commands.sync.find_workspace_root', return_value='/fake'):
-                                rc = sync_plan_to_issue("42", plan_file, "test/repo")
-                                self.assertEqual(rc, 0)
-
-                                call_args = mock_run.call_args[0][0]
-                                body = call_args[call_args.index('--body') + 1]
-                                self.assertIn("Agent notes", body)
-                                self.assertIn("## Related Resources", body)
-                                self.assertIn("[appended-plan](http://appended)", body)
-        finally:
-            os.unlink(plan_file)
+    assert rc == 0
+    assert len(edited_bodies) == 1
+    edited = edited_bodies[0]
+    # an edit actually happened (legacy In updated from the Plan)
+    assert "## In Scope\n\n- 记录保全：" in edited
+    edited_trailing = len(edited) - len(edited.rstrip("\n"))
+    assert edited_trailing == stored_trailing
 
 
-if __name__ == '__main__':
-    unittest.main()
+def test_plan_missing_returns_failure(tmp_path):
+    rc = sync_plan_to_issue("42", str(tmp_path / "missing.md"), "sampx/wopal-space")
+    assert rc == 1
+
+
+def test_gh_unavailable_skips_without_writing():
+    with patch("commands.sync.shutil.which", return_value=False), \
+         patch("subprocess.run", side_effect=AssertionError("gh must not be invoked")):
+        rc = sync_plan_to_issue("42", str(SAMPLE_PLAN), "sampx/wopal-space")
+    assert rc == 0

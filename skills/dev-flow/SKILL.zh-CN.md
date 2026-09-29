@@ -78,7 +78,7 @@ Plan 有两类读者：**评审的人**（要能看懂你要什么）和**实施
 | `issue delete <issue>` | 删除 Issue | 自动定位空间仓库 |
 | `issue list [--project X] [--status Y] [--limit N]` | 列出空间仓库未完成 Issue | 自动检测仓库，显示 repo URL，可按 project/status 过滤 |
 | `issue view <issue> [--json]` | 查看单个 Issue 内容 | 已知编号时直接查看，无需先 list；`--json` 输出原始 JSON |
-| `sync <plan> [--body-only\|--labels-only]` | Plan → Issue 同步 | Plan 内容变更后必走 |
+| `sync <plan> [--body-only\|--labels-only]` | Plan → Issue 同步 | 三章节（Goal/Scope/AC）+ `\| Plan \|` 链接行；Plan 内容变更后必走 |
 
 ### 其他
 
@@ -214,7 +214,7 @@ Agent 可以执行验证动作、展示结果，但必须等用户明确确认�
 ### A. Planning
 
 ```bash
-flow.sh plan new <issue> --type <type> --slug <slug>  # Issue 驱动（三项必填，显式指定）
+flow.sh plan new <issue> --type <type> --scope <scope> --slug <slug>  # Issue 驱动（三个旗标必填，显式指定）
 flow.sh plan new --title "..." --project <name> --type <type>  # 无 Issue
 ```
 
@@ -227,7 +227,7 @@ flow.sh plan new --title "..." --project <name> --type <type>  # 无 Issue
 ### B. Plan 审查与提交
 
 ```bash
-flow.sh sync <issue> --body-only    # 同步 Issue body（变更目标和范围必须）
+flow.sh sync <issue> --body-only    # 同步三章节（Goal/Scope/AC）+ | Plan | 链接行（Plan 内容变更后必须）
 ```
 
 1. `flow.sh submit <issue>`（planning → reviewing；内置 `plan check` 校验，不委派 rook 审 Plan）
@@ -286,7 +286,7 @@ flow.sh sync <issue> --body-only    # 同步 Issue body（变更目标和范围�
 Plan 处于 `verifying` 时，用户验证过程中**完全可能要求改代码、改 Plan，或两者同时改**——验证本来就是用来暴露问题的，修复它们正是收尾闭环的一部分。此时：
 
 - **改代码**在 feature 分支上进行（no-worktree 模式在集成分支），提交后请用户重新验证。不需要重新走审批，Plan 已经批准过了
-- **改 Plan** 可以动 Implementation、Tasks（为新工作追加 Task）、Acceptance Criteria（为新判据追加 AC）、User Validation 场景。原位编辑；若改动章节会同步到 Issue body，用 `flow.sh sync <plan> --body-only` 同步 Issue。不需要重新 `submit`，也没有二次审批门——状态机停留在 `verifying`，之后由 `flow.sh verify --confirm` 记录终态
+- **改 Plan** 可以动 Implementation、Tasks（为新工作追加 Task）、Acceptance Criteria（为新判据追加 AC）、User Validation 场景。原位编辑；改动映射章节后运行 `flow.sh sync <plan> --body-only`，把三章节（`## Goal` / `## Scope` / `## Acceptance Criteria`）+ `| Plan |` 链接行同步进 Issue，其余内容逐字保留。不需要重新 `submit`，也没有二次审批门——状态机停留在 `verifying`，之后由 `flow.sh verify --confirm` 记录终态
 - **验证阶段新发现的工作与任何工作遵循同样的门禁**：同样按 TDD 纪律实施、实证验证、维持代码与 checkbox 的耦合。覆盖新工作的 AC 在通过时才勾选
 - **`approve` 门禁已经发生过。** 验证阶段授权覆盖已批准范围内的实施与 Plan 编辑。如果用户要求的是实质性扩大 Plan 目标或契约面的变更，明确指出来，由用户决定它属于本 Plan 还是另开新 Plan
 - **永远不要用 reset 去强行重走审批。** `flow.sh reset` 是破坏性操作，仅在用户明确要求时使用——它不是 agent 在验证暴露修复项时"回退重做"的工具。在 `verifying` 状态下原位修复，继续推进

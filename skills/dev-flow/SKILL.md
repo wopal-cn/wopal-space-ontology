@@ -80,7 +80,7 @@ Full parameters and edge cases in `references/commands.md`.
 | `issue delete <issue>` | Delete an Issue | Auto-detects the space repo |
 | `issue list [--project X] [--status Y] [--limit N]` | List open Issues in the space repo | Auto-detects the repo, shows repo URL, filterable |
 | `issue view <issue> [--json]` | View a single Issue | Go straight to it when the number is known; `--json` outputs raw JSON |
-| `sync <plan> [--body-only\|--labels-only]` | Plan → Issue sync | Mandatory after Plan content changes |
+| `sync <plan> [--body-only\|--labels-only]` | Plan → Issue sync | Three sections (Goal/Scope/AC) + `\| Plan \|` link row; mandatory after Plan content changes |
 
 ### Other
 
@@ -216,7 +216,7 @@ Agents may perform validation actions and show results, but must wait for explic
 ### A. Planning
 
 ```bash
-flow.sh plan new <issue> --type <type> --slug <slug>  # Issue-driven (all three required, explicit)
+flow.sh plan new <issue> --type <type> --scope <scope> --slug <slug>  # Issue-driven (all three flags required, explicit)
 flow.sh plan new --title "..." --project <name> --type <type>  # no Issue
 ```
 
@@ -229,7 +229,7 @@ Full command chain: `plan new → submit → approve --confirm → complete → 
 ### B. Plan review and submission
 
 ```bash
-flow.sh sync <issue> --body-only    # sync Issue body (mandatory when goals/scope change)
+flow.sh sync <issue> --body-only    # sync three sections (Goal/Scope/AC) + | Plan | link row (mandatory after Plan content changes)
 ```
 
 1. `flow.sh submit <issue>` (planning → reviewing; built-in `plan check`; no rook for Plans)
@@ -288,7 +288,7 @@ After `complete` the Plan is `verifying`. `complete` prints the validation optio
 While a Plan is `verifying`, the user validates and **may legitimately ask for code changes, Plan changes, or both** — validation exposes problems, and fixing them is the normal closing loop. When that happens:
 
 - **Code changes are made on the feature branch** (or the integration branch in no-worktree mode), committed there, and readied for the user to re-validate. Do not ask for a fresh approval cycle; the Plan is already approved.
-- **Plan changes may touch Implementation, Tasks (add a Task for new work), Acceptance Criteria (add an AC for a new criterion), and User Validation scenarios.** Edit in place, then sync the Issue body (`flow.sh sync <plan> --body-only`) when the changed sections map to the Issue body. There is no re-`submit` and no re-approval gate — the state machine stays in `verifying`; `flow.sh verify --confirm` later records the final state.
+- **Plan changes may touch Implementation, Tasks (add a Task for new work), Acceptance Criteria (add an AC for a new criterion), and User Validation scenarios.** Edit in place; after editing the mapped sections, run `flow.sh sync <plan> --body-only` to sync the three sections (`## Goal` / `## Scope` / `## Acceptance Criteria`) + the `| Plan |` link row into the Issue, preserving everything else. There is no re-`submit` and no re-approval gate — the state machine stays in `verifying`; `flow.sh verify --confirm` later records the final state.
 - **New work discovered during validation follows the same gates as any other work**: implement it with the same TDD discipline, verify it empirically, and keep the code/checkbox coupling intact. The ACs that cover the new work get checked when they pass, not before.
 - **The `approve` gate already happened.** Validation-stage authorization covers implementation and Plan edits inside the approved scope. If the user asks for a change that materially expands the Plan's goal or contract, say so and let them decide whether it belongs in this Plan or a new one.
 - **Never reset the Plan to force a re-approval.** `flow.sh reset` is a destructive operation for explicit user request only — it is not a tool for agents to "go back and redo" when validation surfaces a fix. Fix in place, in `verifying`, and continue.

@@ -9,13 +9,24 @@
 # Flow (--confirm required):
 #   1. Find Plan file (by issue number OR plan name)
 #   2. Run check_doc validation
-#   3. Preflight checks + status transition (reviewing/planning → executing)
-#   4. Issue sync + worktree creation
+#   3. Preflight checks + compute worktree parameters (no Plan writes)
+#   4. Snapshot pre-approval Plan fields (Status / Worktree / Base Commit)
+#   5. Write state fields: Worktree metadata, Status=executing, Base Commit
+#   6. Commit/push the Plan baseline (message prefix "approve")
+#   7. Create the worktree (default; skip with --no-worktree)
+#   8. Issue sync
+#
+# Failure handling:
+#   Any failure after step 4 rolls Status / Worktree / Base Commit back to
+#   the snapshot (see _abort_after_state_write). A failure after the approval
+#   commit (worktree creation) additionally records a "rollback" commit; a
+#   failed approval commit also resets the Plan's staged index entry.
+#   Every failure path exits 1 and leaves the Plan retryable.
 #
 # Preflight checks (--confirm mode):
 #   - check_doc validation
-#   - Target Project dirty workspace check (BLOCK or stash if worktree)
-#   - Worktree creation (default; skip with --no-worktree)
+#   - Target Project dirty workspace check (warn in worktree mode;
+#     BLOCK with --no-worktree)
 #
 # Issue sync (--confirm mode):
 #   - Sync status label (reviewing -> in-progress)
@@ -26,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from lib.logging import log_info, log_success, log_error, log_warn, log_step
@@ -47,6 +59,7 @@ from lib.git import (
     get_common_git_dir,
 )
 from lib.plan_commit import commit_and_push_plan, RESULT_OK, RESULT_PUSH_FAILED
+from lib.project import resolve_plan_location
 from lib.worktree import create_worktree, write_worktree_context
 from plan import set_plan_field
 
@@ -90,6 +103,119 @@ def _has_unmerged_files(repo_path: str) -> bool:
 
 
 # ============================================
+# Plan field snapshot / rollback
+# ============================================
+
+@dataclass
+class PlanFieldSnapshot:
+    """Pre-approval Plan field shape (Status / Worktree / Base Commit).
+
+    Captured before the approve transaction writes any state field. Restore
+    rewrites the captured content, so Status reverts to its original value, a
+    Worktree block added by this run is removed (a pre-existing one keeps its
+    original form), Base Commit returns to its original value, and every
+    other byte of the document stays untouched.
+    """
+
+    content: str
+
+    @classmethod
+    def capture(cls, plan_path: str) -> "PlanFieldSnapshot | None":
+        """Read the Plan's pre-approval content; None when unreadable."""
+        try:
+            return cls(content=Path(plan_path).read_text())
+        except OSError:
+            return None
+
+    def restore(self, plan_path: str) -> bool:
+        """Write the pre-approval content back; False on failure."""
+        try:
+            Path(plan_path).write_text(self.content)
+            return True
+        except OSError:
+            return False
+
+
+def _reset_plan_index(plan_path: str, workspace_root: Path) -> None:
+    """Drop the staged Plan entry left behind by a failed approval commit.
+
+    `commit_and_push_plan` stages the Plan before committing; when that
+    commit fails the index keeps the staged (executing) content, so the Plan
+    would sit in a half-committed state that a later unrelated commit could
+    pick up. Reset only this one path in the Plan's owning repo — never the
+    whole index.
+
+    Best-effort: never raises; a failure only logs the manual command.
+    """
+    try:
+        location = resolve_plan_location(Path(plan_path), workspace_root)
+        result = subprocess.run(
+            ["git", "reset", "--", location.repo_relative_path],
+            cwd=str(location.repo_root),
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            log_warn(
+                "Failed to reset staged Plan entry; run manually: "
+                f"git -C {location.repo_root} reset -- {location.repo_relative_path}"
+            )
+    except Exception as e:
+        log_warn(f"Failed to reset staged Plan entry: {e}")
+
+
+def _abort_after_state_write(
+    plan_path: str,
+    snapshot: "PlanFieldSnapshot | None",
+    original_status: str,
+    workspace_root: Path,
+    issue_number: int | None,
+    *,
+    rollback_commit: bool,
+    reset_index: bool = False,
+) -> int:
+    """Roll a failed approval back to the pre-approval Plan field shape.
+
+    Called on every failure that happens after state fields were written:
+    Status / Worktree / Base Commit return to their snapshot values. With
+    rollback_commit=True (the failure happened after the approval commit
+    already landed) the restoration is recorded as a `rollback` commit,
+    mirroring the approve commit's push semantics. With reset_index=True
+    (the failure was a commit that had already staged the Plan) the Plan's
+    staged index entry is reset as well, so no half-committed residue
+    remains.
+
+    Returns:
+        1 — the failure exit code; the Plan stays retryable.
+    """
+    restored = snapshot is not None and snapshot.restore(plan_path)
+
+    if restored and reset_index:
+        _reset_plan_index(plan_path, workspace_root)
+
+    if restored and rollback_commit:
+        result = commit_and_push_plan(
+            plan_path, issue_number, workspace_root, message_prefix="rollback"
+        )
+        if result == RESULT_PUSH_FAILED:
+            log_warn("Rollback committed locally but push failed; "
+                     "it will sync to origin on a later push.")
+        elif result != RESULT_OK:
+            log_warn(f"回滚提交失败；Plan 已恢复批准前字段形态，请手动提交: {plan_path}")
+
+    if restored:
+        log_error(
+            f"Plan 已回滚，未进入 executing（当前状态: {original_status}），可直接重试"
+        )
+    else:
+        log_error(
+            f"Plan 回滚失败：Status / Worktree / Base Commit 可能仍为本次写入值，"
+            f"请手动恢复后重试: {plan_path}"
+        )
+    return 1
+
+
+# ============================================
 # Worktree Creation
 # ============================================
 
@@ -124,11 +250,12 @@ def _create_worktree(project_dir: Path, branch: str, workspace_root: Path) -> Pa
 
 def cmd_approve(args: argparse.Namespace) -> int:
     """Approve Plan and transition to executing phase (--confirm required).
-    
-    Modes:
-    1. approve <issue-or-name> --confirm - preflight + status transition + Issue sync
-    2. approve <issue-or-name> --confirm --no-worktree - skip worktree creation
-    
+
+    Transaction: snapshot the pre-approval fields, write Worktree metadata /
+    Status=executing / Base Commit, commit the Plan baseline, then create the
+    worktree (unless --no-worktree or --existing-worktree). A failure after
+    the first write rolls the fields back (see _abort_after_state_write).
+
     Returns:
         0 on success, 1 on error
     """
@@ -212,10 +339,12 @@ def cmd_approve(args: argparse.Namespace) -> int:
     if project_path:
         dirty_workspace = is_repo_dirty(str(project_path), ignore_paths=[plan_path])
     
-    # --- Preflight: compute worktree parameters ---
+    # --- Preflight: compute worktree parameters (no Plan writes yet) ---
     worktree_created = False
     branch = ""
     worktree_path = None  # type: Path | None
+    wt_rel = None  # type: str | None  # Worktree metadata path (None = no block)
+    wt_bind_existing = False
 
     if existing_worktree:
         if not project:
@@ -276,11 +405,7 @@ def cmd_approve(args: argparse.Namespace) -> int:
 
         worktree_path = wt_p
         wt_rel = existing_worktree
-        if write_worktree_context(plan_path, branch, wt_rel):
-            log_success(f"Plan Worktree metadata bound to existing worktree: {branch} ({wt_rel})")
-        else:
-            log_error("Failed to write Worktree metadata to Plan")
-            return 1
+        wt_bind_existing = True
 
     elif use_worktree:
         if not project:
@@ -305,12 +430,9 @@ def cmd_approve(args: argparse.Namespace) -> int:
         if dirty_workspace:
             log_warn(f"目标项目 {project} 有未提交的变更，建议先提交后再执行 approve")
 
-        # Write minimal Worktree metadata (branch + path) to Plan
+        # Minimal Worktree metadata (branch + path) is written in the
+        # state-transition section below, after the rollback snapshot.
         wt_rel = str(worktree_path)
-        if write_worktree_context(plan_path, branch, wt_rel):
-            log_success(f"Plan Worktree metadata written: {branch}")
-        else:
-            log_warn("Failed to write Worktree metadata to Plan")
 
     elif dirty_workspace:
         # --no-worktree with dirty workspace: block and warn
@@ -338,58 +460,47 @@ def cmd_approve(args: argparse.Namespace) -> int:
         return 1
     
     # ============================================
-    # STATE TRANSITION (commit Plan BEFORE worktree creation)
+    # STATE TRANSITION (Plan fields first, then one commit)
     # ============================================
-    
+
+    # Snapshot the pre-approval field shape (Status / Worktree / Base Commit).
+    # Any failure after the first write below rolls back to this snapshot.
+    # Best-effort: an unreadable Plan cannot be snapshotted, but then the
+    # writes below fail on their own and the rollback reports it truthfully.
+    snapshot = PlanFieldSnapshot.capture(plan_path)
+
+    # Write Worktree metadata (branch + path) to Plan
+    if wt_rel is not None:
+        if write_worktree_context(plan_path, branch, wt_rel):
+            if wt_bind_existing:
+                log_success(f"Plan Worktree metadata bound to existing worktree: {branch} ({wt_rel})")
+            else:
+                log_success(f"Plan Worktree metadata written: {branch}")
+        elif wt_bind_existing:
+            # Nothing was written yet — abort without a rollback.
+            log_error("Failed to write Worktree metadata to Plan")
+            return 1
+        else:
+            log_warn("Failed to write Worktree metadata to Plan")
+
     log_step(f"Transitioning state: {current_status} -> executing")
-    
+
     # Update Plan status to executing
     if not update_plan_status(plan_path, "executing"):
         log_error("Failed to update Plan status")
-        return 1
-    
+        return _abort_after_state_write(
+            plan_path, snapshot, current_status, workspace_root,
+            issue_number, rollback_commit=False,
+        )
+
     log_success("Plan status updated to: executing")
-    
-    # Commit/push the Plan baseline (executing + Worktree metadata) on integration branch
-    result = commit_and_push_plan(plan_path, issue_number, workspace_root, message_prefix="approve")
-    if result == RESULT_PUSH_FAILED:
-        # Issue #215: push failure must not abort approve mid-lifecycle.
-        # Local state (status transition + commit + worktree below) stays
-        # complete and consistent; the commit syncs to origin on a later push.
-        log_warn("Approve committed locally but push failed; continuing. "
-                 "The commit will sync to origin on a later push.")
-    elif result != RESULT_OK:
-        log_error("Failed to commit Plan baseline")
-        return 1
-    
-    # ============================================
-    # WORKTREE CREATION (after Plan baseline is committed)
-    # ============================================
-    
-    if use_worktree and branch and worktree_path:
-        # Create worktree from committed baseline
-        if not project_path:
-            log_error(f"无法解析项目路径: {project}")
-            return 1
-        
-        log_step("Creating worktree from committed baseline...")
-        actual_wt_path = _create_worktree(project_path, branch, workspace_root)
-        if actual_wt_path is not None:
-            worktree_created = True
-            worktree_path = actual_wt_path
-            log_success(f"Worktree created: {worktree_path}")
-        else:
-            log_error("Worktree creation failed - aborting approve")
-            print("")
-            print("Plan 状态保持 planning，未进入 executing")
-            print("请检查 worktree 创建失败原因后重试")
-            return 1
-    
-    # ============================================
-    # Record Base Commit (implementation baseline)
-    # ============================================
-    # 记录实施基线。对于独立分支是集成分支 HEAD；对于 --existing-worktree 演进模式，
-    # 记录该 worktree 当前分支的 HEAD（即上个 Plan 实施产物的终点）。
+
+    # Record Base Commit (implementation baseline) BEFORE the state-transition
+    # commit, so the approval commit already contains the real SHA and leaves
+    # no uncommitted Base Commit line behind. Baseline source: for an isolated
+    # worktree it is the project's integration branch (main) HEAD; for
+    # --existing-worktree evolution mode it is the current HEAD of that
+    # worktree's branch (the previous Plan's landing point).
     base_commit = ""
     try:
         if existing_worktree and worktree_path and branch:
@@ -400,8 +511,54 @@ def cmd_approve(args: argparse.Namespace) -> int:
         base_commit = ""
 
     if base_commit:
-        set_plan_field(plan_path, "Base Commit", base_commit)
+        if not set_plan_field(plan_path, "Base Commit", base_commit):
+            log_error("Failed to record Base Commit")
+            return _abort_after_state_write(
+                plan_path, snapshot, current_status, workspace_root,
+                issue_number, rollback_commit=False,
+            )
         log_success(f"Base Commit recorded: {base_commit}")
+
+    # Commit/push the Plan baseline (executing + Worktree metadata + Base Commit)
+    result = commit_and_push_plan(plan_path, issue_number, workspace_root, message_prefix="approve")
+    if result == RESULT_PUSH_FAILED:
+        # Issue #215: push failure must not abort approve mid-lifecycle.
+        # Local state (status transition + commit + worktree below) stays
+        # complete and consistent; the commit syncs to origin on a later push.
+        log_warn("Approve committed locally but push failed; continuing. "
+                 "The commit will sync to origin on a later push.")
+    elif result != RESULT_OK:
+        log_error("Failed to commit Plan baseline")
+        return _abort_after_state_write(
+            plan_path, snapshot, current_status, workspace_root,
+            issue_number, rollback_commit=False, reset_index=True,
+        )
+
+    # ============================================
+    # WORKTREE CREATION (after the Plan baseline is committed)
+    # ============================================
+
+    if use_worktree and branch and worktree_path:
+        # Create worktree from committed baseline
+        if not project_path:
+            log_error(f"无法解析项目路径: {project}")
+            return _abort_after_state_write(
+                plan_path, snapshot, current_status, workspace_root,
+                issue_number, rollback_commit=True,
+            )
+
+        log_step("Creating worktree from committed baseline...")
+        actual_wt_path = _create_worktree(project_path, branch, workspace_root)
+        if actual_wt_path is not None:
+            worktree_created = True
+            worktree_path = actual_wt_path
+            log_success(f"Worktree created: {worktree_path}")
+        else:
+            log_error("Worktree creation failed - aborting approve")
+            return _abort_after_state_write(
+                plan_path, snapshot, current_status, workspace_root,
+                issue_number, rollback_commit=True,
+            )
 
     # ============================================
     # Issue sync (if plan has Issue link)

@@ -4,6 +4,8 @@
 # Provides:
 #   Title: extract_scope, extract_type, validate_issue_title
 #   Body: build_structured_issue_body
+#   Sync pipeline: extract_plan_section, extract_acceptance_criteria,
+#                  build_synced_issue_body, replace_plan_row_in_body
 #   Sync: sync_status_label, sync_plan_to_issue_body, ensure_issue_labels,
 #         sync_status_label_group, sync_type_label_group, sync_project_label_group,
 #         ensure_label_exists, plan_status_to_issue_label
@@ -14,12 +16,13 @@ import json
 from pathlib import Path
 
 from lib.github import get_issue_labels
+from lib.logging import log_warn
 from labels import plan_type_to_issue_label, normalize_plan_type
 
 def _get_plan_functions():
     """Lazy import plan module functions to break circular import."""
     import plan as _plan
-    return _plan.get_plan_project, _plan.get_plan_type, _plan.build_issue_body_from_plan
+    return _plan.get_plan_project, _plan.get_plan_type, _plan.build_plan_link_for_issue
 
 
 # ============================================
@@ -275,41 +278,193 @@ def sync_status_label(issue_number: int, status: str, repo: str) -> None:
     subprocess.run(args, capture_output=True)
 
 
-def sync_plan_to_issue_body(issue_number: int, plan_file: str, repo: str, workspace_root: str = None) -> None:
-    """Sync Plan link row in Issue's Related Resources section.
-    
-    Only updates the | Plan | ... | row, preserving all other Issue body content.
+# ============================================
+# Plan -> Issue sync pipeline (extract -> render -> replace)
+# ============================================
+
+def _find_section_span(text: str, heading: str) -> tuple[int, int] | None:
+    """Locate the body span of a top-level '## {heading}' section.
+
+    Fence-aware: '## ' lines inside fenced code blocks are ignored. Returns
+    (body_start, body_end) where body_start is the offset just past the heading
+    line and body_end is the offset of the next top-level heading line (or the
+    end of text). Returns None when the heading is absent.
+    """
+    pos = 0
+    in_code = False
+    body_start = None
+    for line in text.splitlines(keepends=True):
+        if line.strip().startswith('```'):
+            in_code = not in_code
+        elif not in_code:
+            if body_start is None:
+                if line.strip() == f"## {heading}":
+                    body_start = pos + len(line)
+            elif re.match(r'^##(?:\s|$)', line):
+                return (body_start, pos)
+        pos += len(line)
+    if body_start is not None:
+        return (body_start, len(text))
+    return None
+
+
+def _has_section(text: str, heading: str) -> bool:
+    """Whether a top-level '## {heading}' section exists (fence-aware)."""
+    return _find_section_span(text, heading) is not None
+
+
+def extract_plan_section(plan_file: str, section: str, limit: int = 0) -> str:
+    """Extract a top-level '## {section}' body from a Plan file.
+
+    Fence-aware: fenced code content is preserved verbatim and '## ' lines
+    inside fenced blocks do not terminate the section.
+    """
+    path = Path(plan_file)
+    if not path.exists():
+        return ""
+
+    text = path.read_text()
+    span = _find_section_span(text, section)
+    if span is None:
+        return ""
+
+    content = text[span[0]:span[1]].strip()
+    if limit > 0:
+        content = "\n".join(content.splitlines()[:limit]).strip()
+    return content
+
+
+def extract_acceptance_criteria(plan_file: str) -> str:
+    """Extract the Plan's Acceptance Criteria with numbered checkboxes converted.
+
+    The '### Agent Verification' / '### User Validation' sub-sections are kept;
+    numbered checkboxes (1. [ ] / 1. [x]) become GitHub-compatible - [ ] / - [x].
+    """
+    content = extract_plan_section(plan_file, "Acceptance Criteria")
+
+    converted = re.sub(r'^(\s*)(\d+)\.\s+\[\s*\]', r'\1- [ ]', content, flags=re.MULTILINE)
+    converted = re.sub(r'^(\s*)(\d+)\.\s+\[x\]', r'\1- [x]', converted, flags=re.MULTILINE)
+
+    return converted
+
+
+def _render_scope_section_body(in_scope: str, out_of_scope: str) -> str:
+    """Render Plan In/Out scope content as the canonical '### In'/'### Out' body."""
+    return f"### In\n\n{in_scope}\n\n### Out\n\n{out_of_scope}"
+
+
+def _replace_section_body(body: str, heading: str, new_content: str) -> str:
+    """Replace a section's body in place, keeping its heading line.
+
+    Normalizes the spacing around the new content to exactly one blank line.
+    Returns the body unchanged when the heading is absent.
+    """
+    span = _find_section_span(body, heading)
+    if span is None:
+        return body
+    start, end = span
+    suffix = "\n" if end >= len(body) else "\n\n"
+    return body[:start] + f"\n{new_content}{suffix}" + body[end:]
+
+
+def build_synced_issue_body(current_body: str, plan_file: str, plan_name: str,
+                            repo: str, workspace_root: str = None) -> str:
+    """Build the synced Issue body: three mapped sections + Plan link row.
+
+    Replaces the bodies of Issue '## Goal', '## Scope' and
+    '## Acceptance Criteria' with the Plan's mapped sections ('## Scope'
+    renders as '### In' / '### Out'; legacy '## In Scope' / '## Out of Scope'
+    headings are updated in place) and updates the '| Plan |' row. Every byte
+    outside these ranges is preserved. Missing Plan sections or missing Issue
+    targets are skipped with a warning; syncing is idempotent.
+    """
+    body = current_body
+
+    if _has_section(body, "Goal"):
+        goal = extract_plan_section(plan_file, "Goal")
+        if goal:
+            body = _replace_section_body(body, "Goal", goal)
+        else:
+            log_warn("Plan has no 'Goal' section; Issue '## Goal' not synced")
+    else:
+        log_warn("Issue body has no '## Goal' section; skipped")
+
+    in_scope = extract_plan_section(plan_file, "In Scope")
+    out_of_scope = extract_plan_section(plan_file, "Out of Scope")
+    if _has_section(body, "Scope"):
+        if in_scope and out_of_scope:
+            body = _replace_section_body(
+                body, "Scope", _render_scope_section_body(in_scope, out_of_scope))
+        else:
+            log_warn("Plan is missing 'In Scope'/'Out of Scope'; Issue '## Scope' not synced")
+    else:
+        scope_targets = (("In Scope", in_scope), ("Out of Scope", out_of_scope))
+        legacy_found = any(_has_section(body, heading) for heading, _ in scope_targets)
+        for heading, content in scope_targets:
+            if not _has_section(body, heading):
+                continue
+            if content:
+                body = _replace_section_body(body, heading, content)
+            else:
+                log_warn(f"Plan has no '{heading}' section; Issue '## {heading}' not synced")
+        if not legacy_found:
+            log_warn("Issue body has no '## Scope' (or legacy '## In Scope'/'## Out of Scope'); skipped")
+
+    if _has_section(body, "Acceptance Criteria"):
+        criteria = extract_acceptance_criteria(plan_file)
+        if criteria:
+            body = _replace_section_body(body, "Acceptance Criteria", criteria)
+        else:
+            log_warn("Plan has no 'Acceptance Criteria' section; Issue '## Acceptance Criteria' not synced")
+    else:
+        log_warn("Issue body has no '## Acceptance Criteria' section; skipped")
+
+    _, _, _build_plan_link = _get_plan_functions()
+    plan_row = _build_plan_link(plan_file, plan_name, repo, workspace_root)
+    if plan_row:
+        body = replace_plan_row_in_body(body, plan_row)
+
+    return body
+
+
+def sync_plan_to_issue_body(issue_number: int, plan_file: str, repo: str, workspace_root: str = None) -> bool:
+    """Sync the three mapped sections and the Plan link row to the Issue body.
+
+    The Issue's '## Goal', '## Scope' and '## Acceptance Criteria' bodies are
+    replaced from the Plan and the '| Plan |' row is updated; every byte outside
+    those ranges is preserved (surgical, idempotent). Missing sections are
+    skipped with a warning; nothing is inserted for a missing target.
+
+    Returns True when the sync succeeded (including the already-in-sync no-op),
+    False when it could not be performed (missing plan, gh unavailable, Issue
+    fetch or edit failure).
     """
     if not repo:
-        return
-    
+        return False
+
     if not Path(plan_file).exists():
-        return
-    
+        return False
+
     try:
         subprocess.run(['gh', '--version'], capture_output=True, check=True)
     except (subprocess.CalledProcessError, FileNotFoundError):
-        return
-    
-    _, _, _build_issue_body = _get_plan_functions()
-    plan_name = Path(plan_file).stem
-    new_plan_row = _build_issue_body(plan_file, plan_name, repo, workspace_root)
-    
-    if not new_plan_row or "待关联" in new_plan_row:
-        return
-    
+        return False
+
     current_body = _get_issue_body(issue_number, repo)
     if current_body is None:
-        return
-    
-    new_body = _replace_plan_row_in_body(current_body, new_plan_row)
+        return False
+
+    plan_name = Path(plan_file).stem
+    new_body = build_synced_issue_body(current_body, plan_file, plan_name, repo, workspace_root)
+
     if new_body == current_body:
-        return
-    
-    subprocess.run(
+        return True
+
+    result = subprocess.run(
         ['gh', 'issue', 'edit', str(issue_number), '--repo', repo, '--body', new_body],
         capture_output=True,
     )
+    return result.returncode == 0
 
 
 def _get_issue_body(issue_number: int, repo: str) -> str | None:
@@ -318,12 +473,22 @@ def _get_issue_body(issue_number: int, repo: str) -> str | None:
             ['gh', 'issue', 'view', str(issue_number), '--repo', repo, '--json', 'body', '--jq', '.body'],
             capture_output=True, text=True, check=True,
         )
-        return result.stdout
+        # `gh --jq` prints one trailing newline after the string; strip exactly
+        # that one so edits write back the body's real bytes (no +1 growth).
+        body = result.stdout
+        return body[:-1] if body.endswith("\n") else body
     except (subprocess.CalledProcessError, FileNotFoundError):
         return None
 
 
-def _replace_plan_row_in_body(current_body: str, new_plan_row: str) -> str:
+def replace_plan_row_in_body(current_body: str, new_plan_row: str) -> str:
+    """Replace the '| Plan |' row, scoped to the Related Resources section.
+
+    The single row-replacement primitive shared by the sync pipeline
+    (build_synced_issue_body) and the archive link refresh
+    (plan.update_issue_plan_link). Falls back to appending the row — or the
+    whole Related Resources section — when it is absent.
+    """
     plan_row_pattern = re.compile(r'\| Plan \| .+ \|')
     rr_match = re.search(r'^##\s+Related Resources\s*$', current_body, re.MULTILINE)
     if rr_match:
