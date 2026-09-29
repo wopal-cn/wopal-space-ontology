@@ -48,4 +48,5 @@ yarn.lock
 
 # config
 config/settings.local.jsonc
+.skill-lock.json
 

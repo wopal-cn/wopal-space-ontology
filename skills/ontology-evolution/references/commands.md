@@ -1,7 +1,6 @@
 # Command Reference
 
-The mechanism lane's operation surface is the CLI `wopal space evo` command
-family; its contract is `projects/wopal-cli/docs/DESIGN-evolution.md`. Run
+Landing proposals runs through the `wopal space evo` command family. Run
 from the space root — an effective space is resolved from the working
 directory, or targeted with `--space <name>`:
 
@@ -64,7 +63,7 @@ $ wopal space evo status refactor-ontology-maintenance
 - **Next**: wopal space evo advance refactor-ontology-maintenance --to validating
 ```
 
-Placeholder metadata (`(accept 时记录)`) is never printed as data. At the
+Placeholder metadata (`(none)`) is never printed as data. At the
 terminal stage it prints `none (terminal)` and the archive command.
 
 ## `wopal space evo advance <name> --to <state>`
@@ -86,6 +85,14 @@ Moves the proposal to `<state>` after validating the transition.
   `wopal space evo new`.
 - A real transition writes `Stage` back and commits the proposal file by name
   on the space branch.
+
+When the proposal is isolated and its recorded worktree exists, a real
+transition also mirrors the same `Stage` into that copy — a field-level write,
+committed in place (message `docs(evolutions): <slug> -> <to>`) — so the copy
+stays clean and both sides agree. A failed mirror commit is reported loudly
+with the boundary named: the space-side record already stands, and only the
+copy's commit is pending. With the worktree missing (the validation view),
+only the space-side record is written, and the command still succeeds.
 
 ## `wopal space evo accept <name> [--no-worktree]`
 
@@ -117,6 +124,13 @@ at step 4 restores the proposal file byte-for-byte. `Base Commit` is the
 worktree's actual fork point — the derive start commit, or the merge base for
 an adopted or re-attached worktree.
 
+In isolated mode, the command fields — `Mode`, `Worktree`, `Branch`, `Base
+Commit`, `Stage` — are then mirrored into the isolation worktree's proposal
+copy with field-level writes and committed in place; a copy whose fields
+already agree produces no mirror commit (re-running `accept` stays
+idempotent), and a copy missing a command field fails loudly — the copy's own
+record content is never overwritten.
+
 **Quick mode** (`--no-worktree`) records `Mode: quick` and creates nothing.
 Use it for typo fixes, bug fixes in existing assets, and small changes the
 user explicitly scoped — the space branch is itself the isolation boundary
@@ -129,15 +143,41 @@ its range is widened back over any pattern the space adopted in the meantime.
 
 ## `wopal space evo commit [<name>]`
 
-Commits working changes at stage `implementing`, and is the command that
-keeps a corrupted sparse checkout from destroying the capability pool.
+Commits working changes at stage `implementing` or `validating`, and is the
+command that keeps a corrupted sparse checkout from destroying the
+capability pool.
 
 **Proposal mode** — with `<name>`: the target comes from the proposal's
 Metadata. An isolated proposal commits inside its recorded isolation
-worktree; a quick proposal commits on the space branch. `--paths` is optional
-(the default collects the worktree's tracked changes plus the proposal file
-itself, and the receipt lists every committed path); `-m` is optional (a
-default derives from the proposal).
+worktree; a quick proposal commits on the space branch. In the validation
+view — after `switch`, `.wopal` on the recorded branch — the commit lands in
+`.wopal` instead, still unregistered. `--paths` is optional (the default
+collects the worktree's tracked changes plus the proposal file itself, and
+the receipt lists every committed path); `-m` is optional (a default derives
+from the proposal).
+
+`--paths` entries are **relative to the committed-side worktree root** — the
+isolation worktree for an isolated proposal, `.wopal` for quick and instant:
+
+```bash
+# isolated proposal: paths are relative to the isolation worktree root
+wopal space evo commit try-me --paths skills/try-me/SKILL.md
+```
+
+A `.wopal/`-prefixed entry resolves under the worktree root, where it is
+neither on disk nor tracked, and is refused with
+`SPACE_EVO_COMMIT_TARGET_INVALID`.
+
+**The record rides the commit.** The proposal's `Done` record — task output,
+files touched, the completion box — is edited by the orchestrator in the
+workspace copy of the proposal (the isolation worktree's copy in isolated
+mode, `.wopal`'s in quick mode) and committed together with the task's code:
+one commit per finished task, on the working branch.
+
+The review gate, the validation view (`switch`), and the `integrate`
+confirmation gate belong to the landing flow delivered by wopal-cli (#240);
+that flow is stated once in `SKILL.md` — this reference covers command
+behavior only.
 
 Omitting the name switches to **instant mode** (below).
 
@@ -145,7 +185,7 @@ Checks, in order, before anything is staged:
 
 | Check | Refusal reason |
 |-------|----------------|
-| Stage is `implementing` | The guard table: committing belongs to implementation only. |
+| Stage is `implementing` or `validating` | The guard table: committing is allowed only in the implementing or validating window. |
 | `core.sparseCheckout` is enabled | A checkout with the range switched off cannot tell an intentional off-disk entry from a deleted one. `disable` writes `false` rather than unsetting the key, so the value is checked, not just its presence. |
 | The pattern list is non-empty | An empty range cannot be verified. |
 | Nothing is mid-merge | An unresolved merge state cannot be committed coherently. |
@@ -162,29 +202,38 @@ Measured, on a temp repository reproducing the layout:
 
 Then it widens the range to cover every changed path **before** staging, and
 stages named paths only — never `-A`. Named paths are classified on the way
-in: a protected path's deletion or rename is restored in place, an
-assembly-declared path's deletion becomes a `shadowed` registration with a
-narrower range, a new path widens the range, and a plain modification stages
-as-is.
+in: a protected definition's deletion is restored in place and never
+committed; a new or modified path inside a held asset is an ordinary shared
+content change, staged as-is; a new path outside every held asset root is a
+new whole asset and must be declared by an `Assembly Intent` row; a whole
+declared asset's deletion is a shared deletion validated by the candidate-tree
+gate. No deletion auto-generates a local unload — `exclude` is written only by
+the explicit `space capability remove --local` channel.
 
-**When the `added` / `shadowed` registration happens depends on the mode.** A
-quick or instant commit classifies and registers on the space branch as it
-writes, so the registration exists as soon as that commit lands. An **isolated**
-commit only widens the isolation worktree's own range — it never touches the
-space's registration; `integrate` is where the space-side registration is
-written, atomically with the squash.
+A new **whole asset** needs an `Assembly Intent` row (`type-default` /
+`space-local`) in the proposal — the row drives the registration; internal
+changes to an existing asset produce no selection.
 
-Once registered, a new path sits in the space's local state as `added`, and
-`space sync` will refuse to carry it up: the upload gate rejects any
-space-unique commit that touches `added ∪ shadowed`, and the refusal names the
-remedy (withdraw the commit, or drop the registration with
-`capability remove --local` when the path resolves to a capability). Content
-that should reach the pool must arrive as pool content rather than as a
-space-private path: `space capability add` **without** `--local` is the shared
-channel, but it only accepts a capability the pool **already owns** — a
-pool-absent name is refused before the manifest is touched — and it edits the
-archetype manifest and re-materializes **without creating a Git commit**, so
-committing that manifest change is a separate, explicit step.
+**When the space-side registration happens depends on the mode.** A quick or
+instant commit classifies and registers on the space branch as it writes, so
+the registration exists as soon as that commit lands. An **isolated** commit
+only widens the isolation worktree's own range — it never touches the space's
+registration; `integrate` is where the space-side registration is written,
+atomically with the squash.
+
+Once registered, a space-local asset sits in the space root state as an
+`include` mount — a mount choice: its content still travels up with `sync` as
+shared content. Disk-only untracked content is held as `private` and never
+syncs: the upload gate rejects any space-unique commit that touches a
+`private`-registered capability root, and the refusal names the remedy
+(withdraw the commit, or drop the registration with
+`capability remove --local`). Content that should reach the pool must arrive
+as pool content rather than as a space-private path: `space capability add`
+**without** `--local` is the shared channel, but it only accepts a capability
+the pool **already owns** — a pool-absent name is refused before the manifest
+is touched — and it edits the archetype manifest and re-materializes
+**without creating a Git commit**, so committing that manifest change is a
+separate, explicit step.
 
 ### Why widening is not `--sparse`
 
@@ -220,7 +269,8 @@ the commit is the record.
 
 Instant mode is the designed repair path: a separate `fix` command was
 retired on purpose and must not be reintroduced (no alias, no shim); its
-shadow-registration duty now lives with `capability remove --local`.
+local-unload duty (`exclude` registration) now lives with
+`capability remove --local`.
 
 Use it when behavior that was already agreed is broken. Anything that
 changes agreed behavior — a new capability, a contract change — is an
@@ -229,21 +279,27 @@ evolution and follows the proposal lifecycle instead.
 ## `wopal space evo integrate [name]`
 
 Squashes the isolated work into the space branch inside `.wopal` at stage
-`implementing`, and is the only integration path that leaves the space
-worktree coherent. The name may be omitted when the space has exactly one
-in-flight isolated proposal; zero or several report the candidates and
-refuse.
+`validating`, and is the only integration path that leaves the space
+worktree coherent. **Gated on `--confirm`.** Integration runs only on the
+user's explicit go — after they confirmed validation passed, or as their
+explicit integrate-first choice made before it; without it the command refuses
+with zero side effects. The name may be omitted when the space has
+exactly one in-flight isolated proposal; zero or several report the
+candidates and refuse.
 
 Refusals, all before any mutation:
 
-- Stage is not `implementing`, or `Mode` is not `isolated`.
-- The recorded worktree is missing (recovery: re-run
-  `wopal space evo accept <name>`; it re-attaches the branch — its commits
-  are not lost, do not delete it).
-- The recorded worktree sits on a foreign branch.
-- The isolation assertion fails on the worktree (re-run as defense in depth —
-  accept checked once, drift happens).
-- The worktree is dirty, or the space worktree is dirty / incoherent.
+- Stage is not `validating`, `--confirm` is missing, or `Mode` is not
+  `isolated`.
+- The recorded worktree, **when present**, sits on a foreign branch.
+- The isolation assertion fails on the worktree, when present (re-run as
+  defense in depth — accept checked once, drift happens).
+- The recorded worktree, when present, is dirty; or the space worktree is
+  incoherent / has staged entries.
+
+The recorded worktree is optional: when it is missing — the validation view
+after `wopal space evo switch` — the recorded branch ref is the identity, and
+integration runs against it directly; no worktree is created or rebuilt.
 
 Then, in order: the space range is widened to match the feature branch **and
 the content it carries**, the squash is staged, and — before anything is
@@ -266,6 +322,27 @@ nothing outstanding prints `no-op` and exits 0.
 Why not `git push .` or `git update-ref`: pushing to a branch checked out in
 `.wopal` is refused by git, and moving the ref directly leaves `.wopal` in the
 same inconsistent `D`/`M` state as the 2026-09-20 incident.
+
+## `wopal space evo switch <name>`
+
+Enters or leaves the isolated validation view — one command, both
+directions, moving branch occupancy only; no worktree is created or rebuilt
+in either direction.
+
+- Direction is derived, not passed: **back** when the space worktree is
+  already on the recorded branch, **enter** otherwise.
+- Enter removes the recorded isolation worktree when present — its commits
+  stay on the branch — widens the space worktree's sparse range over the
+  branch changes, and checks the isolated branch out there; a missing
+  worktree is a legal state and is never rebuilt.
+- Back checks the space worktree out on the registered space branch; it
+  never re-creates the worktree and never restores the range.
+- Requires Stage: `validating`, a recorded isolated branch that still
+  exists, and a clean space worktree.
+
+After validation passes and the user has confirmed, run
+`wopal space evo integrate <name> --confirm` — integration runs against the
+branch ref directly, no worktree needed.
 
 ## `wopal space evo check <name|path>`
 
@@ -303,12 +380,18 @@ refuses to overwrite an existing target). Bare names still resolve against
 the dated form.
 
 Transactional preflight, all before the first mutation: the space worktree is
-coherent and clean, the recorded isolation worktree is clean (its removal
-would destroy uncommitted work), and — when isolation cleanup would run —
-the feature branch holds no content that the space branch's history lacks
-(deleting a branch that still carries unintegrated work destroys it).
-Integration leaves the branch realigned to its squash, so the normal end
-state passes this guard by construction; a branch integrated before that
+sparse-coherent and on the registered space branch; the recorded isolation
+worktree must be clean **only when it would be removed** (its removal would
+destroy uncommitted work); and — when isolation cleanup would run — the feature
+branch holds no content that the space branch's history lacks (deleting a
+branch that still carries unintegrated work destroys it). Unrelated uncommitted
+work in the space worktree does not block the archive: the record commit and
+its rollback stage by name, so unrelated paths never ride along and are left
+exactly as they were (modified stays modified, staged stays staged, untracked
+stays untracked), reported only as a non-fatal warning. When the proposal file
+itself carries uncommitted bytes, those working-tree bytes are the archive
+record. Integration leaves the branch realigned to its squash, so the normal
+end state passes this guard by construction; a branch integrated before that
 post-condition existed is still measured by content, not by commit ancestry.
 
 The mutation sequence: move → record the move on the space branch (the

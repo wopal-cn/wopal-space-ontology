@@ -61,3 +61,5 @@ plugins:
     - dsh-adapter
   tui:
     - tui-ellamaka
+paths:
+  - dsh

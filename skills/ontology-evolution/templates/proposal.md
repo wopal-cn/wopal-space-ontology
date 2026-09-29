@@ -21,21 +21,28 @@ skeleton.
 
 ## Metadata
 
+<!--
+Mode / Worktree / Branch / Base Commit are recorded by `accept`, Final Commit
+by `integrate`; `Stage` advances only through `wopal space evo advance`.
+Never hand-edit any of these — the fields stay `(none)` until the mechanism
+writes them.
+-->
+
 - **Type**: {type}
 - **Project Path**: .wopal
 - **Created**: {created}
 - **Stage**: draft
-- **Mode**: (accept 时记录：isolated | quick)
-- **Worktree**: (accept 时记录)
-- **Branch**: (accept 时记录)
-- **Base Commit**: (accept 时记录)
-- **Final Commit**: (integrate 时记录：集成到空间分支后的提交)
+- **Mode**: (none)
+- **Worktree**: (none)
+- **Branch**: (none)
+- **Base Commit**: (none)
+- **Final Commit**: (none)
 
 ## Scope Assessment
 
 <!--
-  两个维度各选一档，不要自评过高：Complexity 影响委派波次划分，
-  Confidence 提示读者这份提案的证据强度。
+Pick one level per dimension; do not overrate. Complexity drives the
+delegation waves; Confidence tells the reader how strong the evidence is.
 -->
 - **Complexity**: <Low | Medium | High>
 - **Confidence**: <High | Medium | Low>
@@ -43,138 +50,166 @@ skeleton.
 ## Goal
 
 <!--
-  一句话写清这项本体能力进化要达成什么目标。读者先看这里决定
-  是否继续往下读。
+One sentence: what this evolution is meant to achieve. Readers decide from
+here whether to keep reading.
 -->
-<这项本体能力进化要达到什么目标。>
+<What this evolution aims to achieve.>
 
 ## Technical Context
 
-<!-- 4 个子节按需取舍，至少填一个。 -->
+<!-- Four subsections; keep the ones that apply, at least one. -->
 
 ### Architecture Context
 
 <!--
-  现状 + 为什么需要变更。引用设计真相源（DESIGN-*.md）与关键
-  代码位置（file:line），证据先行。
+Current state + why it must change. Cite the design source of truth
+(DESIGN-*.md) and key code locations (file:line) — evidence first.
 -->
-<当前架构/机制现状、涉及模块、变更动机。证据给 file:line。>
+<Current mechanism, modules involved, and why it must change.>
 
 ### Research Findings
 
-<!-- 前期调研结论；参考资料只放上下文文档路径。 -->
-<调研结论摘要>
+<!-- Research conclusions; the reference list holds context document paths only. -->
+<Research conclusion summary>
 
-**参考资料**：
-- `<上下文文档路径>`
+**References**:
+- `<context document path>`
 
 ### Key Decisions
 
-<!-- 已确定的决策，D-NN 编号；每条写决策 + 理由，不写实现细节。 -->
-- D-01: <决策内容及理由>
+<!-- Settled decisions numbered D-01, D-02, ...; decision + rationale, no implementation detail. -->
+- D-01: <decision and rationale>
 
 ### Key Interfaces
 
 <!--
-  对外契约（硬约束）：命令行为、文件命名、错误码、边界条件。
-  入册即红线：实施中要改这里必须先回报修订提案。无对外契约写 N/A。
+External contracts (hard constraint): command behavior, file naming, error
+codes, boundary conditions. Once listed, it is a red line — changing it
+during implementation requires reporting back for a revised proposal.
+Write N/A when there is no external contract.
 -->
-<契约定义，无则 N/A>
+<Contract definition, or N/A>
 
 ## In Scope
 
-<!--
-  本次要完成的内容，逐条可勾验。
--->
-- <内容 1>
-- <内容 2>
+<!-- What this round delivers, item by item, checkable. -->
+- <Item 1>
+- <Item 2>
 
 ## Out of Scope
 
 <!--
-  明确不做的内容 + 原因。把"有意裁剪"和"待用户拍板"分开写，
-  避免读者误判为遗漏。
+What is deliberately excluded and why. Keep "deliberately cut" separate from
+"awaiting the user's call" so the reader does not mistake it for an omission.
 -->
-- <不做的内容及原因>
+- <Excluded item and reason>
 
 ## Affected Files
 
-<!--
-  预计涉及范围，不是施工清单；实施允许按实际情况调整。
--->
+<!-- Expected footprint, not a construction list; implementation may adjust. -->
 | Component | Files | Operation | Role |
 |-----------|-------|-----------|------|
-| <component> | `<file>` | 修改/创建/删除 | <作用> |
+| <component> | `file1`, `file2` | create / modify / delete | <role in this change> |
+
+## Assembly Intent
+
+<!--
+Register only the new whole assets this proposal introduces — one
+canonical reference per asset (`skill:new-skill`, `path:assets`, ...) —
+and only when no held asset already covers the new path. A file inside
+an asset the space already holds is an ordinary content change; reserved
+content (`assembly/`, `config/`, `docs/`, repository-root files) is
+never claimable — neither belongs here. `type-default` writes the
+reference into the current type manifest, so every space of the type
+receives the asset; `space-local` records it in this space's `include`,
+so only this space mounts it. Each reference appears once; a whole asset
+left undeclared is refused when the proposal lands. Leave the table
+empty when nothing new is added; one row reads
+`skill:new-skill | space-local | why only this space`.
+-->
+
+| Ref | Scope | 理由 |
+|-----|-------|------|
 
 ## Acceptance Criteria
 
 ### Agent Verification
 
 <!--
-  两拍制：现在写行为判据（可判定、能抓住坏实现）；实施时把每条
-  落成真实命令回填到此。每条需映射回 Task 的 Verification Intent。
+Two-beat rule: write behavioral criteria now (decidable, able to catch a bad
+implementation); during implementation each one gets a real command and is
+written back here. Every entry maps to a Task's Verification Intent.
 -->
-1. [ ] <行为判据 + 通过标准>
+1. [ ] <Behavioral criterion + pass standard>
 
 ### User Validation
 
 <!--
-  只放 Agent 无法自动验证、必须由用户手动观察的项。每个场景必须
-  具备：验证环境、启动命令、User Actions、通过判据、失败反馈。
+Only items an agent cannot verify and the user must observe by hand. Every
+scenario needs: environment, launch command, user actions, pass criteria,
+failure feedback.
 -->
-#### Scenario 1: <用户可感知的行为>
-- Goal: <验证目标>
-- 验证环境: <环境引用>
-- Precondition: <前置条件>
-- 启动命令: <可直接复制执行的命令>
+#### Scenario 1: <user-observable behavior>
+- Goal: <validation goal>
+- Environment: <environment reference>
+- Precondition: <precondition>
+- Launch command: <copy-pasteable command>
 - User Actions:
-  1. <操作步骤>
-- 通过判据: <可断言的预期结果>
-- 失败反馈: <失败时用户提供什么>
+  1. <step>
+- Pass criteria: <assertable expected result>
+- Failure feedback: <what the user provides on failure>
 
-- [ ] 用户已完成上述功能验证并确认结果符合预期
+- [ ] The user has validated the behavior above and confirmed the result.
 
 ## Implementation
 
 <!--
-  Task 拆分维度是行为组，不是文件。每个 Task 一个高内聚行为单元，
-  独立可测。
+Tasks split by behavior group, not by file. One Task = one cohesive
+behavior unit, independently testable.
 -->
 
-### Task 1: <任务标题>
+### Task 1: <task title>
 
-**Verification Intent**: <引用的 Agent Verification 条目编号>
+**Verification Intent**: <Agent Verification entry number(s) this task answers>
 
 **Behavior**:
-- <给定条件/输入 → 可观察结果>
+- <given input / condition → observable result>
 
-**Pre-read**: <实施前必读文件路径>
+**Pre-read**: <files to read before implementing>
 
-**Design**: <实施设计：方案、关键思路、约束>
+**Design**: <approach, key ideas, constraints>
 
 **TDD**: true
 
 **Changes**:
-1. RED：将上述 Behavior 落成失败测试
-2. GREEN：实现至测试全绿
+1. RED: turn the Behavior above into a failing test
+2. GREEN: implement until the test passes
 
-**Verify**: <验证命令>
+**Verify**: <verification command>
 
 **Done**:
-任务产出：<一句话>
-实际触碰文件：<实施后回填>
-- [ ] 实施 Agent 已完成上述功能开发和验证的所有步骤
+<!--
+Record ownership: the 主控 (orchestrator) is the single author of this
+whole block — the completion checkbox, the task output and the files
+touched. The record is filled in the proposal copy on the working branch
+(the isolation worktree in isolated mode, the space worktree in quick
+mode), after the task passed verification and before its commit.
+Implementation agents do not edit any part of the proposal file.
+-->
+Task output: <one line>
+Files touched: <fill in after implementation>
+- [ ] The implementation agent has completed all development and verification steps above.
 
 ---
 
 ## Delegation Strategy
 
-<!-- 2+ Task 或 Complexity = High 时必填；用 Wave 划分并行批次。 -->
+<!-- Required for 2+ Tasks or Complexity = High; Wave batches the parallel work. -->
 
-| Wave | Task | 执行者 | 依赖 | 委派理由 |
-|------|------|--------|------|---------|
-| 1 | Task 1 | fae | 无 | <理由> |
+| Wave | Task | Executor | Depends on | Why delegated |
+|------|------|----------|------------|---------------|
+| 1 | Task 1 | fae | none | <reason> |
 
 ## Delivery
 
-`space sync` 与 `ontology contribute` 由用户拍板，技能不自动上行。
+`space sync` and `ontology contribute` are the user's call — the skill never uploads on its own.

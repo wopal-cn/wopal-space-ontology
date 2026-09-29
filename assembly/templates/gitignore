@@ -26,6 +26,9 @@ Thumbs.db
 .wopal-space/.tmp/
 .wopal-space/logs/
 
+# Private held content (CLI-managed; never committed)
+.wopal-space/state/held/
+
 # Ontology worktree (separate git)
 .wopal/
 

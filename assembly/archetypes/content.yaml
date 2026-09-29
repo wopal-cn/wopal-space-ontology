@@ -16,6 +16,7 @@ agents:
 # 声明该空间所需技能
 skills:
   - space-master
+  - ontology-evolution 
   - agents-collab
   - dev-doc-master
   - skill-creator
@@ -45,3 +46,4 @@ commands:
 plugins:
   ellamaka:
     - wopal-plugin
+    - dsh-adapter
