@@ -488,10 +488,12 @@ describe("Log config resolution", () => {
     originalEnv["WOPAL_PLUGIN_LOG_LEVEL"] = process.env.WOPAL_PLUGIN_LOG_LEVEL
     originalEnv["WOPAL_PLUGIN_LOG_FILE"] = process.env.WOPAL_PLUGIN_LOG_FILE
     originalEnv["WOPAL_PLUGIN_LOG_MODULES"] = process.env.WOPAL_PLUGIN_LOG_MODULES
+    originalEnv["ELLAMAKA_LOG_LEVEL"] = process.env.ELLAMAKA_LOG_LEVEL
     setEnv({
       WOPAL_PLUGIN_LOG_LEVEL: undefined,
       WOPAL_PLUGIN_LOG_FILE: undefined,
       WOPAL_PLUGIN_LOG_MODULES: undefined,
+      ELLAMAKA_LOG_LEVEL: undefined,
     })
   })
 
@@ -593,5 +595,62 @@ describe("Log config resolution", () => {
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Host unified level fallback (ELLAMAKA_LOG_LEVEL)
+// ---------------------------------------------------------------------------
+
+describe("Host unified level fallback", () => {
+  it("uses the host level when neither plugin env nor config provides one", () => {
+    expect(getMinLevelName({ ELLAMAKA_LOG_LEVEL: "ERROR" })).toBe("error")
+    expect(getMinLevel({ ELLAMAKA_LOG_LEVEL: "ERROR" })).toBe(50)
+  })
+
+  it("normalizes the host level to lowercase", () => {
+    expect(getMinLevelName({ ELLAMAKA_LOG_LEVEL: "DEBUG" })).toBe("debug")
+    expect(getMinLevel({ ELLAMAKA_LOG_LEVEL: "DEBUG" })).toBe(20)
+  })
+
+  it("keeps explicit plugin env above the host fallback", () => {
+    const env = { WOPAL_PLUGIN_LOG_LEVEL: "warn", ELLAMAKA_LOG_LEVEL: "ERROR" }
+    expect(getMinLevelName(env, { level: "debug" })).toBe("warn")
+    expect(getMinLevel(env, { level: "debug" })).toBe(40)
+  })
+
+  it("keeps config level above the host fallback", () => {
+    const env = { ELLAMAKA_LOG_LEVEL: "ERROR" }
+    expect(getMinLevelName(env, { level: "debug" })).toBe("debug")
+    expect(getMinLevel(env, { level: "debug" })).toBe(20)
+  })
+
+  it("does not map host TRACE (engine-side categories, not plugin modules)", () => {
+    expect(getMinLevelName({ ELLAMAKA_LOG_LEVEL: "TRACE" })).toBe("info")
+    expect(getMinLevel({ ELLAMAKA_LOG_LEVEL: "TRACE" })).toBe(30)
+  })
+
+  it("does not map host FATAL (no host equivalent)", () => {
+    expect(getMinLevelName({ ELLAMAKA_LOG_LEVEL: "FATAL" })).toBe("info")
+    expect(getMinLevel({ ELLAMAKA_LOG_LEVEL: "FATAL" })).toBe(30)
+  })
+
+  it("ignores an empty host level", () => {
+    expect(getMinLevelName({ ELLAMAKA_LOG_LEVEL: "" })).toBe("info")
+    expect(getMinLevel({ ELLAMAKA_LOG_LEVEL: "" })).toBe(30)
+  })
+
+  it("falls back to the host level when the plugin env value is invalid", () => {
+    const env = {
+      WOPAL_PLUGIN_LOG_LEVEL: "not-a-level",
+      ELLAMAKA_LOG_LEVEL: "WARN",
+    }
+    expect(getMinLevelName(env)).toBe("warn")
+    expect(getMinLevel(env)).toBe(40)
+  })
+
+  it("defaults to info when no layer provides a valid level", () => {
+    expect(getMinLevelName({})).toBe("info")
+    expect(getMinLevel({})).toBe(30)
   })
 })

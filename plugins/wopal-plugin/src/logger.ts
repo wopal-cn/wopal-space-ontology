@@ -17,6 +17,16 @@ const LEVELS: Record<string, number> = {
   fatal: 60,
 }
 
+/**
+ * Host unified-log-level vocabulary (the engine writes ELLAMAKA_LOG_LEVEL).
+ *
+ * TRACE is deliberately excluded: the engine emits TRACE only when the user
+ * passes `--trace <categories>`, and those categories are engine-side and
+ * unrelated to plugin modules — mapping it would open every module at trace
+ * volume. FATAL has no host equivalent, so it stays plugin-explicit.
+ */
+const HOST_LEVELS: ReadonlySet<string> = new Set(["debug", "info", "warn", "error"])
+
 // ---------------------------------------------------------------------------
 // Log config resolution — config file defaults + diagnostic env overrides
 // ---------------------------------------------------------------------------
@@ -27,17 +37,27 @@ export interface ResolvedLogConfig {
   modules?: string[]
 }
 
+function matchPluginLevel(value: string | undefined): string | undefined {
+  return value !== undefined && Object.hasOwn(LEVELS, value) ? value : undefined
+}
+
+function matchHostLevel(value: string | undefined): string | undefined {
+  const normalized = value?.toLowerCase()
+  return normalized !== undefined && HOST_LEVELS.has(normalized)
+    ? normalized
+    : undefined
+}
+
 function resolveLevel(
   environment: RuntimeEnvironment,
   config?: ResolvedLogConfig,
 ): string {
-  const envLevel = environment.WOPAL_PLUGIN_LOG_LEVEL
-  if (envLevel !== undefined && Object.hasOwn(LEVELS, envLevel)) return envLevel
-  const configLevel = config?.level
-  if (configLevel !== undefined && Object.hasOwn(LEVELS, configLevel)) {
-    return configLevel
-  }
-  return "info"
+  return (
+    matchPluginLevel(environment.WOPAL_PLUGIN_LOG_LEVEL) ??
+    matchPluginLevel(config?.level) ??
+    matchHostLevel(environment.ELLAMAKA_LOG_LEVEL) ??
+    "info"
+  )
 }
 
 export function getMinLevel(

@@ -191,6 +191,7 @@ Source files ≤500 lines; split when exceeded. Split signals: >500 lines / func
 | `WOPAL_PLUGIN_LOG_LEVEL` | `info` | Log threshold: trace/debug/info/warn/error/fatal (env override; config `pluginConfig["wopal-plugin"].logLevel` is the default source) |
 | `WOPAL_PLUGIN_LOG_FILE` | `<cwd>/.wopal-space/logs/wopal-plugin.log` | Log file path (env override; config `pluginConfig["wopal-plugin"].logFile` is the default source) |
 | `WOPAL_PLUGIN_LOG_MODULES` | (empty) | Module filter (comma-separated), empty=all. Options: core/rules/task/memory/context (env override; config `pluginConfig["wopal-plugin"].logModules` is the default source) |
+| `ELLAMAKA_LOG_LEVEL` | (unset) | Host unified log level fallback (DEBUG/INFO/WARN/ERROR, normalized to lowercase). Effective only when neither `WOPAL_PLUGIN_LOG_LEVEL` nor config `logLevel` yields a valid level; read from the real process environment only, never from `.env` |
 
 ## 8. Config Nodes (`wopal.pluginConfig["wopal-plugin"]`)
 

@@ -67,6 +67,44 @@ describe("loadRuntimeEnvironment", () => {
     expect(Object.isFrozen(env)).toBe(true);
   });
 
+  it("reads ELLAMAKA_LOG_LEVEL from the process environment and ignores .env files", () => {
+    const { wopalHome, spaceRoot } = fixture();
+    writeFileSync(join(wopalHome, ".env"), "ELLAMAKA_LOG_LEVEL=DEBUG\n");
+    writeFileSync(
+      join(spaceRoot, ".wopal", ".env"),
+      "ELLAMAKA_LOG_LEVEL=WARN\n",
+    );
+    const context = createRuntimeContext({
+      directory: spaceRoot,
+      wopalHome,
+      wopalSpaceRoot: spaceRoot,
+    });
+
+    const env = loadRuntimeEnvironment(context, {
+      ELLAMAKA_LOG_LEVEL: "ERROR",
+    });
+
+    expect(env.ELLAMAKA_LOG_LEVEL).toBe("ERROR");
+  });
+
+  it("does not expose ELLAMAKA_LOG_LEVEL from .env when the process environment has none", () => {
+    const { wopalHome, spaceRoot } = fixture();
+    writeFileSync(join(wopalHome, ".env"), "ELLAMAKA_LOG_LEVEL=DEBUG\n");
+    writeFileSync(
+      join(spaceRoot, ".wopal", ".env"),
+      "ELLAMAKA_LOG_LEVEL=WARN\n",
+    );
+    const context = createRuntimeContext({
+      directory: spaceRoot,
+      wopalHome,
+      wopalSpaceRoot: spaceRoot,
+    });
+
+    const env = loadRuntimeEnvironment(context, {});
+
+    expect(env.ELLAMAKA_LOG_LEVEL).toBeUndefined();
+  });
+
   it("keeps connection parameters required by resource clients", () => {
     const { wopalHome, spaceRoot } = fixture();
     writeFileSync(

@@ -191,6 +191,7 @@ ellamaka run "reply with exactly: OK" --print-logs --log-level DEBUG
 | `WOPAL_PLUGIN_LOG_LEVEL` | `info` | 日志阈值：trace/debug/info/warn/error/fatal（env 覆盖；配置 `pluginConfig["wopal-plugin"].logLevel` 为默认来源） |
 | `WOPAL_PLUGIN_LOG_FILE` | `<cwd>/.wopal-space/logs/wopal-plugin.log` | 日志文件路径（env 覆盖；配置 `pluginConfig["wopal-plugin"].logFile` 为默认来源） |
 | `WOPAL_PLUGIN_LOG_MODULES` | (空) | 模块过滤（逗号分隔），空=全部。可选：core/rules/task/memory/context（env 覆盖；配置 `pluginConfig["wopal-plugin"].logModules` 为默认来源） |
+| `ELLAMAKA_LOG_LEVEL` | (未设置) | 宿主统一日志级别兜底（DEBUG/INFO/WARN/ERROR，读取时归一化为小写）。仅当 `WOPAL_PLUGIN_LOG_LEVEL` 与配置 `logLevel` 均无有效级别时生效；仅从真实进程环境读取，不从 `.env` 读取 |
 
 ## 8. 配置节点（`wopal.pluginConfig["wopal-plugin"]`）
 

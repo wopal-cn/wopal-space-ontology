@@ -5,7 +5,7 @@
 - **Type**: refactor
 - **Project Path**: .wopal
 - **Created**: 2026-09-27
-- **Stage**: validating
+- **Stage**: archived
 - **Mode**: isolated
 - **Worktree**: .worktrees/ontology-refactor-plugin-config-consumption
 - **Branch**: ontology-refactor-plugin-config-consumption
@@ -105,7 +105,7 @@
 - 通过判据: TUI 正常启动且 label 正确；会话与工具调用无插件配置类 error；`.wopal-space/logs/dev/` 下对应 TUI 日志无 config 级报错。
 - 失败反馈: 提供日志片段与 `.wopal/config/settings.local.jsonc`。
 
-- [ ] 用户已完成上述功能验证并确认结果符合预期
+- [x] 用户已完成上述功能验证并确认结果符合预期
 
 ## Implementation
 
