@@ -102,20 +102,6 @@ Authoritative details live in `skills/dev-flow/SKILL.md` under "Executing: imple
 
 - Plugin internal architecture, logging, type safety, error handling, development, and testing rules: **follow** `.wopal/plugins/wopal-plugin/AGENTS.md`.
 
-### Code Review
-
-Generic review methods are documented in `df-implement-review` (code changes) and `df-proposal-review` (plans and evolution proposals); this section lists only project-specific checkpoints.
-
-- **Declarative content** (`agents/`, `rules/`, `skills/`, `commands/`, `assembly/templates/`) lacks automated test coverage, so reviews must inspect files directly:
-  - frontmatter fields are complete, and trigger conditions are stated in `description`.
-  - Referenced files, skills, and commands actually exist.
-  - The formal English version and preferred-language review version stay semantically aligned; review paths must never hardcode a specific language tag.
-- **Soul prompts** (`agents/`): workflows, skill routing, tool APIs, or delegation timing inside soul prompts are findings.
-- **Generality**: paths, project names, or customer names specific to this space appearing in skills or soul prompts are findings.
-- **Assembly manifests** (`assembly/archetypes/*.yaml`): every capability listed in a manifest must genuinely exist in this repository's capability pool; listing an entry missing from the pool is a finding.
-- **Plugin code** (`plugins/wopal-plugin/`): review against `.wopal/plugins/wopal-plugin/AGENTS.md`.
-- **Comments not to raise**: items owned by CI (compilation, formatting, lint); personal taste; product intent (business rules belong to the user).
-
 ### dsh-adapter Invariants
 
 - **Event-log folds are LAST-wins**: per-message sandbox overrides append `sandbox/mode` unconditionally, including values equal to the space default — "restore default" requires an explicit event; skipping same-as-default appends leaves a prior override in force. Only a missing `extra.sandboxMode` means "keep current fold" (see poc DESIGN-dsh-poc §4.5).
@@ -131,3 +117,67 @@ Generic review methods are documented in `df-implement-review` (code changes) an
 
 - Never hardcode the review path as `zh-CN`.
 - Never hardcode paths or information highly specific to this space or particular tasks in skills or soul prompts, as it harms generality.
+
+## Code Review Rules
+
+Keep this heading verbatim — Codex Code Review looks for it.
+
+Generic review method lives in `df-implement-review` (code changes) and
+`df-proposal-review` (plans and evolution proposals). This section adds
+repository-specific checks; it does not replace CI, tests, or product intent.
+
+Report a defect only when this diff introduces it and the finding names a
+concrete trigger, the affected behavior, and evidence in the changed code.
+Omit pre-existing problems, style preferences, and anything CI already enforces.
+
+### Capability references resolve
+
+- Every skill, agent, rule, command, and template referenced by
+  `assembly/archetypes/*.yaml`, an agent's `permission:` block, or a skill must
+  exist at the same revision.
+- Adding or removing a capability requires updating every archetype and the
+  README skill tree in the same change.
+- Safe path: keep the old entry until all consumers move, or land the rename and
+  every consumer update together.
+- Why it matters: an unresolved reference makes space assembly fail closed
+  (`docs/DESIGN-assembly.md`), so one stale name blocks every coding space.
+
+### Declarative content is reviewed by reading it
+
+`agents/`, `rules/`, `skills/`, `commands/`, and `assembly/templates/` have no
+automated coverage:
+
+- frontmatter carries the required fields, and trigger conditions are stated in
+  `description`;
+- every referenced file, skill, and command exists;
+- the English runtime source and the preferred-language review version stay
+  semantically aligned, and review paths never hardcode a locale.
+
+### Delegation contracts agree
+
+A skill loaded by a delegated agent must not contradict the controlling
+workflow about who commits, who ticks Plan progress, or who writes AC commands
+back. Safe path: state the owner explicitly in the skill, and scope the rule to
+the workflow that actually owns that state.
+
+### Soul prompts stay narrow
+
+A workflow step, skill route, tool API, or delegation timing inside `agents/` is
+a finding; those belong in skills, commands, or rules (see §4).
+
+### Generality
+
+Paths, project names, or customer names specific to one space must not appear in
+`skills/` or `agents/`. Safe path: express the invariant in terms of the space
+type or a parameter.
+
+### Plugin code
+
+Review `plugins/wopal-plugin/` against its own `AGENTS.md` (runtime path
+`.wopal/plugins/wopal-plugin/AGENTS.md`), including its TDD rule.
+
+### Out of scope
+
+- compilation, formatting, and lint that CI already enforces;
+- personal style preferences;
+- product intent and business rules, which belong to the user.
