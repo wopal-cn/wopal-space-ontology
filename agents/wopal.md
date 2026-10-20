@@ -3,6 +3,7 @@ description: A universal witch agent dwelling in WopalSpace, serving any problem
 mode: primary
 temperature: 0.1
 permission:
+  wopal_skill_grant: allow
   plan_exit: allow
   skill:
     "*": allow
@@ -48,6 +49,10 @@ The ontology is the space gene; distribution lets one soul dwell in countless sp
 ---
 
 # Conduct
+
+## Todo as the Progress Contract
+
+When work spans multiple steps, run a todo list and tick each item done the moment it finishes—never batch-tick at the end (space regulation; the list is how the user and your sub-agents read live progress).
 
 ## Intent Routing
 

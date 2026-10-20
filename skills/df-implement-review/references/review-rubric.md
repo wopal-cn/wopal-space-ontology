@@ -7,10 +7,12 @@ Contents:
 2. [Q1 stub patterns & probes](#2-q1--stub-patterns--probes)
 3. [Q2 contract-surface procedure](#3-q2--contract-surface-procedure)
 4. [Q3 defect catalogue](#4-q3--defect-catalogue)
-5. [Q4 test-evidence & debt signals](#5-q4--test-evidence--debt-signals)
-6. [Probe bundle](#6-probe-bundle)
-7. [Severity calibration](#7-severity-calibration)
-8. [Worked examples](#8-worked-examples)
+5. [Q4 test integrity & documentation drift](#5-q4--test-integrity--documentation-drift)
+6. [Q4 lean tags](#6-q4--lean-tags)
+7. [Probe bundle](#7-probe-bundle)
+8. [Capability standards gate (evolution proposals)](#8-capability-standards-gate-evolution-proposals)
+9. [Severity calibration](#9-severity-calibration)
+10. [Worked examples](#10-worked-examples)
 
 ---
 
@@ -18,9 +20,9 @@ Contents:
 
 Read the diff once (`git diff`, `git diff --cached`, `git show <hash>`, or `git diff <A>..<B>`) plus the changed files. Do not alternate between reading and probing — every return to a file costs more than the probe it saves. Fill three lists while reading:
 
-1. **Claims** — every deliverable or acceptance criterion (Plan truths, or the change's stated intent).
+1. **Claims** — every deliverable or acceptance criterion (Plan or proposal truths, or the change's stated intent).
 2. **Contract surface** — every exported symbol, signature, schema, shared type, or config the diff modifies, plus functions whose logic changed but signature didn't.
-3. **Flags** — possible stubs, wiring gaps, suspicious tests, to resolve in the sweeps.
+3. **Flags** — possible stubs, wiring gaps, suspicious tests, bloat candidates, to resolve in the sweeps.
 
 After this, all four questions consume the lists with targeted probes. Never re-scan what you already read.
 
@@ -97,7 +99,7 @@ export function useAuth() { return { user: null, login: () => {}, logout: () => 
 
 ## 3. Q2 — Contract-surface procedure
 
-The mechanical gates miss this most. Type checks catch compile breaks; existing tests catch what they cover. What slips through: silent behavior changes and untested-behavior breaks.
+The mechanical gates miss this most. What slips through: silent behavior changes and untested-behavior breaks.
 
 ### Step 1 — extract the contract surface
 
@@ -133,7 +135,7 @@ For each consumer, ask: which assumption from this table does it hold, and is it
 ### Severity
 
 - Diff-outside call site broken with a concrete scenario → **BLOCKER**
-- Semantic change that may be intentional (Plan decision) → **WARNING** or `Serious Logic Risks`
+- Semantic change that may be intentional (a Plan decision) → **WARNING** or `Serious Logic Risks`
 - Consumers not fully checked → `UNCOVERED STEPS`, never fake coverage
 
 ## 4. Q3 — Defect catalogue
@@ -187,7 +189,7 @@ Walk the changed hunks against these patterns. Report only findings with a concr
 
 Probes: `rg -n 'eval\(|dangerouslySetInnerHTML|innerHTML|exec\(|spawn\(' <changed files>`; check every new POST/PUT handler for validation before use; check new routes for auth middleware.
 
-## 5. Q4 — Test-evidence & debt signals
+## 5. Q4 — Test integrity & documentation drift
 
 ### Test integrity — broken patterns
 
@@ -212,21 +214,60 @@ A change that alters an external contract without updating the docs that describ
 
 Pure internal refactors with no contract change trigger nothing. Docs outside the repo you can see → `Needs Human`.
 
-### Debt signals
+## 6. Q4 — Lean tags
 
-Flag only when it creates real maintenance cost or risk.
+Hunt bloat with five tags. One line per finding: location, what to cut, what replaces it. **A finding without a replacement is a complaint, not a finding.**
 
-- **Wrong abstraction layer** — a helper/module that doesn't actually abstract anything, or abstracts the wrong axis (calling through four layers to add one line)
-- **Circular module dependencies** — A imports B imports A
-- **God module** — a file growing to handle unrelated concerns every change feeds
-- **Asymmetric APIs** — `open` without `close`, `get` without `set`, `start` without `stop`; callers cannot clean up
-- **Copy-paste already diverged** — same logic in two places where one side has already drifted; or sort/normalize/validate logic repeated with each copy subtly different
-- **Magic numbers / hardcoded environment assumptions** — paths, ports, timestamps, limits inline where they will rot silently
-- **Over-engineering** — abstraction, plugin system, or config surface built for requirements that don't exist
-- **Dead code / commented-out blocks** — INFO unless masking a claimed behavior
-- Project's `AGENTS.md` rules and established patterns always apply.
+| Tag | Catches | Replacement |
+|---|---|---|
+| `delete:` | dead code, unused flexibility, speculative features | nothing |
+| `stdlib:` | hand-rolled code the standard library ships | name the function |
+| `native:` | deps or code doing what the platform ships | name the feature |
+| `yagni:` | one-implementation interfaces, factories with one product, config nobody sets, layers with one caller | inline until a second need exists |
+| `shrink:` | same logic in fewer, clearer lines | show the shorter form |
 
-## 6. Probe bundle
+### What to hunt
+
+- **orphans left behind by the diff**: for every `import` or function call removed in the diff, check (`rg <symbol-or-module>`) whether any production caller still references the old module or function. If production references drop to zero (or only its own test file imports it), flag `delete:` on both the orphaned production code and its orphaned test file.
+- dead code, commented-out blocks, unused exports and flags
+- dependencies with zero references in the code (`rg <package-import>` across the project, checking static imports, dynamic `await import()`, and side-effect `import "pkg"`) — `delete:` the dependency
+- hand-rolled retry/validate/format/deep-clone helpers the stdlib or an installed package already ships — `stdlib:`
+- wrappers that only delegate, factories with one product, interfaces with one implementation — `yagni:`
+- same logic in two places where one copy can be deleted — `delete:` or `shrink:` with the surviving location
+- manual loops that a one-line builtin replaces — `shrink:` with the shorter form
+
+### Runtime & platform check for `stdlib:` and `native:`
+
+Before recommending a `stdlib:` or `native:` replacement, verify:
+1. **Runtime version**: check `engines` in `package.json`, `requires-python` in `pyproject.toml`, `go.mod`, or `rust-version` to confirm the builtin API exists in the project's minimum supported runtime.
+2. **Target OS**: if a `native:` replacement shells out to a system CLI (e.g., `zip`, `tar`, `sed`), confirm the tool and flags exist on every OS the project supports (macOS, Linux, Windows).
+
+### Never flag
+
+- the smallest check that would fail if the logic broke — a smoke test, one `assert`-based self-check, one small test file. That is the lean minimum, not bloat.
+- input validation at trust boundaries, error handling that prevents data loss, security measures — never simplified away, never flagged for deletion.
+- taste ("I would have structured it differently"), naming, style preferences.
+
+### Severity
+
+| Condition | Severity |
+|---|---|
+| Diff switches callers away from old code/tests, leaving zero production references (orphan created by this diff) | **WARNING** (REVISE) |
+| Re-implemented existing infrastructure — the repo already ships it, finding names `file:line` | **WARNING** (REVISE) |
+| New heavyweight dependency added with no need the ladder can't satisfy | **WARNING** (REVISE) |
+| Pre-existing dead code / unused dependency (or in Repo audit mode) | INFO (WARNING when it masks a claimed behavior) |
+| Single-implementation interface, speculative extension point | INFO |
+| `shrink:` suggestions | INFO |
+
+Correctness first, then leanness — never trade one for the other. A lean finding must never conflict with Q1–Q3; when it does, correctness wins and the lean idea is dropped.
+
+### The metric
+
+End of report: `net: -N lines, -M dependencies possible` — sum the realistic cut across all findings. Nothing to cut → `Lean already. Ship.`
+
+## 7. Probe bundle
+
+### Diff review probes (Modes 1 & 2)
 
 Run these once, after reading the diff, against the changed files (fill in the paths):
 
@@ -242,9 +283,48 @@ rg -n 'expect\(true\)|expect\(false\)|expect\(1\)' $FILES
 rg -n 'toBeDefined|toBeTruthy|toBeFalsy|not\.toBeNull' $FILES
 ```
 
-For each exported symbol touched by the diff: `rg -l '<symbol>' <project>` to find consumers, including outside the diff.
+- **Consumer check (Q2)**: for each exported symbol touched by the diff, run `rg -l '<symbol>' <project>` to find consumers, including outside the diff.
+- **Orphan check (Q4)**: for each `import` or helper call *removed* by the diff, run `rg -l '<old-module-or-symbol>' <project>` to verify whether the old target now has zero production callers (and whether its test file is now testing dead code).
+- **Lean sweep (Q4)**: run `rg -n 'class |interface |factory' $FILES` to spot single-use abstractions, and check each newly added dependency against its import count.
 
-## 7. Severity calibration
+### Repo audit probes (Mode 3 — whole-repo or directory lean audit)
+
+When running in **Repo audit** mode (no diff; scanning an existing project or directory for bloat), run these static scans first so you don't miss unreferenced files or miscount dynamic imports:
+
+1. **Manifest & dependency usage**:
+   - Read `package.json` / `pyproject.toml` / `Cargo.toml` / `go.mod`.
+   - For each production dependency, count references across `src/` (`rg '<pkg>' src/`), checking static imports, dynamic `await import('<pkg>')`, and side-effect `import '<pkg>'`.
+   - Flag dependencies with 0 references as `delete:`, and single-call-site dependencies replaceable by stdlib as `stdlib:` / `native:`.
+2. **Orphaned files (0 production importers)**:
+   - List all non-entry source files under `src/` and check whether each file's stem is imported anywhere in `src/`.
+   - Files imported only by `tests/` (0 hits in `src/`) are dead production modules with orphaned test files — flag both with `delete:`.
+3. **Unused exports (0 external references)**:
+   - Scan exported symbols (`export function|const|class|type|interface`) across `src/`.
+   - Any exported symbol referenced only inside its own file (or only in `tests/`) is dead export surface — flag `delete:` (or drop `export` if used internally).
+4. **Single-implementation abstractions & wrappers**:
+   - Run `rg -n 'interface |abstract class |Factory|Manager|Adapter' src/` and inspect the largest files (`wc -l`).
+5. **Lingering debt markers, skipped tests & stale docs (when analyzing technical debt)**:
+   - Run `rg -n 'TODO|FIXME|XXX|HACK|PLACEHOLDER' src/` and `rg -n 'it\.skip|xdescribe|xit|describe\.skip|@pytest\.mark\.skip|t\.Skip' tests/` to surface half-finished work and disabled tests alongside structural bloat.
+   - Group findings by impact in the report: **Dependencies to cut** → **Dead files & exports (`delete:`)** → **Stdlib / native replacements** → **Abstractions & duplication (`yagni:` / `shrink:`)** (plus **Debt markers & test/doc gaps** if present), ending with `net: -N lines, -M dependencies possible`.
+
+## 8. Capability standards gate (evolution proposals)
+
+When the prompt carries an evolution proposal path, the change lands capability assets. Check the landed files against the platform's own standards:
+
+| Standard | Check |
+|---|---|
+| frontmatter `name` + `description` | read the file header |
+| Triggering conditions in the description | the description states when to use it; the body does not bury trigger info in a late section |
+| Body = workflow + output + notes | no essays, no feature tours; long content offloaded to `references/` |
+| `scripts/` only deterministic, reusable logic | one-off snippets do not live in scripts/ |
+| No invented structure | asset anatomy matches the platform's other assets (no rogue subdirs, no novel file types) |
+| Plain, precise language | an agent knows what to do after one read; jargon and machine prose are findings |
+
+Severity: violates a stated standard → **WARNING** (REVISE); asset cannot work as landed (missing frontmatter, references to files that do not exist) → **BLOCKER**.
+
+This gate complements df-proposal-review, which checked the *stated* deliverable; this review checks the *landed* files.
+
+## 9. Severity calibration
 
 | Situation | Correct verdict |
 |---|---|
@@ -252,22 +332,28 @@ For each exported symbol touched by the diff: `rg -l '<symbol>' <project>` to fi
 | Function correctly written but no call site anywhere | WARNING (Q1 unwired) |
 | Diff changes a helper's return from `[]` to `null`; a diff-outside caller does `.map()` directly | BLOCKER (Q2) |
 | Endpoint now returns 200 with an error body where callers keyed on 4xx | WARNING/BLOCKER by severity (Q2) |
-| The only test of a claimed behavior is skipped | BLOCKER (Q4) |
+| The only test of a claimed behavior is skipped | BLOCKER (Q4 test integrity) |
 | `expect(true).toBe(true)` | BLOCKER (Q4) |
 | A test checks `toBeDefined` plus two strong value assertions | no finding |
 | Four-line input normalization duplicated, rules stable | no finding |
-| Duplicated validation already diverged between two call sites | WARNING (Q4 debt) |
+| Duplicated validation already diverged between two call sites | WARNING (Q4) |
 | Query executed, result discarded, static `{ ok: true }` returned | BLOCKER (Q1) |
 | Deletion of a helper that turns out to still be imported (build would catch) | no finding — CI owns build breakage |
 | Race between two async writes with a concrete interleaving | BLOCKER (Q3) |
 | Implementation works but violates a stated design constraint (module boundary, API contract written as "must") | BLOCKER (Q1 design conformance) |
 | Change alters an API the docs describe, docs untouched in the diff | WARNING (Q4 documentation drift) |
+| New `retry.ts` duplicates `src/lib/http.ts:88` backoff already in use | WARNING (Q4 lean — re-implementation) |
+| Diff switches command from `lib/doctor.ts` to `lib/inspect.ts`; `lib/doctor.ts` and `tests/lib/doctor.test.ts` now have zero production callers | WARNING (Q4 lean — `delete:` orphan created by diff) |
+| `package.json` lists `eventsource`; `rg 'eventsource' src/` finds zero imports | INFO (Q4 lean — `delete:` the dependency) |
+| `AbstractStore` with a single `FileStore` implementation | INFO (Q4 lean — `yagni:`) |
+| Landed skill buries triggering conditions in body section 4 | WARNING (capability gate) |
+| Landed skill's frontmatter lacks `description` | BLOCKER (capability gate) |
 | Concern about visual appearance of a changed component | `Needs Human` |
 | "I would have structured this module differently" | no finding |
 
 Judgement note: any Blocker → BLOCK, else any Warning → REVISE, else PASS. Counting warnings is not the mechanism.
 
-## 8. Worked examples
+## 10. Worked examples
 
 ### Example A — Stub caught by Q1
 
@@ -334,7 +420,17 @@ finding:
   fix: "assert against independent expected values written by hand"
 ```
 
-### Example E — Serious logic risk, discussion only
+### Example E — Lean finding with a replacement (Q4)
+
+**Diff**: new `src/lib/slug.ts` (18 lines) hand-rolls slugification. `rg 'slugif' src/ node_modules/.package-lock.json` shows nothing installed; but `package.json` lists `lodash` and its `kebabCase` does the job — and `rg "kebabCase" src/` shows it is already imported in two files.
+
+```
+src/lib/slug.ts:L1-18: stdlib(already-installed): 18-line slugifier. lodash kebabCase covers it, already imported in 2 files. Replacement: delete the file, import kebabCase.
+```
+
+Reported as WARNING (re-implementation of an available capability); metric contribution: `net: -18 lines`.
+
+### Example F — Serious logic risk, discussion only
 
 ```typescript
 // src/jobs/purge.ts:18
