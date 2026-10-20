@@ -92,15 +92,29 @@ The dev-flow skill's worktree Plan lifecycle follows the **Plan branch ownership
 - `verify --confirm` commits a Plan-only commit (`done`) on the integration branch
 - `archive` moves the accepted Plan to `done/` on the integration branch and cleans up the worktree
 
-**Plan-only commit principle**: lifecycle scripts commit Plan status changes only, never implementation code. Implementation commits belong to the implementing agent.
+**Plan-only commit principle**: lifecycle scripts commit Plan status changes only, never implementation code. Delegated implementers do not commit; the controller creates a Task's implementation commit only after inspecting the result and confirming Task Verify passes.
 
-**Plan path**: Plan files live in the space repository under `.wopal-space/plans/<project>/`; no Plan copy exists in the worktree. Subagent prompts must reference the Plan by its absolute path in the space repository; when fae ticks a Done checkbox it edits that file and must not mutate Plan Status metadata.
+**Plan path and progress ownership**: Plan files live in the space repository under `.wopal-space/plans/<project>/`; no Plan copy exists in the worktree. Subagent prompts must reference the Plan by its absolute path in the space repository, but implementers treat it as read-only and never tick progress. AC commands, Done evidence, and actually touched files are written back by the controller only after Task acceptance.
 
-Authoritative details live in the "Plan branch ownership", "Wopal orchestration rules" and "Delegation Plan path" sections of `skills/dev-flow/SKILL.md`.
+Authoritative details live in `skills/dev-flow/SKILL.md` under "Executing: implementation, acceptance, review, Agent Verification" and "Branch and worktree boundaries", plus "Implementation handoff" in `references/plan-guide.md`.
 
 ### Plugin
 
 - Plugin internal architecture, logging, type safety, error handling, development, and testing rules: **follow** `.wopal/plugins/wopal-plugin/AGENTS.md`.
+
+### Code Review
+
+Generic review methods are documented in `df-implement-review` (code changes) and `df-proposal-review` (plans and evolution proposals); this section lists only project-specific checkpoints.
+
+- **Declarative content** (`agents/`, `rules/`, `skills/`, `commands/`, `assembly/templates/`) lacks automated test coverage, so reviews must inspect files directly:
+  - frontmatter fields are complete, and trigger conditions are stated in `description`.
+  - Referenced files, skills, and commands actually exist.
+  - The formal English version and preferred-language review version stay semantically aligned; review paths must never hardcode a specific language tag.
+- **Soul prompts** (`agents/`): workflows, skill routing, tool APIs, or delegation timing inside soul prompts are findings.
+- **Generality**: paths, project names, or customer names specific to this space appearing in skills or soul prompts are findings.
+- **Assembly manifests** (`assembly/archetypes/*.yaml`): every capability listed in a manifest must genuinely exist in this repository's capability pool; listing an entry missing from the pool is a finding.
+- **Plugin code** (`plugins/wopal-plugin/`): review against `.wopal/plugins/wopal-plugin/AGENTS.md`.
+- **Comments not to raise**: items owned by CI (compilation, formatting, lint); personal taste; product intent (business rules belong to the user).
 
 ### dsh-adapter Invariants
 
