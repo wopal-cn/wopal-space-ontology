@@ -1,210 +1,94 @@
 ---
 name: editing-cordis-compositions
-description: Use when creating, changing, or validating a Cordis composition for this harness — writing or editing an agent preset or plugin row, deciding whether something belongs to the host composition or to one session, making a preset's own skills/ directory visible (skill-filesystem customSkillDirs), choosing the package scope a preset row names, checking whether a preset you authored actually mounts, or diagnosing a row that mounted but contributed nothing.
+description: Use when creating, changing, or validating an agent preset or other Cordis composition for this harness, including deciding host versus preset placement and checking that an authored preset mounts.
 ---
 
 # Editing Cordis compositions
 
-Every capability in this harness is a plugin row in a `cordis.yml`. There is no separate configuration language: changing what an agent can do means changing which rows are composed for it.
+Agent presets are ordinary `@deepseek-ai/dsh-agent-preset` declarations carried by bundle patches. Nothing edits a declaration in place: a preset is created or changed by installing a bundle whose patch declares or overrides it. This file states the declaration format; when it leaves a question open, read the `@deepseek-ai/dsh-agent-preset` README and `lib/types` declarations under the `packageDir` that `cordis_inspect_query` `Config.listConfigs` returns when queried with a `preset-<id>` row's `entry` id, or `packages/preset/agent-preset/src` in a source checkout.
 
-## dsh in ellamaka (WopalSpace deployment constraints)
+## Ellamaka 集成部署
 
-This skill reaches you inside the WopalSpace `wopal` agent preset, where dsh runs as "dsh in ellamaka" — an official-layout dsh home managed by the Ellamaka engine rather than a standalone official dsh install. The constraints below describe that deployment shape; where they differ from official dsh CLI conventions, they win.
+本技能基于 DSH 0.2.0-rc.2。集成版 `$DSH_HOME` 为 `$WOPAL_HOME/dsh/home`，用户配置写入 `profiles/web/cordis.patch.yml`，不使用独立官方安装的 `~/.dsh`，也不继续写旧 `settings.yaml`。
 
-- DSH home: `$DSH_HOME` = `$WOPAL_HOME/dsh/home`. The host sets this at process launch. It is a 100% official-layout harness home and holds `profiles/`, `.agent-presets/`, `sessions/`, `settings.yaml`, `storages/`, and `attachments/`. There is no `~/.dsh` in this deployment.
-- Territory root: `$WOPAL_HOME/dsh` is the Ellamaka territory root, NOT the DSH home. It is engine-owned and holds `closures/<fingerprint>/` (immutable official dependency tree — never edit or write inside it), plus `locks/` and `recovery-scripts/`.
-- `$DSH_HOME` is a real, official dsh home: the official dsh CLI pointed at it interoperates with the engine. When a task calls for official dsh commands against the live engine, prefer the Ellamaka CLI equivalent (`ellamaka dsh ...`) so writes go through the engine's own install path rather than a bare binary racing the running engine.
-- Agent preset roots:
-  - Official presets live inside the closure at `closures/<fp>/node_modules/@deepseek-ai/dsh/config/agent-presets/`. They are immutable: read and copy them, never edit them in place.
-  - User presets live one directory per preset under `$DSH_HOME/.agent-presets/<id>/`. In the WopalSpace ontology layout that directory is a symlink to the version-controlled source under the space's own `.wopal/dsh/agents-presets/<id>/`, so edit the source there and the symlink carries the change to the runtime. A preset is auto-discovered from any root the deployment configures — read the real path from the roster's `list()` or `resolve()` rather than assuming the layout.
-  - On duplicate ids the earlier root wins. Customizing an official preset therefore means copying it into the user root under a NEW id, never editing the closure copy.
-- Mount semantics: a preset mounts when a session is created and is hot-reloaded from its composition file on change (profile `patchReload: live`). An edit is picked up without a host restart, but the changed rows reach a session's tool/prompt catalog when that session is (re)created — validate the edit, then open a fresh session to confirm the tool list.
-Every "where do presets live" and "which root is writable" statement later in this body resolves against these roots — the official preset set in the closure and the user preset set under `$DSH_HOME/.agent-presets/`.
+官方依赖位于 Ellamaka 管理的 `closures/<fingerprint>/`，只读参考。WopalSpace 的三个 preset 由 `@wopal/dsh-presets` bundle 声明；旧 `preset.yml` 与 `agent.cordis.yml` 是生成源，运行时消费生成的 `preset.patch.yml`。修改源后重新生成并安装 bundle，在新会话确认行为，既有会话保留原 revision。
 
-## Off-limits
+安装使用 `ellamaka dsh plugin --profile web add <bundle 绝对目录>`：它把目录规格转成 `file:<绝对路径>` 交给官方 dsh 安装器（pnpm），由官方完成声明、依赖、lockfile 与 bundle 登记。本集成里 Wopal 没有 `plugin_manager` 工具，因此以 `install_bundle` 为中心的流程不适用；同样不要在 profile 目录手跑 pnpm 或手改 `package.json`。pnpm 是宿主前置条件（与官方 dsh 一致，产品不随包分发），缺失时安装会直接报错，需先让 `pnpm` 在 PATH 上。
 
-**Never edit, delete, or overwrite a preset that ships with the deployment** — the `agent-presets` directory beside the deployment's own config, which supplies `standard`, `code`, `minimal`, and `cordis`. Never escalate the sandbox to reach it, even when a change there looks quicker. An upgrade overwrites that install, and corrupting `cordis` disables preset authoring itself. Reading a shipped composition is the intended way to start; writing to one is not, and neither is editing the host composition to work around a preset limitation.
+插件的 `@deepseek-ai/*` 依赖必须写在 `peerDependencies`，由 dsh loader 从安装作用域解析（与 `file:`/`link:` 无关）；写进 `dependencies` 会在 profile 里装出第二份模块实例。保留旧源目录和迁移前快照，不依赖 `.agent-presets` 软链自动发现。项目技能经 `<项目>/.dsh/skills` 装配，bundle 自带技能经 `customSkillDirs` 挂载。
 
-To change what a shipped preset does, copy it and edit the copy. Locally authored presets under the user root are yours to create, edit, and delete.
+## Where declarations live
 
-## Decide the plane first
+The shipped Web presets are `presets/<id>.patch.yml` files of the `@deepseek-ai/dsh-web-app` bundle, ids `standard`, `ptc`, `minimal` and `cordis`. Installed, the bundle resolves from the dsh installation, not the profile; querying `Config.listConfigs` with the `entry` id of any `preset-<id>` row it declares returns that `packageDir`. In a source checkout of DSH it is `packages/bundle/web-app/`. Read one file with the file-read tool when you need a template; `minimal.patch.yml` is the shortest. In Desktop the bundle sits inside `app.asar`, which shell commands cannot open. Load `cordis-composition-reference` for the patch dialect and the list of plugin packages a preset can mount.
 
-Two planes, and the choice is not about how "agent-related" something feels — it is about whether the thing must be shared.
+A declaration row has these `config` fields: `id` (required, lowercase letters, digits and hyphens), `plugins` (required Cordis entry list), and optional `name`, `description` and `order` (roster position). The Loader row `id` is `preset-<id>` by convention.
 
-**Host composition.** The registries themselves (`tools`, `systemPrompt`, `agents`, `agent-loop`, `sessions`), anything crossing sessions (persistence, session query, storage, settings, credentials, telemetry), the sandbox and approval stack, the model route, and the subagent registry with its spawn/fork backends. One instance for the process.
+## Create a preset
 
-**Agent preset.** What one session contributes to those registries: its tool plugins, its persona and prompt sections, its compaction policy. One instance per session, mounted under that session's scope and unwound with it.
+Write a bundle directory in the workspace with exactly two files, then install it.
 
-**A service with a consumer outside the agent plane cannot move into a preset.** `subagents` is the worked example: the registry answers cross-session queries for the host api-proxy, so a per-session copy both starves that host row — it waits forever for a service nothing provides — and collides on the second session, since a provider name registers once. The preset contributes the delegation *tools*; the registry and its backends stay host-side.
+`review-preset/package.json`:
 
-A preset is a directory holding one `agent.cordis.yml`, optionally beside a `preset.yml` carrying display metadata — `name` and `description` (and, for shipped presets, a roster `order`). Write the metadata too: a preset without it shows up in every picker as its bare directory name.
-
-Locally authored presets live one directory per preset under `${DSH_HOME:-$HOME/.dsh}/.agent-presets/`, and the shipped set sits beside the deployment's own config. Use those when the user asks where to look. A deployment can configure other roots, so the path you read or edit comes from `list()` or `resolve()` — which is also where `copy()` reports what it just created.
-
-## The roster service
-
-`ctx.agentPresets` owns discovery, authoring, and mounting. You reach it by mounting a temporary plugin that injects it and registers a tool for yourself — `cordis_mount` returns only the mount acknowledgement, so a registered tool is how a service answer gets back to you, and it becomes callable on your next step.
-
-Read `cordis_inspect what:"api" name:"agentPresets"` for the current signatures before writing the code. What this skill relies on:
-
-- `list()` — every preset with its `id`, `trust` (`system` for the shipped set, `user` for authored ones), and the absolute `path` of its composition file. This is how you locate any composition without knowing the install layout; the directory is that path's parent.
-- `read(id)` — one preset's composition text, without a file tool or a path.
-- `copy(from, id, name?)` — the only authoring write (see below).
-- `standingKeyFor(id)` — mount-validate one preset (see below).
-
-```js
-return {
-  name: 'preset-tools',
-  inject: ['agentPresets', 'tools'],
-  apply(ctx) {
-    harness.registerTool(ctx, harness.defineTool({
-      name: 'preset_check',
-      description: 'Mount-validate one preset by id.',
-      parameters: { id: { type: 'string', required: true } },
-      output: { schema: { type: 'string' }, render(_a, v) { return [{ type: 'text', text: v }] } },
-      async execute(args) {
-        try {
-          await ctx.agentPresets.standingKeyFor(args.id)
-          return 'mounted OK'
-        } catch (error) {
-          return error.message
-        }
-      },
-    }))
-  },
+```json
+{
+  "name": "@local/dsh-review-preset",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
 }
 ```
 
-Unmount the plugin with `cordis_unmount` when you are done; it is a probe, not a capability to leave behind.
-
-## Authoring a preset
-
-1. **Start from a copy.** `copy(from, id, name)` copies a whole preset directory into the user root — composition, metadata, skill directories, assets. It validates the id against `[a-z0-9][a-z0-9-]*` (it becomes the directory name, so no leading hyphen), refuses an id any root already supplies, rolls a failed copy back, and rewrites the copy's `preset.yml` to keep the source's description while dropping its name and roster `order`. Prefer it over a shell copy: it needs no sandbox escalation, it lands the copy in whichever root this deployment made writable, and the copy is exactly as loadable as its source. `resolve(id)` then names the file it created — that path, not a guessed one, is what the following edits target. `standard` is the full coding agent and the usual source.
-2. **Expect the file sandbox on every edit after the copy.** The user preset root lies outside the session workspace, so under the default `workspace-write` policy the first write there is denied. Only writes are: reading any composition by absolute path needs no escalation. Retry that exact command once with `sandbox_permissions` escalation and a short justification — the user sees and approves it. Batch your writes (one heredoc per file) rather than escalating many small commands. `copy()` itself runs host-side and needs none of this; the edits do.
-3. **Write the copy's `description`** in `preset.yml`, and its `name` if you passed none to `copy()`.
-4. **Edit `agent.cordis.yml`** row by row, keeping the plane rule and the realm rule.
-5. **Mount-validate the result**, then hand off to the user for a real session — both under *Verifying a change*.
-
-A composition written from scratch usually forgets a group realm or a consumer row; a copy starts loadable.
-
-## Skills a preset ships: make its own directory visible
-
-A preset directory may carry a `skills/` subdirectory (one subdirectory per skill, each holding `SKILL.md`). These are the preset's own bundled skills — for example the composition-authoring skills that ride along with the `cordis` preset. They are NOT discovered automatically: `ctx.skills` scans project roots, user roots, and whatever `customSkillDirs` the preset's `skill-filesystem` row declares — never a preset's own directory by itself.
-
-The recurring bug is a preset that keeps `skills/` beside its composition yet the agent cannot see those skills. The fix is to point the preset's `skill-filesystem` row at that directory with a `customSkillDirs` entry. Resolve it from the preset's own location so it stays relocatable — the loader rewrites `baseUrl` to the preset's composition directory, so the standard, copy-safe shape is:
+`review-preset/cordis.patch.yml`:
 
 ```yaml
-- id: skill-filesystem
-  name: '@deepseek-ai/dsh-skill-filesystem'
-  config:
-    customSkillDirs:
-      - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/', baseUrl))"
-```
-
-This is the exact row the shipped `cordis` preset uses to make its two authoring skills visible. A preset that also wants the deployment's shared project skills keeps both sources: the default project root (rank 100, e.g. `<projectRoot>/.dsh/skills`) plus this `customSkillDirs` entry (rank 300) for the preset's own directory. Dropping the `customSkillDirs` entry silences the bundled skills even though their files sit right there — verify after a change that the skill actually appears in a fresh session, not just that the directory exists.
-
-## Choosing the package name a preset row names
-
-A row's `name` is what the loader resolves and imports, so the scope you give a package decides whether that row can ever mount. This bites hardest for locally authored plugins that travel with a preset or a space.
-
-In the dsh-in-ellamaka deployment the `@deepseek-ai/*` scope is treated as the official closure set: the installer skips downloading it, composition resolution leaves its bare names untouched against the closure, and no fallback link is made for it. A package that borrows that scope without actually living in the official closure therefore cannot be resolved from a profile — the row fails to import (`Cannot find module … from …/cordis-plugin-loader/…`) and the replay keeps the last good state.
-
-Author a self-owned plugin under a scope you control — `@wopal/*`, `@<org>/*`, or no scope for a plain bundle — never `@deepseek-ai/*` for something you distribute. Give it a `dsh.bundle.patch` pointing at a bundled `cordis.patch.yml` when it replaces stock rows (disable the stock row, insert your own under a distinct id); both the official loader and the ellamaka loader honour that `dsh.bundle.patch` self-patch shape, so one package installs identically across the two environments.
-
-## The rule that catches people
-
-**A row that publishes a service may not sit loose in a preset.** Registering a service without an isolate realm puts it in the process-global realm, so the second session mounting that preset collides with the first. The mount rejects it rather than letting the collision surface later.
-
-Whether a row publishes a service is not visible from its name, and package READMEs are absent from an installed deployment. Read it off the live runtime instead: `cordis_inspect what:"services"` lists every service with the fiber that owns it, so a service attributed to a fiber other than the row you are adding is one that row consumes rather than provides. For a row not in your current composition, mount-validate and read the rejection — it names the offending service.
-
-When a preset genuinely owns a service, wrap the provider **and every consumer that reaches it** in one group carrying an `isolate` realm. The shipped `standard` composition does this for `workflows`, which nothing outside an agent reads — its `delegation` group, with the delegation tools omitted here:
-
-```yaml
-- id: delegation
-  name: cordis:group
-  group: true
-  isolate:
-    workflows: true
-  config:
-    - id: workflow-worker-thread
-      name: '@deepseek-ai/dsh-workflow-worker-thread'
+- insert:
+    - id: preset-review
+      name: "@deepseek-ai/dsh-agent-preset"
       config:
-        provider: spawn
-    - id: tool-workflow
-      name: '@deepseek-ai/dsh-tool-workflow'
+        id: review
+        name: Review
+        description: Reviews changes with the shell only.
+        order: 10
+        plugins:
+          - id: persona
+            name: "@deepseek-ai/dsh-persona"
+            config:
+              prefix: You review software changes.
+          - id: tool-bash
+            name: "@deepseek-ai/dsh-tool-bash"
 ```
 
-`true` means a realm private to each mounting session. A string label instead joins subtrees into one shared realm; `provide()` still throws on the second registration under that symbol, so a label does not pool instances and is not what a preset needs.
+Install with `ellamaka dsh plugin --profile web add <absolute bundle directory>` in this deployment: it forwards the directory to the official dsh installer as `file:<abs>`, which performs package installation and bundle selection itself. Where `plugin_manager` is available, `action: install_bundle` with the same absolute directory is the equivalent entry; either way do not reproduce those steps with shell commands, and never hand-edit the profile's `package.json`.
 
-A consumer left outside the group resolves the host's registry, which the preset did not populate, and then contributes nothing. Mount-validation catches that as a row that never activated.
+## Change a shipped preset
 
-Realms are for services a preset owns, not for every group. A host capability the preset only consumes must stay outside a realm, or the row cannot resolve it: `tool-bash`, `tool-jobs`, and `tool-goal` publish nothing and sit loose in `standard`, which explains in comments which host instance each one resolves and why a realm would break it. Wrapping a consumer row in a realm of its own is the same error as leaving one outside its provider's realm.
-
-## Verifying a change
-
-**`standingKeyFor(id)` is the check.** It composes the preset's plugin subtree for real — the same mount a session start performs, minus the agent — and rejects the four ways a composition fails:
-
-- a row whose package does not resolve (`Cannot find package …`);
-- a row whose config is invalid (`invalid config: $.<field> missing required value`);
-- a row that never activated (`N row(s) did not activate: <id>: waiting for <service>`);
-- a service published into the root realm, which arrives as one of two messages. A name the host does not supply lands in the root realm and the mount audit rejects it: `row(s) published process-global service(s) [<name>]; a preset service must sit behind an isolate realm or move to the host composition` — this is the shape a preset's own forgotten realm takes. A name the host already supplies collides before the audit: `service "<name>" has been registered at <Owner>`. Both name the offending service.
-
-It returns normally when the composition mounts. Run it as the final check on a finished edit rather than after every line: a successful mount installs a standing generation that lives until the process exits, while a failed one disposes its subtree and leaves nothing behind.
-
-**Do not treat the roster's `broken` field as validation.** `list()` reports `broken` from a shape check — the file parses in the loader's YAML dialect and holds named rows — which every failure above passes. It catches a damaged file, not an unusable composition.
-
-`cordis_inspect` reports THIS session's composition, so it confirms what a row does in the runtime you are already in, never what your new preset will do.
-
-After a clean mount-validation, ask the user to start a session on the new preset and confirm the tool list; the preset decides tool schemas and prompt sections, and only a real session shows the agent that composition produces.
-
-`cordis_mount` evaluates JavaScript against the live runtime and disappears on restart. It is for probing, not for shipping a capability: a capability belongs in a composition file.
-
-## Native product subagents
-
-Codex and Claude Code providers are independent optional Profile Bundles. Install only the products a Profile needs, then restart the Profile so its Host registers those providers.
-
-Pick the CLI by which home the profile lives under — the two are official-layout dsh homes but are owned and operated differently:
-
-- **Official dsh home** (a standalone install such as `~/.dsh`, no engine running): use the official CLI `dsh plugin --profile <name> add <package>` directly.
-- **Ellamaka home** (`$DSH_HOME` under a running engine): use `ellamaka dsh plugin --profile <name> add <package>` — the ellamaka CLI clones the official `dsh plugin` verb order, and it alone should touch a live engine's home. Running the bare official `dsh` against a running engine would write into engine-owned `$DSH_HOME/profiles/` and `package.json` and race the engine's own composition replay.
-
-This skill's own deployment is `dsh in ellamaka`, so unless you are pointed at an explicit official home the commands below target the ellamaka home:
-
-```sh
-ellamaka dsh plugin --profile <name> add @deepseek-ai/dsh-subagent-codex
-ellamaka dsh plugin --profile <name> add @deepseek-ai/dsh-subagent-claude-code
-ellamaka dsh plugin --profile <name> remove @deepseek-ai/dsh-subagent-codex
-ellamaka dsh plugin --profile <name> remove @deepseek-ai/dsh-subagent-claude-code
-```
-
-Each Bundle owns its Host availability; the preset separately grants one Agent its ordinary delegation tool. Never move a product provider into the preset and never add a product-specific settings field. Removing one package withdraws only that provider on the next Profile start.
-
-Copy these disabled templates from a shipped full preset and remove `disabled` only for the products the user requested:
+Override the declaration by its Loader row id instead of inserting. The override replaces the complete `config`, so restate `id`, `plugins` and every other field the shipped file carries:
 
 ```yaml
-- id: tool-subagent-codex
-  name: '@deepseek-ai/dsh-tool-subagent'
-  disabled: true
+- id: preset-standard
+  name: "@deepseek-ai/dsh-agent-preset"
   config:
-    provider: codex
-    toolName: subagent_codex
-    backgroundMode: one-shot
-    maxDepth: provider-managed
-
-- id: tool-subagent-claude-code
-  name: '@deepseek-ai/dsh-tool-subagent'
-  disabled: true
-  config:
-    provider: claude-code
-    toolName: subagent_claude_code
-    backgroundMode: one-shot
-    maxDepth: provider-managed
+    id: standard
+    order: 1
+    plugins:
+      # the shipped list with your changes
 ```
 
-For additional named Codex or Claude Code instances, mount a separate host-plane provider row for each instance with a unique `providerName`, then add a separate preset tool row whose `provider` exactly matches that name and whose `toolName` is also unique. Keep the shipped rows for the default `codex` and `claude-code` names; do not reuse one tool row for several providers or derive either name from permission or environment settings.
+## Migrate a legacy preset
 
-The two rows are independent. Leaving both disabled preserves the copied preset, enabling one exposes only that product tool, and enabling both exposes both. Production `dsh` does not install either optional provider: before enabling a row, install the matching `@deepseek-ai/dsh-subagent-codex` or `@deepseek-ai/dsh-subagent-claude-code` Bundle in the Profile and restart it. Each Bundle registers its dormant default provider and exclusively uses its pinned package-local platform CLI; additional named instances use extra host-plane rows from the same installed package. A preset cannot provide that host dependency. `backgroundMode: one-shot` keeps omitted or `false` calls in the foreground and lets explicit `run_in_background: true` return a generic Job id. Full presets already carry `tool-jobs`, while the base host carries the job registry; retain both so `job_output`, `job_list`, `job_kill`, cancellation, and completion notices stay available. Installing a Bundle or composing a preset row does not start a product, authenticate an account, select a model, probe credentials, or manage native product settings.
+Before declaration rows, a user preset was a directory `$DSH_HOME/.agent-presets/<id>/` holding `preset.yml` (display `name`, `description`, `order`) and `agent.cordis.yml` (the plugin entry list). Nothing reads that directory any more. To migrate one, create a bundle as above whose declaration takes `id` from the directory name, `name`, `description`, and `order` from `preset.yml`, and `plugins` from `agent.cordis.yml` verbatim; check each plugin name against `cordis-composition-reference` because packages renamed since the preset was written fail at activation. Install it and verify the row in a new session. In this deployment, retain the legacy directory and migration snapshot for recovery.
 
-## What not to move into a preset
+## Verify
 
-`agent-loop` registers the one agent factory and throws on a second. The registries own the per-session layering and cannot themselves be per-session. Session persistence must stay host-side or the session list fragments. The sandbox, approval, and permission rows are a deliberate boundary: a preset is exactly as privileged as the plugins it names, so letting one relax its own confinement would defeat the confinement.
+`plugin_manager` `list_bundles` lists the installed bundle; `list_plugins` shows the `preset-<id>` row with its activation state. A declaration whose activation fails stays on the roster with its diagnostic and cannot compose a session until the bundle is fixed and reinstalled. Existing sessions and their children keep the plugin revision they started with; validate changed behavior in a new session. Installing a bundle executes plugin code in the Host process, so it requires Full access or approval.
+
+## Choose plugin placement
+
+Host plugins supply shared services: tools and prompt registries, the Agent loop, sessions, persistence, settings, sandbox policy, model routes, and subagent backends. Preset plugins contribute scoped tools, persona, prompt sections, and policies to those registries. Preset revisions are eagerly activated once and shared by their selecting Agents.
+
+A preset plugin that supplies a service must isolate the provider and all its consumers in the same realm. A service consumed by Host plugins belongs in the Host configuration. Scope controls contributions and event visibility; `isolate` controls service instances. Use ordinary Cordis groups for nested plugin lists. Keep `!!js` expressions only in plugin configuration or `disabled`; the Loader evaluates them when activating the child plugin. Resolve assets from installed packages rather than a preset directory.
+
+## Extend the Host
+
+For new plugin code or profile-wide capabilities, load `cordis-plugin-development`, author a workspace bundle, and install it with `plugin_manager`. Inspect available APIs through `cordis_inspect_list` and `cordis_inspect_query`, including a mounted plugin's Config schema through the Host `Config` provider; those tools do not invoke Remote methods. Verify the installed capability before reporting completion.

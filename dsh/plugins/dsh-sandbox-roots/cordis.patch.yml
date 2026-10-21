@@ -1,0 +1,38 @@
+# @wopal/dsh-sandbox-roots: the stock sandbox rows are disabled and this bundle's
+# replacements are inserted under their own ids — dsh skips an override row
+# whose `name` differs from the standing row, so the swap is disable + insert.
+# The service registrations (ctx.sandboxPolicy / ctx.sandbox / ctx.fs) come
+# from the class chains, so consumers resolve the replacements by service name.
+#
+# Configuration lives on the `sandbox-roots-policy` entry below. The settings
+# service projects this plugin's Config schema into a form, so `writableRoots`
+# is edited beside `mode` and `workspaceRoot`.
+
+- id: sandbox-policy
+  disabled: true
+- id: sandbox
+  disabled: true
+- id: fs-sandbox
+  disabled: true
+
+- insert:
+    - id: sandbox-roots-policy
+      name: '@wopal/dsh-sandbox-roots'
+      config:
+        mode: !!js process.env.DSH_PERMISSION_MODE ?? 'workspace-write'
+        workspaceRoot: !!js process.cwd()
+        writableRoots:
+          - ~/.wopal
+          - ~/.Trash
+          - /Volumes/U500G/.Trashes/501
+          - ~/.bun
+          - /Volumes/U500G/mini-links/bun-install
+          - ~/.npm
+          - /Volumes/U500G/mini-links/npm-cache
+          - ~/tmp
+          - ~/Library/Caches/electron
+          - /Volumes/U500G/mini-links/pnpm-store
+    - id: sandbox-roots-sandbox
+      name: '@wopal/dsh-sandbox-roots/sandbox'
+    - id: sandbox-roots-fs
+      name: '@wopal/dsh-sandbox-roots/fs'

@@ -6,11 +6,11 @@
 
 ## 装了哪些工具（为什么）
 
-| 工具组 | 对应权限 | 说明 |
-|---|---|---|
-| 文件(读) + shell(读输出取证) + 技能(继承 wopal) + todo | read 全开、bash 开、question=deny、task=deny | rook 只读审查 |
-| ❌ tool-ask-user | question: deny | rook 不询问（审查发现的歧义写进报告 Requirement Questions） |
-| ❌ delegation 组 | task: deny | rook 不委派 |
+| 工具组                                                 | 对应权限                                     | 说明                                                        |
+| ------------------------------------------------------ | -------------------------------------------- | ----------------------------------------------------------- |
+| 文件(读) + shell(读输出取证) + 技能(继承 wopal) + todo | read 全开、bash 开、question=deny、task=deny | rook 只读审查                                               |
+| ❌ tool-ask-user                                       | question: deny                               | rook 不询问（审查发现的歧义写进报告 Requirement Questions） |
+| ❌ delegation 组                                       | task: deny                                   | rook 不委派                                                 |
 
 ## persona 裁剪点
 
@@ -24,6 +24,6 @@
 
 rook 不单独声明技能目录，作为 wopal 子代理继承父组成的技能范围（随 wopal 的 `skill-filesystem`）。今后需要收紧 rook 可见技能时，再为本 preset 引入独立技能根或 toolFilter 收敛。
 
-## 安装位置
+## 安装与运行
 
-本 preset 由运行时 `~/.wopal/dsh/home/.agent-presets/rook/` 软链指向本版本管理源 `.wopal/dsh/agents-presets/rook/`。在此编辑，改动经软链直接生效于运行时。
+本目录是生成源，DSH 0.2 运行时加载 `@wopal/dsh-presets` 标准 bundle 的声明补丁。生成、安装、配置及回退步骤见 [bundle 说明](../README.md)。修改后重新生成、安装，在新会话验证；旧 `.agent-presets` 软链不再是加载入口。

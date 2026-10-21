@@ -6,12 +6,12 @@
 
 ## 装了哪些工具（为什么）
 
-| 工具组 | 对应权限 | 说明 |
-|---|---|---|
-| 文件 + shell + 技能(继承 wopal) + todo | read 全开、edit 开、bash 开、question=deny、plan_enter=deny、task=deny | fae 只执行 |
-| ❌ tool-ask-user | question: deny | fae 不询问用户（原灵魂正文说"暂停并问"，dsh 侧会暂停报告） |
-| ❌ plan-mode 组 | plan_enter: deny | fae 不规划 |
-| ❌ delegation 组 | task: deny | fae 不委派 |
+| 工具组                                    | 对应权限                                                               | 说明                                                       |
+| ----------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------- |
+| 文件 + shell + 技能(显式 provider) + todo | read 全开、edit 开、bash 开、question=deny、plan_enter=deny、task=deny | fae 只执行                                                 |
+| ❌ tool-ask-user                          | question: deny                                                         | fae 不询问用户（原灵魂正文说"暂停并问"，dsh 侧会暂停报告） |
+| ❌ plan-mode 组                           | plan_enter: deny                                                       | fae 不规划                                                 |
+| ❌ delegation 组                          | task: deny                                                             | fae 不委派                                                 |
 
 ## persona 裁剪点
 
@@ -20,8 +20,8 @@
 
 ## 技能范围
 
-fae 不单独声明技能目录，作为 wopal 子代理继承父组成的技能范围（随 wopal 的 `skill-filesystem`）。今后需要收紧 fae 可见技能时，再为本 preset 引入独立技能根或 toolFilter 收敛。
+fae 是独立 preset，显式挂载 `skill-filesystem`，使用项目技能根及 bundle 自带技能；不依赖 wopal 的 provider 继承。其禁止提问、规划与委派的角色边界保留。
 
-## 安装位置
+## 安装与运行
 
-本 preset 由运行时 `~/.wopal/dsh/home/.agent-presets/fae/` 软链指向本版本管理源 `.wopal/dsh/agents-presets/fae/`。在此编辑，改动经软链直接生效于运行时。
+本目录是生成源，DSH 0.2 运行时加载 `@wopal/dsh-presets` 标准 bundle 的声明补丁。生成、安装、配置及回退步骤见 [bundle 说明](../README.md)。修改后重新生成、安装，在新会话验证；旧 `.agent-presets` 软链不再是加载入口。

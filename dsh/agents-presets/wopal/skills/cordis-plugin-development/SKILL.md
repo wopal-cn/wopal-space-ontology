@@ -1,450 +1,60 @@
 ---
 name: cordis-plugin-development
-description: Create, modify, debug, or extend Cordis Plugins — dynamic ones (Host Services and Events, Client Slot and theme UI, Package-private Client-to-Host calls, dynamic Tools, version updates, approval, runtime diagnostics) and durable ones you ship as a distributable dsh bundle (dsh.bundle.patch self-patch, choosing a resolvable package scope). Use this Skill to route a request to the correct platform and Inspect Provider, then define, run, repair, roll back, or package the Plugin.
+description: Use when designing, reviewing, adding, enabling, disabling, installing, configuring, or debugging a plugin, bundle, feature, page, panel, tool, or MCP connection in the current Harness profile, including a shipped plugin that is disabled by default, and for any visual object, decoration, or widget request that names no other destination, which means an installed UI plugin rendered in the Harness Web UI.
 ---
 
-# Develop Dynamic Cordis Plugins
-
-First determine whether a capability belongs on Host or Client, then query the real interface before writing code. Never infer a complete API from a Service name, Event payload, Slot props, theme token, or example.
-
-## dsh in ellamaka (WopalSpace deployment constraints)
-
-This skill reaches you inside the WopalSpace `wopal` agent preset, where dsh runs as "dsh in ellamaka" — an official-layout dsh home managed by the Ellamaka engine rather than a standalone official dsh install. The constraints below describe that deployment shape; where they differ from official dsh CLI conventions, they win.
-
-- DSH home: `$DSH_HOME` = `$WOPAL_HOME/dsh/home`. The host sets this at process launch. It is a 100% official-layout harness home and holds `profiles/`, `.agent-presets/`, `sessions/`, `settings.yaml`, `storages/`, and `attachments/`. There is no `~/.dsh` in this deployment.
-- Territory root: `$WOPAL_HOME/dsh` is the Ellamaka territory root, NOT the DSH home. It is engine-owned and holds `closures/<fingerprint>/` (immutable official dependency tree — never edit or write inside it), plus `locks/` and `recovery-scripts/`.
-- Bun host: release `ellamaka serve` is a single Bun process. Server-side plugins must not require Node's private module loader or `--expose-internals`; incompatible installs are rejected with `DshPluginBunIncompatible`.
-- Install area: server-side plugin packages that ship with the deployment are installed into `$DSH_HOME/profiles/`, never into `closures/<fp>/` — the closure tree is frozen and serves as read-only reference material only.
-- Agent preset roots:
-  - Official presets sit in the closure at `closures/<fp>/node_modules/@deepseek-ai/dsh/config/agent-presets/`; they are immutable — copy, never edit.
-  - User presets live one directory per preset under `$DSH_HOME/.agent-presets/<id>/`. In the WopalSpace ontology layout that directory is a symlink to the version-controlled source under the space's own `.wopal/dsh/agents-presets/<id>/`, so edit the source there and the symlink carries the change to the runtime. A preset is auto-discovered from any root the deployment configures — read the real path from the roster's `list()` or `resolve()` rather than assuming the layout.
-  - On duplicate ids the earlier root wins. Customize an official preset by copying it into the user root under a NEW id, never by editing the closure copy.
-- Mount semantics: a preset mounts when a session is created and is hot-reloaded from its composition file on change (profile `patchReload: live`). An edit is picked up without a host restart, but the changed rows reach a session's tool/prompt catalog when that session is (re)created — validate, then open a fresh session to confirm.
-
-## Standard workflow
-
-1. Call `cordis_inspect_list` to obtain the Providers, methods, and schemas currently registered on Host and Client.
-2. Select the smallest set of `cordis_inspect_query` calls needed to read the exact Services, Events, Builtins, Slots, Theme tokens, or Tools that the implementation will use.
-3. For a new Plugin, design its first Package. To modify an existing Plugin, first use `cordis_inspect_self(pluginId, packageId)` to read the base source and diagnostics.
-4. Write plain JavaScript in `code.host`, `code.client`, or both, then call `cordis_define`.
-5. Call `cordis_run` with the final `pluginId` and `packageId` returned by define.
-6. Handle approval, waiting, Client loading, and render failures from the Run card, steering messages, or `cordis_inspect_self`.
-7. Use `cordis_stop` to disable the Plugin temporarily. Use `cordis_undefine` only when it is no longer needed.
-
-Do not wait in the same turn for user approval or asynchronous browser results. After `cordis_run` returns `awaiting-approval` or `starting`, end the current Tool flow and wait for the system to report the final outcome through state updates and steering.
-
-## Tool usage guidance
-
-| Tool | Use it when | Do not |
-| --- | --- | --- |
-| `cordis_inspect_list` | Discover current Host/Client Providers and method schemas in one call; refresh after the runtime capability directory changes | Hard-code Provider names and skip list; treat a manifest as business data |
-| `cordis_inspect_query` | Confirm exact Service methods, Event modes, Builtins, Slots, tokens, or Tool schemas before writing code | Use it instead of calling a real Service from the Plugin; assume a Client query will finish without a responding page |
-| `cordis_inspect_self` | List current Plugins, inspect version pointers, or read exact Package source and runtime diagnostics | Fetch all source just to build a list; use it to modify or start a Plugin |
-| `cordis_define` | Create a Plugin's first version or append an immutable Package to an existing Plugin; let the user preview the code first | Expect define to execute `apply`, request approval, or update current |
-| `cordis_run` | Activate an exact Package; use `run` for first activation, restart, or rollback, and `update` to switch versions | Use `run` to switch versions implicitly; treat pending or starting as success |
-| `cordis_stop` | Pause current effects while preserving Packages, grants, and version pointers for later use | Use stop to mean permanent deletion |
-| `cordis_undefine` | Permanently remove a Plugin and all of its Packages and clear historical business views | Call it while rollback, inspection, or restart is still needed |
-
-## Choose a platform
-
-| Requirement | Preferred platform | Inspect first |
-| --- | --- | --- |
-| Files, commands, processes, or networking | Host | `fs`, `bash`, `subprocess`, `pty`, and `web` in `Service.listService` |
-| Agents, durable Session data, or Host lifecycle | Host | The relevant Service and `Event.listEvents` |
-| Register a dynamic Tool callable in the next model step | Host | `harness` in `Builtin.listBuiltins`, plus `Tool.listTools` |
-| Page theme, layout, or current page state | Client | `Theme.listTokens` and Client `Service.listService` |
-| Conversation Snapshot or session/workspace lists | Client | The target Slot's standard props and owner props |
-| Settings pages, sidebars, input areas, overlays, or Tool cards | Client | `Slots.listSubTree` |
-| Fetch on Host and display on Client | Both | Host Service + `harness.handle`; Client Slot + `host.call` |
-
-Prefer the capability closest to the data owner. If Slot props already provide the Conversation Snapshot, do not fetch it again through Host. If only the Package's own styles need to change, do not override the global theme. If only a small entry point is needed, do not replace an entire product UI region.
-
-## Provider navigation
-
-Select methods from the actual `cordis_inspect_list` result. Common initial methods include:
-
-- `Service.listService`: without `service`, returns every callable Service with its purpose and exact method signatures. Query the selected `service` again for access rules, structured method descriptions/parameters/returns, and only its referenced types.
-- `Event.listEvents`: without `event`, returns every Event with its purpose, dispatch mode, and exact listener signature. Query the selected `event` again for its structured listener contract and only its referenced types; a Waterfall listener must call `next()`.
-- `Builtin.listBuiltins`: returns evaluator-provided symbols and signatures that cannot be obtained through `ctx.get()`.
-- `Slots.listSubTree`: without `root`, returns compact live trees with each Slot's purpose, kind, scope, registration keys, replacement risk, and children. With an exact `root`, it also returns that selected Slot's full contract, props, and current occupants while keeping descendants compact.
-- `Theme.listTokens`: returns theme tokens that may currently be queried and overridden; it does not modify the theme.
-- `Tool.listTools`: returns Tool schemas actually visible to the current Agent, including dynamically registered Tools.
+# Persistent Harness plugins
 
-Provider names, methods, and inputs must come from the current list result. The Service/Event Catalog describes which interfaces this version permits; it does not guarantee that a Service is currently mounted. At runtime, use real Services and Events rather than caching or displaying Catalog query results.
+For implementation, use ordinary workspace files to author a bundle, then `plugin_manager` with `action: install_bundle` and the absolute package directory as `target` to install it in the current profile. Changes affect every session in that profile and survive restart. Load `editing-cordis-compositions` for agent preset changes.
 
-## Execution environment
-
-Both `code.host` and `code.client` are plain JavaScript function bodies that return a Cordis Plugin. They are not compiled by TypeScript, JSX, or a bundler.
-
-Do not use:
-
-- `import`, `require`, TypeScript types, `as`, decorators, or JSX;
-- globals not confirmed by `Builtin.listBuiltins`;
-- guessed access to `window`, `document`, `process`, `Buffer`, `fetch`, or native timers.
-
-Client React code must use `React.createElement(...)`.
-
-Correct:
-
-```js
-return {
-  apply(ctx) {
-    const slots = ctx.get('slots')
-    if (slots === undefined) return
-    slots.inject('tool.view.cordis', () => slots.register(
-      { name: 'tool.view.cordis', key: 'self' },
-      () => React.createElement('div', null, 'Hello'),
-    ))
-  },
-}
-```
-
-Incorrect:
-
-```jsx
-return {
-  apply(ctx) {
-    return <div>Hello</div>
-  },
-}
-```
-
-JSX is not the only problem in this example. `apply()` registers lifecycle contributions and cannot return a React Element as the Plugin result. UI must be registered in a queried Slot.
-
-## Access Services
-
-Read optional capabilities with `ctx.get(name)` by default and handle their absence:
-
-```js
-return {
-  apply(ctx) {
-    const service = ctx.get('serviceName')
-    if (service === undefined) return
-    service.someMethod()
-  },
-}
-```
-
-Declare `inject` only when a Service is a hard dependency and the Plugin must enter waiting until Cordis reactivates it after the Service appears:
-
-```js
-return {
-  inject: ['requiredService'],
-  apply(ctx) {
-    ctx.requiredService.someMethod()
-  },
-}
-```
-
-Do not overuse `inject` merely to avoid an `undefined` check. Do not access `ctx.requiredService` without declaring the injection; the Guard rejects undeclared dependencies.
-
-## Manage side effects
-
-Every contribution must be removed after the Plugin is stopped, updated, or removed. Prefer Cordis lifecycle APIs:
-
-- Use `ctx.on()` to register Event listeners.
-- Use `ctx.effect()` to own an external subscription that returns a disposer.
-- Retain disposers returned by Cordis Service, Tool, Slot, timer, and theme APIs.
-- Do not create process-wide or page-wide side effects at module scope or outside `apply()`.
-
-Recommended:
-
-```js
-return {
-  apply(ctx) {
-    const service = ctx.get('serviceName')
-    if (service === undefined) return
-    ctx.effect(() => service.subscribe((value) => {
-      console.log(value)
-    }))
-  },
-}
-```
-
-If `subscribe()` does not return a disposer, first query whether the Service provides a supported cleanup mechanism. Do not assume unload automatically removes arbitrary third-party callbacks.
-
-## Host and Client timers
-
-On both platforms, the timer is a Service named `timer` with the same interface; it is not a Builtin. Query `{ "service": "timer" }` through the corresponding platform's `Service.listService` before using it. Declare `inject: ['timer']` before using the timer mixin.
-
-One-shot delay:
-
-```js
-return {
-  inject: ['timer'],
-  apply(ctx) {
-    const onClick = () => {
-      ctx.timeout(() => console.log('done'), 300)
-    }
-    // Pass onClick to a queried Slot UI.
-  },
-}
-```
-
-Periodic work in a React component:
-
-```js
-return {
-  inject: ['timer'],
-  apply(ctx) {
-    function Clock() {
-      React.useEffect(() => ctx.interval(() => console.log('tick'), 1000), [])
-      return React.createElement('div', null, 'Running')
-    }
-    // Register Clock in a queried Slot.
-  },
-}
-```
-
-Incorrect:
-
-```js
-return {
-  apply(ctx) {
-    ctx.timeout(() => console.log('invalid'), 300)
-  },
-}
-```
-
-```js
-setTimeout(() => console.log('invalid'), 300)
-```
-
-The first example does not declare the timer hard dependency. The second uses a global timer that does not exist.
-
-## Listen to Events
-
-Query the Event Provider first to confirm the platform, parameter order, return value, and `mode`.
-
-Ordinary emit Event:
-
-```js
-return {
-  apply(ctx) {
-    ctx.on('some/event', (payload) => {
-      console.log(payload)
-    })
-  },
-}
-```
-
-The last parameter of a Waterfall Event is `next`. Unless the listener intentionally stops downstream processing, it must call and return it:
-
-```js
-return {
-  apply(ctx) {
-    ctx.on('some/waterfall', (payload, next) => {
-      console.log(payload)
-      return next()
-    })
-  },
-}
-```
+Do not write the profile's `package.json` or `cordis.patch.yml`, create packages under `$DSH_HOME`, or run pnpm in the profile directory: `install_bundle` performs those steps, and each hand-made write outside the workspace needs its own approval. Every `plugin_manager` action, including `list_plugins` and `list_bundles`, also needs approval without Full access, so call it only when its result decides the next step.
 
-## Register Client UI
+## Ellamaka 集成部署
 
-Query `Slots.listSubTree` without `root` to choose a target from the compact purpose and topology tree, then query the exact Slot with `root` before writing its registration. The exact result determines:
-
-- the Slot's purpose in the layout;
-- whether its registration protocol is `single`, `list`, `keyed`, or `chain`;
-- registration options;
-- scope standard props and business owner props;
-- current occupants, replacement risks, and descendant Slots.
+本技能基于 DSH 0.2.0-rc.2。集成版 `$DSH_HOME` 为 `$WOPAL_HOME/dsh/home`，用户配置写入 `profiles/web/cordis.patch.yml`，不使用独立官方安装的 `~/.dsh`，也不继续写旧 `settings.yaml`。
 
-Use `ctx.get('slots')` and handle its absence. Then use `slots.inject` to wait for the Slot declaration and call `slots.register` inside the callback:
-
-```js
-return {
-  apply(ctx) {
-    const slots = ctx.get('slots')
-    if (slots === undefined) return
-    slots.inject('target.slot', () => slots.register(
-      { name: 'target.slot', id: 'my-view' },
-      (props) => React.createElement('div', null, String(props.someValue)),
-    ))
-  },
-}
-```
+官方依赖位于 Ellamaka 管理的 `closures/<fingerprint>/`，只读参考。WopalSpace 的三个 preset 由 `@wopal/dsh-presets` bundle 声明；旧 `preset.yml` 与 `agent.cordis.yml` 是生成源，运行时消费生成的 `preset.patch.yml`。修改源后重新生成并安装 bundle，在新会话确认行为，既有会话保留原 revision。
 
-`ctx.get('slots')` does not require an injection. Do not rewrite it as `ctx.slots` unless `inject: ['slots']` is declared:
+安装使用 `ellamaka dsh plugin --profile web add <bundle 绝对目录>`：它把目录规格转成 `file:<绝对路径>` 交给官方 dsh 安装器（pnpm），由官方完成声明、依赖、lockfile 与 bundle 登记。本集成里 Wopal 没有 `plugin_manager` 工具，因此上文以 `install_bundle` 为中心的流程不适用；同样不要在 profile 目录手跑 pnpm 或手改 `package.json`。pnpm 是宿主前置条件（与官方 dsh 一致，产品不随包分发），缺失时安装会直接报错，需先让 `pnpm` 在 PATH 上。
 
-```js
-return {
-  apply(ctx) {
-    ctx.slots.register({ name: 'target.slot' }, () => null)
-  },
-}
-```
+插件的 `@deepseek-ai/*` 依赖必须写在 `peerDependencies`，由 dsh loader 从安装作用域解析（与 `file:`/`link:` 无关）；写进 `dependencies` 会在 profile 里装出第二份模块实例。保留旧源目录和迁移前快照，不依赖 `.agent-presets` 软链自动发现。项目技能经 `<项目>/.dsh/skills` 装配，bundle 自带技能经 `customSkillDirs` 挂载。
 
-Do not guess an `id`, `key`, selector, or props before querying the Slot protocol. Do not default to root-level `root`, `sidebar`, `conversation`, or `details` Slots; replacing an entire occupant also removes the descendant Slots it declares.
+## Design or review
 
-### Settings pages
+Read the applicable references below and inspect the proposed or existing plugin against current APIs. Report design choices or findings instead of following the installation workflow. Do not write files, install bundles, or change profile state unless the user requests implementation.
 
-A full settings UI should usually register its own section through `settings.section` to obtain a complete content area. `settings.general.item` is only appropriate for one compact, general-purpose preference. Query the actual subtree, options, and props for both, then select the narrowest entry point that is still sufficient.
+## Enable a shipped plugin
 
-Dynamic Plugins are temporary and process-local, so their settings UI does not need persistent storage. Do not add durable settings or another persistence mechanism for it. Register the UI in the appropriate settings Slot and keep any transient interaction state in memory for the lifetime of the Plugin.
+A shipped bundle can resolve a plugin row and leave it `disabled`. The row id and its reason are in the shipped patch, `packages/bundle/*/cordis.patch.yml` in a source checkout. Write a workspace bundle whose patch overrides that row with `disabled: false` and inserts the Host rows it depends on; a source checkout's `apps/cli/config/examples/<feature>/cordis.yml` lists them for opt-in features. Packages shipped with dsh resolve from the dsh installation, so the bundle declares no dependencies on them. Install it with `install_bundle`.
 
-### Session and page data
+## Deliver a working plugin first
 
-A session-scoped Slot may provide `useSession`, `useSessions`, `useWorkspaces`, `useProjection`, input state, or actions through standard props. Follow the query result and prefer owner or standard props directly; do not add a Host RPC for data already present there.
+1. Resolve the requested result and destination. An unspecified visual destination is the current Harness Web UI; a standalone image or HTML file does not complete such a request. Choose reasonable visual details and implement a small first version; install it before visual refinement.
+2. Discover only the APIs needed for that version: `cordis_inspect_list`, then targeted `cordis_inspect_query` calls. For UI, query Client `Slots.listSubTree` and the selected slot's registration options and props. For anything beyond a static decoration, such as tool policy, agent context, session-derived state, or Chat rows, read `references/practices.md` before choosing the extension point; for a user action in plugin UI, also read `references/user-actions.md`. Once the chosen slot and registration API are known, write the plugin.
+3. Read the matching template under `templates/` with the file-read tool and write its copies into one workspace directory, or write the installable package, patch, and required Host/Client files there yourself. Check JavaScript syntax and the manifest, then install it. Before that first installation, do not create preview HTML, mock shells, design variants, screenshot scripts, or rasterizer tooling. Use the installed plugin itself as the first preview.
+4. Read the installation result: its `application` and `warnings` fields decide whether the change is live, not server logs, terminal output, process lists, or the page's boot payload. Confirm new rows with `cordis_inspect_query`, which needs no approval, rather than paging `list_plugins`. After `application: applied`, exercise the capability or inspect the live Client registration. Use the connected page for visual verification when browser control is available. For a page or panel, also verify design consistency: styles use only theme tokens, the plugin imports no Harness Client package such as `@deepseek-ai/dsh-client-ui-primitives`, the console shows no slot entry crash, and the view reads correctly in light and dark themes beside a comparable host page. For a user action, run the checks in `references/user-actions.md`. Scale verification to the change's risk; follow `references/verification.md` when browser control is unavailable. Restore any user setting or state changed while testing. State any verification limitation explicitly; installation and slot registration alone do not establish what the user can see.
+5. Fix observed defects in the same plugin. When the requested result works, finish with its location and verification status. Do not continue speculative visual variants, optional features, or a new mock preview. Close any task list you created.
 
-Select only the fields that the UI actually needs. Do not copy or render an entire Conversation Snapshot, Session, Tool call, or Slot props object.
+## Knowledge sources, in order
 
-### Cordis Run-specific panel
+1. Inspection: `cordis_inspect_query` answers exact Service methods and Event modes (`Service`, `Event`), a mounted plugin's Config JSON Schema (`Config.listConfigs`: filter the paged directory by `name`, then query the `entry` id), the Tools this Agent can call (`Tool`), and live Client Slots and theme tokens (`Slots`, `Theme`).
+2. Package documentation: `Config.listConfigs` with `name` set to the package finds its entries; querying one `entry` returns its `packageDir`, the resolved package directory. Read `<packageDir>/README.md`. Bundled packages resolve from the dsh installation and profile-installed bundles from the profile, so never guess the path from `$DSH_PROFILE_DIR`.
+3. Source: installed packages ship built `lib/index.js` and `lib/types/**/*.d.ts` with JSDoc under that same `packageDir`, not `src/`; a source checkout of DSH has `packages/<group>/<name>/src`. Read them when inspection and the README leave a question open, and start source-level diagnosis from a concrete installation or runtime failure.
 
-To place interactive UI in the latest `cordis_run` card, register `tool.view.cordis` with `key: 'self'`:
+`DSH_PROFILE` (profile name) and `DSH_PROFILE_DIR` (its directory, whose `node_modules` holds only profile-installed bundles) are set in every shell call of a profile-launched Harness and absent when the Harness was booted without a profile. Bash reads them as `$DSH_PROFILE`; PowerShell, which the Windows preset uses, reads them as `$env:DSH_PROFILE`. With `dsh` on the PATH, `dsh --profile "$DSH_PROFILE" --dump-config` prints the composed profile.
 
-When the feature needs user interaction tied to this Package's result, this region is often a good fit because it keeps the controls in the conversation flow beside the Run card. It is not the default target for every Client UI: settings, sidebars, message actions, and overlays should use their own queried Slots when those locations better match the feature.
+## Read next
 
-```js
-return {
-  apply(ctx) {
-    const slots = ctx.get('slots')
-    if (slots === undefined) return
-    slots.inject('tool.view.cordis', () => slots.register(
-      { name: 'tool.view.cordis', key: 'self' },
-      (props) => React.createElement('div', null, `Package ${props.packageId}`),
-    ))
-  },
-}
-```
+The files below live in this skill's base directory, which the `skill` tool reported, and the table is the complete list: do not enumerate that directory. In every deployment, including a source checkout, read these files with the file-read tool, write copies into the workspace with the file-write tool, and verify a copy by reading it back. In Desktop the directory sits inside `app.asar`, which only the Host process's own file reads can open; shell commands (`ls`, `cat`, `cp`, `cmp`), the glob and search tools (they run a native ripgrep process), `node`, and pnpm all fail on it. Never install or syntax-check a template in place; copy its contents into the workspace first.
 
-At runtime, `self` binds to `pluginId + packageId`. Do not include `pluginRunId` in the key. When the same Package runs multiple times, the latest Run card hosts the UI and older cards automatically degrade.
-
-### Ordinary Tool cards
-
-To customize the call card for an ordinary model Tool, query `tool.call.toolview`. Its key is the Tool name; registering an existing key may replace the product's default card. When customizing only a newly added Tool, first verify its schema with `Tool.listTools`, then query the complete `ToolCallOwnerProps`.
-
-### Overlays and local entry points
-
-- For toasts, status notices, and frame-wide overlays, query `shell.overlay` first; observe its pointer-events and ordering rules.
-- When the selected target is a global overlay Slot, decide whether the UI should be draggable, how the user shows and hides it, and which existing layers it must cover or remain below.
-- For small sidebar actions, prefer additive inner Slots such as `sidebar.footer.action`; do not replace the entire sidebar.
-- For supplementary content after a conversation turn, query `conversation.chat.turnTail` and register according to its returned chain selector and fallback rules.
-
-## Themes and styles
-
-Determine the scope of the change first:
-
-1. Global theme: first query `Theme.listTokens`, then query `{ "service": "theme" }` through Client `Service.listService`. Supply light and dark values for each override as required by the query, and retain the returned disposer.
-2. The Package's own components: use `styles.insert(css)` and prefer theme CSS variables for colors.
-3. New visible content: choose a Slot first, then decide between local CSS and global tokens.
-
-Do not manipulate `document.body`, `window`, or hard-coded product DOM selectors. The theme Service changes tokens but does not create UI. Slots create UI but do not replace the theme system.
-
-## Call Host from Client
-
-Host registers a Package-private method with `harness.handle(method, handler)`, and Client invokes it with `host.call(method, args)`. This is Client→Host JSON RPC.
-
-Host:
-
-```js
-return {
-  apply(ctx) {
-    harness.handle('read-state', async (args) => {
-      return { value: args.key }
-    })
-  },
-}
-```
-
-Client:
-
-```js
-return {
-  async apply(ctx) {
-    const result = await host.call('read-state', { key: 'demo' })
-    console.log(result.value)
-  },
-}
-```
-
-Arguments and return values must be lossless JSON. Do not pass functions, React elements, class instances, Contexts, Services, or other runtime objects; return `null` when there is no response data. Do not register a public Remote Service or use `ctx.remote` for Package-private communication.
-
-## Register a dynamic model Tool
-
-Host can use `harness` to register a Tool callable in the next model step. First query the current `harness` signature with Host `Builtin.listBuiltins`, then inspect existing Tool names and schemas with `Tool.listTools` to avoid conflicts.
-
-Tool arguments and return values must be JSON-compatible. `execute` owns the business result; render and presentation own only what the model and native UI see. Tool registration must belong to the current Plugin Fiber so it is automatically removed after stop or update.
-
-## Handle internal live data
-
-Service instances, Event payloads, Slot props, Session and Conversation Snapshots, Tool state, and other DSH/Cordis objects are internal live data.
-
-Do not:
-
-- call `JSON.stringify` or `structuredClone` on these objects or their descendants;
-- recursively enumerate, fully copy, or display them as a whole;
-- place Host objects in the Package's long-lived state or RPC return values.
-
-Read only the leaf fields required by the current feature. Extract the minimum strings, numbers, booleans, and other scalar values before constructing owned JSON.
-
-## Versions, approval, and repair
-
-- A Plugin is the stable instance identified by `pluginId`.
-- A Package is an immutable code version identified by `packageId`.
-- Every activation attempt has its own `pluginRunId`.
-- `currentPackageId` is the latest successful version; it does not imply that the Plugin is currently running.
-- `nextPackageId` is the target awaiting approval, activating, awaiting Client activation, or most recently failed.
-
-Choose the `cordis_run` mode as follows:
-
-| Current state | Target | mode |
-| --- | --- | --- |
-| No current | Any Package under the Plugin | `run` |
-| Has current | The same Package | `run` |
-| Has current | A different Package | `update` |
-| Update failed | `nextPackageId` | `update` to retry |
-| Update failed | `currentPackageId` | `run` to roll back |
-
-An unauthorized Client Package returns `awaiting-approval`. A single check mark authorizes only the current Package; double check marks authorize future versions of the same Plugin. A grant remains after a technical runtime failure. An authorized Package returns `starting` and completes asynchronously in the browser.
-
-After a technical failure:
-
-1. Use `cordis_inspect_self(pluginId, packageId)` to read the failed version's source and exact diagnostics.
-2. If the error involves an unknown capability, list and query the corresponding Provider again.
-3. Define a new Package under the same Plugin; do not overwrite the failed Package.
-4. Run again with the new `packageId` and the correct mode.
-
-Do not retry automatically after the user rejects approval. A failed update does not automatically restore the old physical Run; explicitly run current when recovery is required.
-
-## Modify @pluginId
-
-When the user identifies a target with `@pluginId`, do not create another Plugin. The injected context contains only identity, version pointers, and the default base Package, not source code.
-
-Modify it as follows:
-
-1. Read the base Package with `cordis_inspect_self(pluginId, packageId)`.
-2. Preserve the Host or Client half that does not need to change and modify only the target code.
-3. Call `cordis_define` with `plugin.kind: 'existing'` and the original `pluginId`.
-4. Use the returned `packageId`; when current exists, activate the new version with `update` in the usual case.
-
-If the reference is unavailable, explain that the Plugin was removed, belongs to another Session, or was lost on process restart. Do not create a same-named replacement.
-
-## Ship a capability as a distributable dsh bundle
-
-A dynamic plugin you define through `cordis_define` is process-local and disappears on restart — it is for probing a capability, never for shipping it. A capability that should persist and reach other sessions or users must be authored as a package with a `dsh.bundle.patch` and installed through the plugin CLI. Two decisions decide whether that package loads:
-
-**Choose the scope.** In the dsh-in-ellamaka deployment the `@deepseek-ai/*` scope is treated as the official closure set — the installer skips downloading it, composition resolution leaves its bare names untouched against the closure, and no fallback link is made for it. A package that borrows that scope without living in the official closure cannot be resolved from a profile (the row fails to import, the replay keeps the last good state). Author under a scope you control — `@<org>/*` or no scope for a plain bundle — never `@deepseek-ai/*` for something you distribute.
-
-**Declare the self-patch.** Give the package a `dsh` field naming a bundled patch file:
-
-```json
-"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
-```
-
-The bundled `cordis.patch.yml` carries the mount shape. When the plugin replaces stock rows, disable the stock row and insert your own under a distinct id (a patch may not change a row's `name`); when it publishes a new provider, insert a row naming the package. Both the official loader and the ellamaka loader honour this `dsh.bundle.patch` self-patch, so one package installs identically across the two environments. Install with the CLI that owns the target home — the official CLI `dsh plugin --profile <name> add <dir-or-package>` against an official home, or the ellamaka CLI `ellamaka dsh plugin --profile <name> add <dir-or-package>` against a running engine's home (same verb order, so either reads naturally; ellamaka copies the directory and heals a fallback link, the official CLI links it). Do not run the bare official `dsh` against a live ellamaka home, and do not use `ellamaka dsh` against an official standalone home. Keep the source directory layout and the built `lib/` beside the `cordis.patch.yml` — that is the unit a preset or a space distributes.
-
-**Dependency resolution differs per target runtime — know which one you are installing into (verified on dsh 0.1.2-rc.1).** The official CLI `add <dir>` is a bare `pnpm add <dir>` under the hood, which always records a `link:` dependency — there is no copy option. Node ESM resolves a linked plugin's imports against the plugin's real path (the source directory), and the official boot-time heal only supplements dependencies it can resolve from that same anchor, so **a linked plugin's source directory must carry its own `@deepseek-ai/*` peer entities** or boot fails with `Cannot find package '<peer>' imported from <source-dir>/lib/...` — registration success proves nothing about runnability. The ellamaka CLI copies the built `lib/` into the profile instead (the `files` field governs what ships), and copied plugins resolve peers through the runtime's flat closure (`$DSH_HOME/profiles/node_modules/@deepseek-ai/*`, maintained automatically at boot) — ellamaka installs never need source-directory dependencies. Recommended pattern for a plugin targeting both runtimes: keep the source directory clean (pure source + built `lib/`), add a `scripts/link-peers.mjs` that derives the official closure from `which dsh` (realpath → the `@deepseek-ai/dsh` package → its nested or sibling `node_modules/@deepseek-ai` — no environment variables, no home paths), symlink the peer list declared in the script into the source `node_modules/`, and expose it as `pnpm run link-peers`. Run it once after installing the plugin into an official-dsh profile; never run it for ellamaka-only development. Do not run the bare official `dsh` against a live ellamaka home, and do not use `ellamaka dsh` against an official standalone home. Keep the source directory layout and the built `lib/` beside the `cordis.patch.yml` — that is the unit a preset or a space distributes.
-
-## Common failure checks
-
-| Failure | Check first |
-| --- | --- |
-| `service "x" is not declared` | Whether code uses `ctx.x` without declaring `inject: ['x']` on the Plugin object; switch to `ctx.get('x')` with an absence check or declare a true hard dependency |
-| `cannot get property "timer" without inject` | Query the timer Service and declare `inject: ['timer']` |
-| Client parse failure | Whether the code uses JSX, TypeScript, import, or an unavailable global |
-| Slot registration failure | Whether the live subtree was queried, the Slot exists, and options, key, or selector satisfy the returned protocol |
-| UI loads but the page reports an error | Inspect the `client-render` diagnostic and stack; the error belongs to an exact Run, so define a new Package to repair it |
-| `host.call` failure | The Host handler name, current `pluginRunId`, JSON arguments, and real Service dependencies inside the handler |
-| Update failure | Preserve current/next semantics; repair next and update, or run current to roll back |
+| Task                                                                                                       | File                                                                                                                                            |
+| ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bundle manifest, display metadata and icon, install and enable semantics, Host plugin export forms, Config | `references/host-plugin.md`                                                                                                                     |
+| A UI plugin rendered in the Web page: Client manifest, module loader, slot registration                    | `references/ui-plugin.md`                                                                                                                       |
+| Connecting an MCP server through a configuration-only bundle                                               | `references/mcp-bundle.md`                                                                                                                      |
+| Verification limits when no browser control is available                                                   | `references/verification.md`                                                                                                                    |
+| UI plugin starting point, four files                                                                       | `templates/decoration/package.json`, `templates/decoration/cordis.patch.yml`, `templates/decoration/index.js`, `templates/decoration/client.js` |
+| MCP bundle starting point, two files                                                                       | `templates/mcp/package.json`, `templates/mcp/cordis.patch.yml`                                                                                  |
+| Loader patch dialect and the list of installable plugin packages                                           | the `cordis-composition-reference` skill                                                                                                        |
+| Choosing extension points, contexts, and state mechanisms for upgrade stability and performance            | `references/practices.md`                                                                                                                       |
+| Sharing application operations between UI actions and agent tools                                          | `references/user-actions.md`                                                                                                                    |

@@ -1,0 +1,28 @@
+# @wopal/dsh-web-fetch-http-fakeip: replaces the shipped web-fetch-http provider with a
+# fork that adds two deployment settings, configured on this entry:
+#
+#   fakeIpRanges  CIDR ranges this deployment treats as public, for a TUN proxy that
+#                 answers every lookup from a reserved fake-ip range. Addresses outside
+#                 the listed ranges keep the stock SSRF check.
+#   proxyUrl      outbound proxy for this deployment, so the proxy is configured here
+#                 rather than in the launch environment. Empty follows the launch
+#                 environment's own proxy policy.
+#
+# Both are optional and independent: a deployment may set either, both, or neither.
+#
+# Two steps, per the patch contract (a patch may not change a row's `name`):
+#   1. disable the shipped row (id web-fetch-http);
+#   2. insert a NEW row with a DIFFERENT id (web-fetch-http-wopal) that names
+#      THIS package. The fork registers the same provider id "http" as the
+#      shipped provider, so the `web` row's `fetchProvider: http` resolves to
+#      it unchanged.
+- id: web-fetch-http
+  disabled: true
+
+- insert:
+    - id: web-fetch-http-wopal
+      name: '@wopal/dsh-web-fetch-http-fakeip'
+      config:
+        fakeIpRanges:
+          - 198.18.0.0/15
+        proxyUrl: ''

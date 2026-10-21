@@ -1,0 +1,27 @@
+{
+  "name": "@wopal/dsh-presets",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Wopal DSH preset declarations for the rc.2 runtime",
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "wopal",
+    "fae",
+    "rook"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/dsh": "0.2.0-rc.2"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": [
+        "wopal/preset.patch.yml",
+        "fae/preset.patch.yml",
+        "rook/preset.patch.yml"
+      ]
+    }
+  }
+}

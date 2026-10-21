@@ -1,0 +1,7 @@
+# pnpm reads build-script approval from this file in a standalone package
+# directory (the `pnpm.onlyBuiltDependencies` package.json field is ignored
+# once this file exists). koffi — pulled in transitively by dsh-fs-local —
+# ships prebuilt binaries; its install script only rebuilds them, so denying
+# it keeps `pnpm install` non-interactive and the source tree dependency-free.
+allowBuilds:
+  koffi: false
