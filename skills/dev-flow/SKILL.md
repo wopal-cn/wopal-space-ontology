@@ -140,7 +140,7 @@ The full git commit sequence of a Plan (feature branch view):
 2. **Human authorization gates**: both `approve --confirm` and `verify --confirm` require explicit user authorization.
 3. **Scripts never touch project code**: `flow.sh` commands do not commit implementation code, but manage their own infrastructure (worktrees, feature branches). `complete` aborts on a dirty tree.
 4. **Plan path**: Plan files live in the space repo at `.wopal-space/plans/<project>/`; no Plan copy exists in the worktree. The Plan path given to fae must be the space-repo absolute path; fae edits that file to tick Done checkboxes and never touches Plan Status metadata.
-5. **rook gate**: implementation review (before complete) must be delegated to rook; rook PASS is required to advance; **review budget: at most 2 rounds — the first review must list ALL findings in one report, one re-review at most, then the review closes** (see the review-budget section in df-plan-review). Plan quality is gated by the built-in `plan check` at submit — rook does not review Plans.
+5. **rook gate**: implementation review (before complete) must be delegated to rook; rook PASS is required to advance; **review budget: at most 2 rounds — the first review must list ALL findings in one report, one re-review at most, then the review closes** (see the review-budget section in df-implement-review). Plan quality is gated by the built-in `plan check` at submit — rook does not review Plans.
 6. **Plan language and structure**: Plan body in the user's preferred language, section headings in English (matching the template). Never mix Chinese and English headings.
 
 ## Plan Task field requirements

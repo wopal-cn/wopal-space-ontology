@@ -49,7 +49,8 @@ planning → executing → verifying → done
 ├── skills/             # 技能定义
 │   ├── agents-collab/  # Agent 协作
 │   ├── dev-flow/       # 开发流程
-│   ├── df-plan-review/
+│   ├── df-proposal-review/
+│   ├── df-implement/
 │   ├── df-implement-review/
 │   └── ...
 ├── plugins/            # 插件

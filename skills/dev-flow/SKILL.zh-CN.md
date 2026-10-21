@@ -138,7 +138,7 @@ dev-flow 管理两类产物，它们在 git 中独立演化：
 2. **人类授权门**：`approve --confirm` 和 `verify --confirm` 都需要用户明确授权，禁止未经授权执行。
 3. **脚本不操作项目代码**：`flow.sh` 命令不提交实施代码，但管理自身创建的基础设施（worktree、feature 分支）。`complete` 遇脏树报错退出。
 4. **Plan 路径**：Plan 文件位于空间仓库 `.wopal-space/plans/<项目>/`，worktree 中不存在 Plan 副本。委派实施时给 fae 的 Plan 路径必须是空间仓库的绝对路径；fae 勾选 Done checkbox 时编辑该文件，禁止修改 Plan Status 元数据。
-5. **rook 门禁**：实施审查（complete 前）必须委派 rook，rook PASS 才能推进。**评审预算：最多 2 轮——首次评审必须一次性列全所有 finding，最多 1 次复审，之后评审关闭**（见 df-plan-review 的评审预算章节）。Plan 质量由 `submit` 内置 `plan check` 自动校验把关，不委派 rook 审 Plan。
+5. **rook 门禁**：实施审查（complete 前）必须委派 rook，rook PASS 才能推进。**评审预算：最多 2 轮——首次评审必须一次性列全所有 finding，最多 1 次复审，之后评审关闭**（见 df-implement-review 的评审预算章节）。Plan 质量由 `submit` 内置 `plan check` 自动校验把关，不委派 rook 审 Plan。
 6. **Plan 语言与结构**：Plan 文档正文使用用户偏好语言编写，章节标题保持英文（与模板一致）。禁止混用中英文标题。
 
 ## Plan Task 字段要求
