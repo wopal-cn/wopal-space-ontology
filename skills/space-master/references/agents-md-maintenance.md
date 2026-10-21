@@ -20,27 +20,47 @@ After a project change completes, first judge whether a new long-lived agent beh
 
 ## 3. Content Boundary Rules
 
-A project's `AGENTS.md` carries only long-lived boundaries and principles that need agent judgment. It is not a changelog, pitfall list, or implementation-detail replica.
+A project's `AGENTS.md` is the operating rulebook an agent follows *while* implementing, testing, and verifying. It is not a changelog, pitfall list, or implementation-detail replica.
+
+**The test for every rule:** would an agent need this instruction during the work, and would omitting it risk a mistake? If yes, it belongs here — concise and summarized.
+
+**"A DESIGN also describes it" is not a reason to omit a rule.** DESIGN holds the detailed description; `AGENTS.md` holds the concise operating constraint the agent must follow without opening DESIGN. An agent will not read every DESIGN document on every task, so the constraints that shape day-to-day work must be reachable from the rulebook. Summarize the constraint here and link the DESIGN for detail. Delete a rule only when it adds nothing the agent must act on — never merely because its topic appears in DESIGN.
 
 A new rule must satisfy all of:
 
 - Long-lived for multiple future tasks, and still true after refactoring.
-- Constrains agent permissions, responsibilities, or decision boundaries, not current implementation.
-- Cannot be guaranteed automatically by tests, types, lint, config, or code structure.
-- Does not duplicate existing truth sources; keep only one authoritative link when navigation is needed.
+- Constrains agent permissions, responsibilities, behavior, or decision boundaries.
+- Is something the agent must know and act on while working — for example logging level and content rules, output and routing rules, host / release / DSH operational limits, testing and verification rules, and coding discipline — even when DESIGN documents the topic in detail.
+- Is written as a concise operating rule, not a restatement of DESIGN prose; link DESIGN instead of copying it.
 
 The following must not be written into `AGENTS.md`:
 
+- One-off design content: a concrete design decision, structure, or data model that only one change needed and that DESIGN owns. This is the core prohibition — one-off designs and single-bug fixes do not belong here.
+- Single-bug fix records, and rules whose only purpose is to stop one already-fixed bug from recurring; that constraint belongs to tests.
+- Exhaustive inventories: directory, API, or command catalogs, architecture diagrams, and field lists.
 - Files, functions, config values, UI structure, or test assertions from this fix.
-- Implementation rules added to prevent a single bug from recurring; that constraint belongs to tests.
-- Descriptive content already present in code, config, scripts, Plans, or docs.
+- Descriptive content already present in code, config, scripts, Plans, or docs, with no operating instruction attached.
 - Lessons that only record experience without constraining agent decisions; those belong to long-term memory.
+
+### Common failure modes
+
+Two opposite mistakes come from misjudging this boundary:
+
+- **Over-stuffing**: recording a one-off design decision or a bug's specifics ("I hit X, so do Y"), or pasting DESIGN detail verbatim. A later agent cannot tell a durable rule from an episode of history.
+- **Over-trimming**: deleting a long-lived operating constraint because "DESIGN also describes it". The agent is then left without the rule it must follow while working, and repeats the same class of mistake. When in doubt, keep the summarized constraint.
 
 Merge or delete duplicate and stale rules before adding new ones. Use one sentence when one suffices.
 
 All document links in `AGENTS.md` must use relative paths (relative to the repository root or the document's directory). Absolute paths are forbidden because these documents are committed to git and shared across machines.
 
 The Canonical References section in the header carries only mandatory documents (PRD, DESIGN, business rules) that the agent must follow. Reference-only material (research, tutorials, auxiliary specs) is not canonical and must not be listed there. A document is either a canonical link or a reference, never both.
+
+### The Code Review Rules Section
+
+- Code projects (repositories under `projects/` and the ontology repository) must include a `## Code Review Rules` section; documentation-only directories may omit it.
+- New projects generate the section per the template; updates to an existing `AGENTS.md` preserve the section permanently — never delete, rename, or translate the heading.
+- The section content is a direction-level skeleton only: a reference to the review skills the space actually assembles, the defect-report boundary, and project-specific checkpoints each project fills in itself. The template must not carry any single project's concrete rules.
+- The heading stays in English in every language version; only the body translates. This reuses the existing rule that template-defined English section headings are not translated.
 
 ## 3.5 Document-Set Consistency
 
@@ -59,13 +79,15 @@ Updating `AGENTS.md` is never isolated. The rules must match the actual project 
 
 1. **The code it references no longer exists.** The module/file/command named by the rule has been deleted or renamed. Verify: `rg "<name>" <project>/src/` returns nothing; `git log --all --oneline --diff-filter=D -- <path>` shows the deletion commit.
 2. **The code structure now guarantees it automatically.** The rule was written for a constraint that has since been enforced by a single source of truth (shared constants module, generated types, CI check). Structure-enforced constraints need no agent rule — the rule is noise.
-3. **It duplicates an authoritative document.** The rule restates DESIGN, PRD, or a protocol document. The body must not restate DESIGN; keep a reference link instead.
+3. **It is a design detail, not a working constraint.** The rule only restates DESIGN's description of a structure, flow, or data model and tells the agent nothing to *do* differently while working; the DESIGN still carries that description. This is narrower than "the topic appears in DESIGN": a constraint the agent must follow while working — logging level and content rules, output/routing rules, host / release / DSH operational limits, testing and verification rules, coding discipline — stays in `AGENTS.md` in summarized form even when DESIGN documents the detail. Deleting it leaves the agent without the operating rule.
 4. **It is a pure implementation fact, not a decision boundary.** Describes what the code does (reads, checks, reports) without constraining agent choice. Read the code to learn these; the rule adds no behavioral constraint.
 
 ### Keep Criteria
 
 - **Safety boundaries**: deletion scope limits, single write path for credentials, protected content rules.
 - **Behavior constraints**: patterns the agent must follow when modifying (thin handlers, output through OutputService, error-code conventions).
+- **Operating constraints even when DESIGN covers the topic**: logging rules, output and routing rules, host / release / DSH operational limits, testing and verification rules, and coding discipline stay here summarized. "DESIGN documents it" is not a delete reason.
+- **Code Review Rules section**: kept verbatim — the heading is never deleted, renamed, or translated; its content is audited like any other rule.
 - **User-Supplied Rules section**: never touched.
 
 ### Fix Criteria
@@ -132,6 +154,8 @@ Before writing, present the full plan and get explicit user confirmation. The pl
 10. Confirmation that `User-Supplied Rules` will remain unchanged
 11. Low-information content to delete or avoid: `N/A` placeholders for nonexistent documents, text duplicated from DESIGN / frontmatter / global regulations, and long directory / API / command catalogs
 12. For each structure-related item, whether it is a current fact, a durable target constraint, or a temporary plan
+13. For each deleted rule, the reason it does not constrain agent work — never "DESIGN also covers the topic" alone
+14. For code projects, the presence and content plan of the `Code Review Rules` section (keep / generate / fill in checkpoints); for documentation-only directories, confirmation that omission is intentional
 
 When updating an existing `AGENTS.md`, rules and specifications are immutable after initial creation. Any addition, modification, or deletion must first appear as a proposal in the plan and can only be executed after explicit user confirmation.
 
@@ -157,7 +181,9 @@ For a small update to an existing `AGENTS.md` (no frontmatter change, no target-
 - [ ] Target and parent `AGENTS.md` files were considered when present
 - [ ] PRD, DESIGN, and `BUSINESS_RULES.md` were referenced when present
 - [ ] Nonexistent canonical documents are not written as `N/A` placeholders
-- [ ] The body does not repeat DESIGN, frontmatter, or space-wide regulations
+- [ ] The body summarizes long-lived operating constraints instead of copying DESIGN prose; DESIGN is linked for detail
+- [ ] Every long-lived operating constraint an agent needs while working (logging, output / routing, host / release / DSH limits, testing and verification, coding discipline) is present — not omitted on the grounds that DESIGN mentions the topic
+- [ ] No one-off design decision or single-bug fix record is present
 - [ ] The architecture section has no architecture diagram, API catalog, command catalog, or directory encyclopedia
 - [ ] The architecture directory table lists only paths that currently exist; durable target-structure constraints are not presented as current facts
 - [ ] Project-level documents reference subdirectory `AGENTS.md` files instead of copying their details
@@ -172,6 +198,8 @@ For a small update to an existing `AGENTS.md` (no frontmatter change, no target-
 - [ ] `User-Supplied Rules` remained unchanged: no additions, modifications, deletions, or reordering (original specification migrations excepted)
 - [ ] All non-obsolete original rules were preserved: rules fitting the sections above placed there, remaining rules moved verbatim to User-Supplied Rules; any deleted rule has explicit justification in the plan
 - [ ] The full plan was shown and confirmed before writing
+- [ ] Code projects include the `Code Review Rules` section; its heading was never translated, renamed, or deleted
+- [ ] Review skills referenced inside the `Code Review Rules` section actually exist in the space
 - [ ] The formal English version was updated after confirmation when applicable
 
 ## 7. Response After Completion

@@ -53,12 +53,14 @@ It is the single specification point — command surface, status reading, channe
 When creating or updating a project-level or directory-level `AGENTS.md`, work by these rules:
 
 1. **Audit existing rules first**: before updating an existing `AGENTS.md`, audit every current rule (per the Rule Audit criteria in the reference):
-   - **Delete**: code no longer exists / structure guarantees it (single source of truth) / duplicates an authoritative document / pure implementation fact
-   - **Keep**: safety boundaries (deletion scope, single credential write path), behavior constraints, User-Supplied Rules
+   - **Delete**: code no longer exists / structure guarantees it (single source of truth) / it is a design detail with no actionable constraint (a long-lived *working constraint* stays summarized even when DESIGN documents the topic) / pure implementation fact
+   - **Keep**: safety boundaries (deletion scope, single credential write path), behavior constraints, long-lived working constraints (logging, output/routing, host/release/DSH, testing and verification, coding discipline), the `Code Review Rules` section (heading kept verbatim, content audited normally), User-Supplied Rules
    - **Fix**: directory descriptions outdated, conflicts with a newer design mechanism, language versions drifted
 2. **Plan before writing**: present the audit classification (keep / delete / fix with reasons) plus the proposed change list, and wait for user confirmation
 3. **Review version first, formal version second**: update `AGENTS.<locale>.md` first, then the formal English `AGENTS.md` after approval
-4. Not updating is the default and legitimate outcome — update only when code, tests, config, and existing docs cannot carry the boundary
+4. **Code Review Rules section**: code projects' `AGENTS.md` must include a `## Code Review Rules` section — new projects generate it per the template, updates preserve it verbatim (never delete, rename, or translate the heading; documentation-only directories may omit it). The section carries a direction-level skeleton only: a reference to the space's assembled review skills, the defect-report boundary, and project-specific checkpoints. Only the reusable template must not
+   carry any single project's concrete rules
+5. Not updating is the default and legitimate outcome — update only when code, tests, config, and existing docs cannot carry the boundary
 
 **Full specification** (content boundaries, workflow, quality checklist) lives in `references/agents-md-maintenance.md`. The `/cupdate-agent-rules` command is an entry point only and carries no specification.
 
