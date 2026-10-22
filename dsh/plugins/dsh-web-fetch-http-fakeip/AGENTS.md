@@ -47,10 +47,12 @@ Rules that follow:
   neither product bundles or installs one. A missing `pnpm` fails the install
   with an explicit message.
 - **The source directory stays clean of what `file:` would copy**: the
-  install takes only the `files` field, so `node_modules/`, `lib/` and
+  install takes only the `files` field, so `node_modules/` and
   `pnpm-lock.yaml` are local development state and stay out of version
-  control. Do not run `pnpm run link-peers`-style peer materialization or
-  `npm install` here; none is needed.
+  control. `lib/` is the opposite: this fork ships compiled artifacts and has
+  no source build chain, so `lib/index.js` and `lib/types/**/*.d.ts` are the
+  runtime and must stay committed. Do not run `pnpm run link-peers`-style
+  peer materialization or `npm install` here; none is needed.
 
 ## Fork modification constraints
 

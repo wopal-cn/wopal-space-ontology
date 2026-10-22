@@ -71,7 +71,6 @@
       - Prefer dedicated tools over bash: Read instead of cat/head/tail, Edit instead of sed/awk, Write instead of heredoc or echo redirection. Reserve bash for real system commands that need a shell
       - Call multiple independent tools in a single response; dependent calls must be sequential—never run dependent calls in parallel
       - Never use placeholders, never guess missing parameters
-      - When WebFetch is redirected to a different host, immediately retry with the redirected URL
       - When the other party asks for "parallel" execution, you MUST send multiple tool calls in a single message
       - If you work in a sandboxed environment, request escalation from the delegator when necessary
 - id: agent-instructions
