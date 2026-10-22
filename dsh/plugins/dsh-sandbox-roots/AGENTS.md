@@ -5,9 +5,11 @@ description: Sandbox writable-roots extension plugin (@wopal/dsh-sandbox-roots) 
 
 # dsh-sandbox-roots — Agent Rules
 
-In `workspace-write` sandbox mode, merge the `writableRoots` declared in
-settings (the `sandbox-policy:` section, hot-reloaded) into the fs tool
-allow-list, the process sandbox allow-list, and the policy object itself.
+In `workspace-write` sandbox mode, merge the `writableRoots` declared on this
+plugin's `sandbox-roots-policy` entry config (persisted in the profile
+`cordis.patch.yml`) into the fs tool allow-list, the process sandbox
+allow-list, and the policy object itself. `$DSH_HOME/settings.yaml` is not a
+configuration source in DSH 0.2.0-rc.2.
 The implementation specification (design of record) is `docs/design.md` —
 it holds the upstream version anchor, verified facts, and per-file design.
 **Read it before implementing; this file does not restate its content.**
@@ -64,11 +66,13 @@ Rules that follow:
 - **pnpm** is a host prerequisite, exactly as for the official `dsh` CLI:
   neither product bundles or installs one. A missing `pnpm` fails the install
   with an explicit message.
-- **The source directory stays clean of what `file:` would copy**: the
-  install takes only the `files` field, so `node_modules/`, `lib/` and
-  `pnpm-lock.yaml` are local development state and stay out of version
-  control. Do not run `pnpm run link-peers`-style peer materialization or
-  `npm install` here; none is needed.
+- **`lib/` ships in version control**: the install takes only the `files`
+  field, so the built `lib/**` must be committed for a `file:` install to
+  work without devDependencies. `node_modules/` and `pnpm-lock.yaml` stay
+  local development state. Never hand-edit `lib/**`; rebuild it with
+  `pnpm build` and commit the regenerated output with the `src/` change. Do
+  not run `pnpm run link-peers`-style peer materialization or `npm install`
+  here; none is needed.
 
 ## Upstream alignment constraints
 

@@ -37,7 +37,9 @@ export type AddressResolver = (hostname: string, options: {
 export declare function isPublicIpAddress(input: string): boolean;
 /**
  * Resolve a hostname once and reject the complete answer set if any destination
- * is not public. The returned addresses are the only ones the transport may use.
+ * is not public. A caller that connects directly must use only the returned
+ * addresses; a caller that hands the URL to a proxy can only preflight, because
+ * the proxy performs its own lookup.
  *
  * @param hostname - URL hostname, including brackets when it is an IPv6 literal.
  * @param signal - aborts the wait for system resolution; an in-flight OS lookup may finish unused.

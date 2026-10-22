@@ -16,8 +16,10 @@ fae 是它的执行者、rook 是它的审查者——wopal 通过委派组把�
 
 - **[CSS-1]** Phase 7 `memory_manage command=search` → 改为「主动召回记忆/空间上下文」原则。原因：dsh 无 memory_manage 工具。
 
-## 安装要点
+## 安装与运行
 
-评审通过后装到 `~/.wopal/dsh/home/.agent-presets/wopal/`。wopal 技能全开，需把 `customSkillDirs` 指向空间技能根（含 agents-collab / space-master 等）——当前样例留空，需按安装时技能根实际路径补 `skill-filesystem.config.customSkillDirs`。
+本目录是生成源，DSH 0.2 运行时加载 `@wopal/dsh-presets` 标准 bundle 中的 `wopal/preset.patch.yml`。生成、安装（`ellamaka dsh plugin --profile web add <agents-presets 目录>`）、配置及回退步骤见 [bundle 说明](../README.md)。修改后重新生成、安装，在新会话验证；旧 `.agent-presets` 软链不再是加载入口。
 
-> **skills/ 目录说明**：`skills/` 保存随 wopal preset 发售的两个技能（editing-cordis-compositions、cordis-plugin-development）。每个技能正文开头有「dsh in ellamaka (WopalSpace deployment constraints)」约束节，记录本部署对官方 dsh CLI 约定的覆盖（DSH_HOME、~/.dsh、官方 preset 安装路径等）。运行时 `$DSH_HOME/.agent-presets/`（= `$WOPAL_HOME/dsh/home/.agent-presets/`）是软链，指向本版本管理源 `.wopal/dsh/agents-presets/`——在此编辑，改动经软链直接生效于运行时；本目录由 git 版本管理，勿在运行时侧反向改写。
+wopal 技能全开，`skill-filesystem.config.customSkillDirs` 应指向空间技能根（含 agents-collab / space-master 等）——当前样例留空，需按安装时技能根实际路径补齐。
+
+> **skills/ 目录说明**：`skills/` 保存随 wopal preset 发售的两个技能（editing-cordis-compositions、cordis-plugin-development）。每个技能正文开头有「dsh in ellamaka (WopalSpace deployment constraints)」约束节，记录本部署对官方 dsh CLI 约定的覆盖（DSH_HOME、~/.dsh、官方 preset 安装路径等）。本目录由 git 版本管理，运行时侧不再回写。

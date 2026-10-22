@@ -5,9 +5,10 @@ description: 沙箱可写根扩展插件（@wopal/dsh-sandbox-roots）——插�
 
 # dsh-sandbox-roots — Agent 规范
 
-在 `workspace-write` 沙箱模式下，把 settings（`sandbox-policy:` 节，热重载）
-声明的 `writableRoots` 并入 fs 工具 allow-list、进程沙箱 allow-list 与策略
-对象。实现规格（design of record）：`docs/design.md`——含上游版本锚点、
+在 `workspace-write` 沙箱模式下，把本插件 `sandbox-roots-policy` entry
+config（持久化在 profile `cordis.patch.yml`）声明的 `writableRoots` 并入
+fs 工具 allow-list、进程沙箱 allow-list 与策略对象。DSH 0.2.0-rc.2 不再把
+`$DSH_HOME/settings.yaml` 作为配置来源。实现规格（design of record）：`docs/design.md`——含上游版本锚点、
 已核实事实与逐文件设计，**实现前必读，本文件不复述其内容**。
 
 权威文档：
@@ -53,10 +54,11 @@ pnpm check       # typecheck + test + build 全链
   无关：`link:` 安装同样能解析。不存在也不需要任何逐插件链接步骤。
 - **pnpm** 是宿主前置条件，与官方 `dsh` CLI 一致：双方都不随包分发、也不代
   为安装。缺失时安装入口直接给出明确报错。
-- **源码目录不携带会被 `file:` 拷走的东西**：安装只取 `files` 字段，因此
-  `node_modules/`、`lib/`、`pnpm-lock.yaml` 属于本地开发状态，不进版本控制。
-  不要在此处做任何 peer 实体化（旧 `link-peers` 那类）或 `npm install`，
-  都不需要。
+- **`lib/` 随版本控制分发**：安装只取 `files` 字段，因此构建产物 `lib/**`
+  必须提交，`file:` 安装才能在不安装 devDependencies 的情况下工作；
+  `node_modules/`、`pnpm-lock.yaml` 仍属本地开发状态。禁止手改 `lib/**`，
+  改 `src/` 后用 `pnpm build` 重建并连同源码一起提交。不要在此处做任何
+  peer 实体化（旧 `link-peers` 那类）或 `npm install`，都不需要。
 
 ## 上游对齐约束
 

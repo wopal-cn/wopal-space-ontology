@@ -26,6 +26,15 @@ export interface Config {
     maxRedirects?: number;
     /** `User-Agent` header sent on every request. */
     userAgent?: string;
+    /**
+     * CIDR ranges this deployment treats as public, for a TUN proxy that answers every lookup from
+     * a reserved fake-ip range. Empty keeps the stock closed set.
+     */
+    fakeIpRanges?: string[];
+    /**
+     * Outbound proxy for this deployment. Empty follows the launch environment's own proxy policy.
+     */
+    proxyUrl?: string;
 }
 export declare const Config: z<Config>;
 /** Register the local HTTP(S) fetch provider with `ctx.web`. */

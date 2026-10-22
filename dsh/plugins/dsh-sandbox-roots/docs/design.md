@@ -1,7 +1,7 @@
 # dsh-sandbox-roots 实现规格（design of record）
 
-版本锚点：部署闭包 = `~/.wopal/dsh/closures/892d593303e0/node_modules/@deepseek-ai/*`，
-全部 `0.1.2-rc.1`；cordis `4.0.2`；schemastery `3.18.2`。
+版本锚点：目标运行时 = DSH `0.2.0-rc.2`（`cordis` 4.x、`schemastery` 3.x）。
+配置面按 rc.2 的 entry-config 模型描述；`settings.yaml` 只作为一次性迁移源存在。
 代码事实的参考源码（与部署同版本）：`labs/ref-repos/deepseek-harness/`（下称 REF）。
 
 ## 0. 已核实的事实（勿再推导，直接采用）
@@ -48,12 +48,11 @@
   每次调用 `ctx.sandboxPolicy.resolve({session})` 后把 policy 交给
   `ctx.sandbox.confine(command, policy)`（REF `packages/shell/bash-sandbox/src/index.ts:85-122`）。
   所以**替换 `sandbox` provider 行后，额外根经 policy 对象自动到达 bash**。
-- settings（REF `packages/settings/settings/src/index.ts`）：
-  `installSection(owner, ns, schema, entry, hooks)`；解析层叠 = schema 默认 →
-  composition base（entry）→ user 文档节，`mergeLayers` 递归对象合并（部分字段可行）；
-  `hooks.setSource(() => resolved)` 提供**同步**读取最新值的函数；
-  `hooks.onChange()` 在变更时触发；ns 必须小写连字符，冲突抛 `SettingsConflictError`。
-  消费模板：REF `packages/llm/llm-deepseek/src/index.ts:405-498`。
+- 配置面（DSH 0.2.0-rc.2）：插件 Config 即唯一配置源，持久化在 profile
+  `cordis.patch.yml` 的 entry 行内；runner 按 entry config 构造插件，插件自身不注册
+  任何 settings section。`$DSH_HOME/settings.yaml` 在本版本已降级为一次性迁移源，
+  `installSection` 不再存在，**不得**据此设计运行时热重载。配置改动随组合重放生效
+  （重启引擎），不是运行时热更新。
 - patch 行语义：后层按 id 覆盖整行（含 `name`，换名会 dispose 旧实现并 import 新模块，
   REF `vendor/loader/src/config/entry.ts:194-245`）；config 整体替换不深合并，
   换 config 的行必须复述全部所需键。
@@ -63,8 +62,8 @@
 
 ## 1. 目标
 
-在 `workspace-write` 模式下，把 settings 文档（`$DSH_HOME/settings.yaml` 的
-`sandbox-policy:` 节，热重载）里 `writableRoots` 列出的目录并入：
+在 `workspace-write` 模式下，把本插件 `sandbox-roots-policy` entry config
+（profile `cordis.patch.yml`）里 `writableRoots` 列出的目录并入：
 
 1. fs 工具（write/edit）allow-list；
 2. 进程沙箱（macOS Seatbelt profile）allow-list；
@@ -72,7 +71,7 @@
 
 非目标：`read-only` / `danger-full-access` 语义不变；bwrap/Landlock/Windows-ACL
 的额外根支持（配置了 writableRoots 时非 darwin 平台 confine 显式报错）；
-prompt context 文案定制；mode/workspaceRoot 的 settings 热更新。
+prompt context 文案定制；运行期配置热更新（配置随组合重放生效）。
 
 ## 2. 包结构（本仓库）
 
@@ -96,34 +95,24 @@ tests/          vitest，`tests/*.test.ts`
 ```ts
 export class SandboxRootsPolicyService extends SandboxPolicyService {
   static inject = ['sessionProjections']   // 与 stock 相同
-  // 字段：private source: () => string[] = () => this.baseRoots
-  //       private readonly baseRoots: string[]   // 构造时 config.writableRoots ?? []
+  // 字段：private readonly extras: readonly string[]  // 构造时 config.writableRoots ?? []
 ```
 
 - `static Config`（schemastery z）：完整复述 stock 两键并新增
   `writableRoots: z.array(z.string()).default([])`（mode union `.default('read-only')`、
   `workspaceRoot: z.string()` 无 schema 默认，语义与 stock 一致）。
-- 构造器：`super(ctx, config)`；保存 baseRoots；随后
-  `ctx.inject(['settings'], (settingsCtx) => settingsCtx.settings.installSection(
-    ctx, 'sandbox-policy', <仅含 writableRoots 可选字段的 section schema>,
-    { writableRoots: config.writableRoots ?? [] },
-    { setSource: src => { this.source = src }, onChange: () => {} }))`。
-  settings 缺席时 inject 不触发，source 回落 baseRoots（llm-deepseek 模式）。
-  section schema 用 zod（`zod.object({ writableRoots: zod.array(zod.string()).optional() })`），
-  与 stock 服务内部 `zod` 用法一致；**不要**把 mode/workspaceRoot 放进 section schema
-  （用户写了会被 schema 拒绝，fail loud，符合"settings 只管可写根"的边界）。
+- 构造器：`super(ctx, config)`；把 `config.writableRoots ?? []` 逐项 `expandRoot`
+  后去重保存在 `extras`。不注入 settings、不注册 section。
 - `override resolve(request)`：调 `super.resolve(request)` 得 base；当且仅当
-  `base.mode === 'workspace-write'` 时附
-  `writableRoots: [...new Set((this.source() ?? []).map(expandRoot))]`
+  `base.mode === 'workspace-write'` 且 `extras` 非空时附
+  `writableRoots: [...this.extras]`
   （expandRoot：`~`→home，`resolvePath` 绝对化，`canonicalPath` 规范化；列表去重；
   空列表时**不附**该字段，保持 stock 形状）。返回类型 =
   `SandboxExecutionPolicy & { writableRoots?: string[] }`。
 - 其他成员一概不覆盖（defaultMode/workspaceRoot/overrideOf/投影注册/prompt 注册
-  全部走 stock）。`installSection` 的 ns 为 `sandbox-policy`；若与其他注册冲突会
-  在加载期抛错（fail loud，属预期）。
+  全部走 stock）。
 
-注意：settings 热更新只影响 `writableRoots`；`source()` 每次 resolve 调用，
-无需缓存与 onChange 逻辑。
+注意：`extras` 在构造期确定，随组合重放更新；resolve 不重新读磁盘配置。
 
 ## 4. src/fs.ts — SandboxRootsFileSystem
 
@@ -190,8 +179,8 @@ export default class SandboxRootsSandboxProvider extends LocalSandboxProvider {
 
 覆盖 `sandbox-policy`（复述 base 的 mode/workspaceRoot `!!js` 表达式）、`sandbox`、
 `fs-sandbox` 三行。安装方式（集成阶段）：
-`dsh plugin --profile web add labs/research/dsh-sandbox-roots`（link 安装，
-`prepare` 脚本已定义）。
+`ellamaka dsh plugin --profile web add <本包目录>`（`file:` 安装；`lib/` 为版本管理的
+预构建产物，安装期不执行构建）。
 
 ## 7. 测试计划（TDD，vitest，先红后绿）
 
@@ -204,11 +193,9 @@ export default class SandboxRootsSandboxProvider extends LocalSandboxProvider {
 
 `tests/policy.test.ts`（class，最小 fake 依赖）：
 - 用独立 cordis Context（`new Context()` 根 ctx）+ `ctx.set`/fake 注册
-  `sessionProjections`（仅需 `register()` 返回 disposer 的最小对象）；settings 服务
-  缺席 → 构造成功且 `resolve()` 不附 writableRoots（config.writableRoots 为空时）。
-  fake settings：实现 `installSection(ctx, ns, schema, entry, hooks)` 契约
-  （立即 `hooks.setSource(() => fakeValue)` 并可触发 `hooks.onChange`），验证
-  resolve() 附上清单且 `~` 已展开；settings 值变更后再次 resolve 反映新值（热重载）。
+  `sessionProjections`（仅需 `register()` 返回 disposer 的最小对象）；无额外根时
+  构造成功且 `resolve()` 不附 writableRoots。
+  直接以 entry config 构造：验证 `resolve()` 附上清单且 `~` 已展开、重复项去重。
 - resolve 在 `read-only` 模式不附 writableRoots。
 
 `tests/sandbox.test.ts`（class）：
@@ -225,12 +212,13 @@ extra-root bypass / stock 拒绝两条；不可行则记录并交由部署实机
 ## 8. 命令与验收
 
 ```sh
-pnpm install            # registry（npmmirror）
-pnpm typecheck && pnpm test && pnpm build
+pnpm install            # registry（npmmirror）；维护者环境
+pnpm check              # typecheck + test + build 全链
+npm pack --dry-run --json
 ```
 
-验收：三条全绿；`lib/` 产出 `index.js`、`fs.js`、`sandbox.js`；
-`node -e "import('file:///...lib/index.js')"` 可加载（ESM 无缺依赖报错）。
+验收：`pnpm check` 全绿且重建后 `lib/**` 与仓库内容一致；`lib/` 产出 `index.js`、
+`fs.js`、`sandbox.js` 与共享 chunk；pack 清单包含全部 `lib/**`，安装期无 `prepare`。
 
 ## 9. 边界禁令
 

@@ -42,16 +42,20 @@ function isPublicIpAddress(input, fakeIpRanges = []) {
 	// Fork (dsh-web-fetch-http-fakeip): a TUN proxy answers every lookup from a reserved
 	// fake-ip range, which the stock check rejects as non-public and blocks. Addresses inside a
 	// configured range are accepted; every other private/reserved address stays blocked.
-	if (parsed instanceof ipaddr.IPv4) {
-		if (fakeIpRanges.some(([network, bits]) => parsed.kind() === network.kind() && parsed.match(network, bits))) return true;
-		return parsed.range() === "unicast";
-	}
-	if (parsed.isIPv4MappedAddress()) return parsed.toIPv4Address().range() === "unicast";
+	//
+	// An IPv4-mapped IPv6 answer is the same destination as its embedded IPv4 address, so unwrap it
+	// before matching: `::ffff:198.18.0.1` must be judged by the IPv4 `198.18.0.0/15` a deployment
+	// configures, not by whether the IPv6 spelling is unicast. Native IPv6 fake ranges (for example
+	// a ULA `fc00::/7` answered by the TUN) match directly, since both sides share the IPv6 family.
+	if (parsed instanceof ipaddr.IPv6 && parsed.isIPv4MappedAddress()) parsed = parsed.toIPv4Address();
+	if (fakeIpRanges.some(([network, bits]) => parsed.kind() === network.kind() && parsed.match(network, bits))) return true;
 	return parsed.range() === "unicast";
 }
 /**
 * Resolve a hostname once and reject the complete answer set if any destination
-* is not public. The returned addresses are the only ones the transport may use.
+* is not public. A caller that connects directly must use only the returned
+* addresses; a caller that hands the URL to a proxy can only preflight, because
+* the proxy performs its own lookup.
 *
 * @param hostname - URL hostname, including brackets when it is an IPv6 literal.
 * @param signal - aborts the wait for system resolution; an in-flight OS lookup may finish unused.
@@ -130,9 +134,10 @@ function embeddedIpv4Address(bytes, prefixLength) {
 /**
 * Whether a hostname is an IP literal that {@link resolvePublicAddresses} would refuse.
 *
-* A proxied hop skips those checks because the proxy resolves the origin, but a literal needs no
-* resolution: the address is already stated, and handing it to a proxy running on this machine
-* would reach exactly the loopback or private service the checks exist to keep out of reach.
+* A proxied hop still runs the full public-address preflight; this literal check only front-runs
+* it, so an address stated outright is refused before any lookup happens. Handing a loopback or
+* private literal to a proxy running on this machine would reach exactly the services those checks
+* exist to keep out of reach.
 *
 * @param hostname - a URL's hostname, bracketed or not.
 * @returns true when the host is a literal address no request may be sent to.
@@ -187,7 +192,8 @@ async function requestPinned(url, addresses, headers, signal) {
 * Fetch through the dispatcher the proxy policy already installed, letting the proxy resolve the
 * origin.
 *
-* No address set is pinned because none exists to pin: the proxy performs the lookup, and a
+* The caller runs the public-address preflight before calling this, so a non-public destination is
+* refused before dispatch. That preflight does not pin: the proxy performs its own lookup, and a
 * connection pinned to a locally resolved address would reach the origin directly and defeat the
 * proxy. The dispatcher is the process-wide one, so hops share its connection pool and no caller
 * closes it.
@@ -528,11 +534,21 @@ var HttpFetchProvider = class {
 			// Fork (dsh-web-fetch-http-fakeip): an entry-configured proxy outranks the process policy, so a
 			// deployment configures its proxy in the profile patch instead of the launch environment.
 			const forkDispatcher = await this.forkDispatcher();
-			if (forkDispatcher !== void 0) {
-				if (!isNonPublicIpLiteral(url.hostname, this.fakeIpRanges)) return await publicHttpNetwork.requestVia(forkDispatcher, url, headers, signal);
-			} else {
-				const route = proxyRouteFor(url);
-				if (route.proxied && !isNonPublicIpLiteral(url.hostname, this.fakeIpRanges)) return await publicHttpNetwork.requestVia(route.dispatcher, url, headers, signal);
+			const route = forkDispatcher === void 0 ? proxyRouteFor(url) : void 0;
+			const proxiedDispatcher = forkDispatcher ?? (route?.proxied === true ? route.dispatcher : void 0);
+			if (proxiedDispatcher !== void 0 && !isNonPublicIpLiteral(url.hostname, this.fakeIpRanges)) {
+				// Fork (dsh-web-fetch-http-fakeip): public-only preflight before either proxy dispatch path
+				// (entry `proxyUrl` here, and the inherited environment proxy above). The upstream router
+				// only keeps loopback off a proxy; it lets a hostname that resolves to a private address
+				// through, and the entry `proxyUrl` bypasses that router entirely. Resolving locally and
+				// rejecting non-public answers restores one uniform rule: configuring a proxy never widens
+				// the network range `web_fetch` may reach.
+				//
+				// This is a preflight, not connection pinning: the proxy resolves the hostname again, so a
+				// split horizon / rebinding between this lookup and the proxy's own lookup is not prevented
+				// (TOCTOU). Names only the proxy can resolve are therefore unsupported by design.
+				await this.resolveAddresses(url.hostname, signal, void 0, this.fakeIpRanges);
+				return await publicHttpNetwork.requestVia(proxiedDispatcher, url, headers, signal);
 			}
 			const addresses = await this.resolveAddresses(url.hostname, signal, void 0, this.fakeIpRanges);
 			return await publicHttpNetwork.request(url, addresses, headers, signal);

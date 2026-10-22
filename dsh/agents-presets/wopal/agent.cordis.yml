@@ -30,7 +30,8 @@
 #     不被 skill-filesystem 扫描而不可见。现在 project-dsh root（rank100 空间技能）
 #     与 customSkillDirs（rank300 预设自带技能）并存。
 #
-# 安装位置: $WOPAL_HOME/dsh/home/.agent-presets/wopal/（用户根，trust=user）
+# 生成源: 本目录（dsh/agents-presets/wopal/，用户根 trust=user）。运行时加载 @wopal/dsh-presets bundle 中的
+# wopal/preset.patch.yml；旧 $WOPAL_HOME/dsh/home/.agent-presets/wopal/ 软链已不再是加载入口。
 
 - id: persona
   name: '@deepseek-ai/dsh-persona'

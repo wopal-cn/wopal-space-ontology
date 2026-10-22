@@ -1,8 +1,11 @@
 # dsh-sandbox-roots — 可配置的沙箱额外可写根
 
-为 DeepSeek Harness (`dsh`) 沙箱提供 settings 驱动的额外可写目录能力：在保持
-`workspace-write` 模式闭环的前提下，允许把指定目录（如 `~/.wopal/dsh`、`~/.Trash`）
-加入写白名单，使会话内维护 dsh 配置、执行 `trash` 删除等操作无需逐次提权。
+为 DeepSeek Harness (`dsh`) 沙箱提供额外可写目录能力：在保持 `workspace-write`
+模式闭环的前提下，允许把指定目录（如 `~/.wopal`、`~/.Trash`）加入写白名单，
+使会话内维护 dsh 配置、执行 `trash` 删除等操作无需逐次提权。
+
+配置位于插件自己的 entry（`sandbox-roots-policy`），持久化在 profile 的
+`cordis.patch.yml`。旧版 `settings.yaml` 配置源在 DSH 0.2.0-rc.2 已移除。
 
 ## 形态
 
@@ -12,7 +15,7 @@ bundle patch 按官方语法禁用三行 stock 插件并以新 id 插入本包�
 
 | stock 行（禁用） | 本包行（insert，新 id） | 本包导出 | 职责 |
 |--------|---------|------|------|
-| `sandbox-policy` | `sandbox-roots-policy` | `.` | 策略解析 + settings 热重载 `writableRoots` |
+| `sandbox-policy` | `sandbox-roots-policy` | `.` | 策略解析 + entry config 的 `writableRoots` |
 | `sandbox` | `sandbox-roots-sandbox` | `./sandbox` | 进程沙箱 wrap（macOS Seatbelt）并入额外根 |
 | `fs-sandbox` | `sandbox-roots-fs` | `./fs` | fs 工具门禁 allow-list 并入额外根 |
 
@@ -20,19 +23,27 @@ bundle patch 按官方语法禁用三行 stock 插件并以新 id 插入本包�
 
 ## 配置
 
-值放 `$DSH_HOME/settings.yaml`（热重载，Settings-Plugins 页可见）：
+值写在 `sandbox-roots-policy` 行的 `config`（profile `cordis.patch.yml`；本包
+bundle 的默认值即 `cordis.patch.yml` 中列出的清单）：
 
 ```yaml
-sandbox-policy:
-  writableRoots:
-    - ~/.wopal/dsh
-    - ~/.Trash
+- insert:
+    - id: sandbox-roots-policy
+      name: '@wopal/dsh-sandbox-roots'
+      config:
+        mode: workspace-write
+        workspaceRoot: /path/to/workspace
+        writableRoots:
+          - ~/.wopal
+          - ~/.Trash
 ```
+
+配置随 profile 组合重放生效（重启引擎）；旧版 `$DSH_HOME/settings.yaml` 监听已随 rc.2 移除。
 
 - 仅 `workspace-write` 模式生效；`read-only` / `danger-full-access` 维持 stock 语义。
 - 支持 `~` 展开；路径以 `realpathSync.native` 规范化后参与匹配，软链接无法绕过。
 - 目录不存在时该根匹配不到任何路径（保守，与 stock 语义一致）。
-- `mode` / `workspaceRoot` 仍由 profile patch 的插件 config 决定，settings 中不生效。
+- `mode` / `workspaceRoot` 与 `writableRoots` 同属该 entry 的 config，没有独立的插件 section。
 
 ## 安装（ellamaka 部署）
 
@@ -41,8 +52,9 @@ ellamaka dsh plugin --profile web add /path/to/dsh-sandbox-roots   # 转给官�
 ```
 
 运行中的容器经组合文件监听热挂载；bundle patch 变更在下次重放或重启时生效。
-包内零 node_modules（peer 由 dsh loader 从安装作用域解析，与安装方式无关），
-`lib/` 由 `prepare` 脚本（tsdown）预构建。
+包内零 node_modules（peer 由 dsh loader 从安装作用域解析，与安装方式无关）。
+`lib/` 是随包版本管理的预构建产物，`file:` 安装直接取用，不触发构建；维护者改
+`src/` 后用 `pnpm build`（tsdown）重建并一并提交。
 
 ## 已知限制
 
@@ -53,7 +65,7 @@ ellamaka dsh plugin --profile web add /path/to/dsh-sandbox-roots   # 转给官�
 - `sandbox` 行的 `runnerCommand` 覆盖与额外根互不感知：配置了 `writableRoots`
   时本包直接组装 Seatbelt wrap，不读 `runnerCommand`（行为未定义，不做特判）。
 - 系统提示词的 `sandbox:policy` 上下文沿用 stock 文案，不列举额外根。
-- `mode` / `workspaceRoot` 不随 settings 热更新。
+- `mode` / `workspaceRoot` / `writableRoots` 均随 profile 重放生效，无运行时热更新。
 
 ## 实施要点（迁移自实施过程的坑）
 

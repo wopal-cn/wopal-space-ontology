@@ -29,7 +29,7 @@ Mount the provider in a composition that already loads the web service; it regis
 
 ### When to choose it
 
-Choose this backend when a deployment must fetch public pages with bounded output and safe transport: no credentials are sent, every resolved address must be public, each connection is pinned to the validated answer set, redirects cannot escape the origin, and every response is capped.
+Choose this backend when a deployment must fetch public pages with bounded output and safe transport: no credentials are sent, every resolved address must be public, each direct connection is pinned to the validated answer set, redirects cannot escape the origin, and every response is capped.
 
 ### Minimal configuration
 
@@ -61,7 +61,21 @@ const page = await ctx.web.fetch({ url: 'https://example.com' })
 
 ### Transport behavior
 
-The provider keeps requests anonymous and bounded: it accepts only `http:` and `https:` URLs without embedded credentials and rejects URLs over 2,048 characters. It resolves each hostname once, rejects the complete result if any IPv4 or IPv6 address is not public unicast, and pins the connection to that validated set. IPv6 checks discover the active DNS64 prefix and reject translations to non-public IPv4. Each same-origin redirect repeats resolution and pinning; cross-origin redirects fail and require a fresh call. The provider also enforces byte, character, hop, and time caps, rejects unsupported content types, and sends an explicit product `User-Agent`.
+The provider keeps requests anonymous and bounded: it accepts only `http:` and `https:` URLs without embedded credentials and rejects URLs over 2,048 characters. On the direct path it resolves each hostname once, rejects the complete result if any IPv4 or IPv6 address is not public unicast, and pins the connection to that validated set; see the proxy rule below for what a proxied hop does instead. IPv6 checks discover the active DNS64 prefix and reject translations to non-public IPv4. Each same-origin redirect repeats the direct-path resolution and pinning; cross-origin redirects fail and require a fresh call. The provider also enforces byte, character, hop, and time caps, rejects unsupported content types, and sends an explicit product `User-Agent`.
+
+### Wopal fork: fake-IP ranges and outbound proxy
+
+This fork (`@wopal/dsh-web-fetch-http-fakeip`) adds two entry-config fields on top of the stock provider and keeps every other guard.
+
+- `fakeIpRanges` — CIDR ranges this deployment treats as public destinations, for a TUN proxy that answers every lookup from a reserved fake-IP range. Applies to both address families: a native IPv6 range matches IPv6 answers directly, and an IPv4-mapped IPv6 answer (`::ffff:198.18.0.1`) is judged by its embedded IPv4 address. Addresses outside the configured ranges keep the stock check.
+- `proxyUrl` — the outbound proxy for this deployment, configured here instead of in the launch environment. Empty follows the environment's own proxy policy.
+
+**Proxy rule (`public-only`).** Configuring a proxy never widens the network range `web_fetch` may reach: both proxy dispatch paths — the entry `proxyUrl` and the inherited environment proxy — resolve the hostname locally and reject any non-public answer (loopback, private, link-local) before dispatching. Public hostnames still go through the proxy, and addresses inside a configured `fakeIpRanges` are still allowed.
+
+Two consequences follow, and both are intentional:
+
+- **Preflight, not pinning.** The local check proves the hostname looked public when checked; the proxy resolves it again, so a split-horizon or rebinding change between the two lookups is not prevented. This residual TOCTOU is a known limit, not a claim of end-to-end pinning.
+- **Proxy-only names are unsupported.** A hostname that resolves only through the proxy's DNS, not on this machine, is rejected. Deployments that need such names cannot use this provider's proxy paths.
 
 ### Failures and recovery
 
@@ -96,7 +110,7 @@ The package is built on one separation and one layered timeout:
 
 ### Read path
 
-A fetch validates the URL, resolves the hostname once, rejects the complete answer set when any address is not public, and pins the connection to the accepted addresses. It repeats that check for each same-origin redirect; a cross-origin redirect or non-public target fails before response bytes are accepted. The final response is classified by `Content-Type`, decoded from its declared charset, and read under the byte cap; the decoded text is then truncated to the character cap.
+A fetch validates the URL, resolves the hostname once, rejects the complete answer set when any address is not public, and — on the direct path — pins the connection to the accepted addresses. A proxied hop runs the same resolution and rejection as a preflight but cannot pin, because the proxy performs its own lookup. It repeats that check for each same-origin redirect; a cross-origin redirect or non-public target fails before response bytes are accepted. The final response is classified by `Content-Type`, decoded from its declared charset, and read under the byte cap; the decoded text is then truncated to the character cap.
 
 </details>
 
