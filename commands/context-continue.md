@@ -2,8 +2,6 @@
 description: Restore context and resume work
 ---
 
-Read `./.wopal-space/.tmp/.working-context.md`, restore your working context memory, briefly summarize the loaded context in the user's preferred language, then delete this context handoff file.
+Load the `context-manage` skill and execute its **Continue** workflow.
 
-<CRITICAL_RULE>
-To ensure you can maintain the same working environment as the previous session, you **MUST** fully read related files and key reference materials. Re-analyze relevant code if necessary (use your own judgment).
-</CRITICAL_RULE>
+The command is only an entry point. Follow the skill as the authoritative protocol; do not duplicate or reinterpret the recovery steps here.
