@@ -1,7 +1,7 @@
 # DESIGN — Capability System
 
 > **Status**: Active
-> **Updated**: 2026-09-27
+> **Updated**: 2026-10-25
 > **Parent**: `./DESIGN.md`（ontology overall design: Module Architecture section）
 > **Parent Architecture**: `../../docs/products/wopal-space/DESIGN.md`
 > **Parent Product**: `../../docs/products/wopal-space/PRD.md`
@@ -45,52 +45,39 @@ Ellamaka 启动时扫描 `.wopal/agents/`，看到的始终是这四个角色。
 
 #### Four Assembly Layers
 
-能力装配分四层，各层职责与作用时机不同：
+能力装配分四层。前三层是静态事实，第四层是 Wopal 派发时对角色基线的**增量授予**：
 
-| 层级 | 决定什么 | 载体 | 作用时机 |
+| 层级 | 决定什么 | 载体 | 生命周期 |
 |------|---------|------|---------|
-| **能力池** | 中央仓库拥有的全部能力 | central `main` | 跨空间持续 |
-| **空间武器库** | 本空间物化了哪些能力 | `assembly/archetypes/<type>.yaml` 装配单 → sparse-checkout | 空间创建 / `space capability` |
-| **角色基线** | 每个角色默认能用哪些能力 | `agents/<name>.md` 的 `permission:` | 会话创建瞬间 |
-| **会话装配** | 本次任务实际授予哪些能力 | `wopal_task` 的 `capabilities` 参数 | 每次派发时 |
+| 能力池 | 中央仓库拥有的全部能力 | central `main` | 跨空间持续 |
+| 空间武器库 | 本空间物化了哪些能力 | archetype + sparse-checkout | 空间级 |
+| 角色基线 | 角色默认拥有的能力与限制 | `agents/<name>.md` 的 `permission:` | 角色级静态 |
+| Session Dynamic Overlay | 本次会话在角色基线之上额外激活哪些能力 | P2 首个切片：Skill Overlay（创建时 + 运行时增量 grant） | Session 生命周期 |
 
-上三层是静态声明，第四层是运行时装配。Wopal 在派发任务时，按任务性质从空间武器库中挑选能力，装配给子会话——这是「武器多态」的运行时落点。
+动态装配不是角色能力的替代表。当前已定型并进入实施的只有 Skill：省略 `capabilities.skills` 表示只使用角色基线；显式 Skill 在基线上增量激活，运行时还可继续追加。本切片不提供 exact-set / subtract / deny / revoke。Tool 与 Rule 的动态配置另行设计，不由本次 Skill 方案预设。
 
 #### Space Arsenal and Role Baseline
 
-物化进空间的武器库**不等于**全量授予任何角色。武器库是空间拥有的能力储备，角色基线是默认授予的子集。
-
-未进入任何角色基线的武器对相应角色不可见。这种默认不可见是刻意的：它让 Wopal 的上下文只承载当前角色真正需要的武器清单，避免无关能力占用推理预算。
-
-Wopal 的挑选权**不受角色基线限制**。装配给会话的能力经权限合成后覆盖基线——不配置就看不见，配置了就可用。
+物化进空间的武器库**不等于**全量授予任何角色。武器库是空间拥有的能力储备，角色基线是默认授予的子集。Wopal 可以从武器库中为具体任务追加角色基线之外的能力，但不能借 `capabilities` 绕过空间武器库、撤销角色限制或重写静态配置。
 
 #### Arsenal Scope and Truth Source
 
-武器库的范围是**全局层与空间层的有效能力集**——全局装的能力也算武器，空间层同名优先。四类武器：
+武器库是全局层与空间层的有效能力集，空间层同名优先。发现层回答“引擎加载了什么”，运行时过滤层回答“当前 agent/session 能用什么”；两者不得混用。Skills、Rules、外部工具与内部工具的发现继续由 ellamaka 现有引擎提供，`wopal space capability list` 只消费发现层，不改变运行时权限。
 
-| 类别 | 内容 | 发现来源 |
-|------|------|---------|
-| 技能 | SKILL.md 定义的技能 | ellamaka `Skill` 引擎（多层目录扫描、空间优先去重） |
-| 规则 | 规则文件定义的约束 | ellamaka `Rule` 引擎（多层目录扫描、空间覆盖全局） |
-| 外部工具 | MCP 服务工具 + 文件注册的自定义工具 + 插件注册的工具 | ellamaka `ToolRegistry`（custom 部分）+ `MCP` 引擎 |
-| 内部工具 | 引擎内置工具（bash、read、edit、glob、grep、webfetch 等） | ellamaka `ToolRegistry`（builtin 部分） |
+#### Session Skill Overlay and Runtime Activation
 
-四类武器全部从 ellamaka 引擎统一获取，通过 `@wopal/ellamaka-sdk` 向外暴露。引擎内部严格区分两个层次：
+P2 先只落 Skill 动态装配。设计目标是让主 Agent 把 Ellamaka 已发现的 Skill Pool 当作可用武器库，在创建会话时和会话运行过程中，把任务真正需要的 Skill 叠加到默认 Agent 能力之上，同时不破坏 system/tool 前缀缓存。
 
-- **发现层**——"引擎加载了什么"，返回完整列表，不过滤权限。武器库扫描只调这一层。
-- **运行时过滤层**——"这个 agent 这次能用什么"，按 agent 权限与 model 过滤。系统提示词生成、工具清单构建、执行授权全部走这一层。
+- **Skill Pool**：以 Ellamaka discovery 为唯一发现来源；Wopal 只消费 name/description 等元数据，不重新扫描或复制 Skill Registry。插件可对 discovery 结果做短 TTL 的派生缓存以避免每个 model step 重拉完整 Skill body；空 overlay 不触发 discovery，grant 若在缓存中找不到名称必须强制刷新一次后再判 unknown。
+- **Agent baseline**：继续由 `agents/<name>.md` 的 `permission.skill` 表达默认能力；不因动态装配而改写 Agent 配置。
+- **Session Skill Overlay**：只保存额外激活的 Skill。创建子会话时由 `wopal_task.capabilities.skills` 写入 initial grants；运行时由主 Agent 的 skill-only grant 控制面继续追加 runtime grants。两者取并集，只增不减；同一 Session 的 grant 必须串行化 read-modify-write，避免并发 tool call 静默覆盖彼此授权。
+- **模型可见性**：wopal-plugin 在既有 `experimental.chat.messages.transform` 中，把 overlay 的 `name + description` 作为 transient synthetic snapshot 追加到 retained history 尾部；不注入 SKILL.md body/path，不修改 system prompt、较早消息或 tool schema。
+- **正文与资源加载**：模型看到 overlay 后仍调用 Ellamaka 原生 `skill(name)`。原生 loader 负责 SKILL.md、base directory、scripts/references/assets 的 progressive disclosure；Skill grant 本身不隐式授予脚本执行所需的其他权限。
+- **加载授权**：新增通用 `experimental.permission.rules` 插件 hook。在 `ctx.ask()` 求值前，把 plugin runtime rules 合并在 agent/session rules 之后。wopal-plugin 只为 `permission=skill` 且 pattern 命中 Session Skill Overlay 的项贡献精确 allow；该 allow 仅参与本次求值，不写 `session.permission`，因此无需修改 Ellamaka run loop 或刷新 Session 对象。overlay 读取失败时插件贡献零规则，保留 Agent/Session baseline 的安全默认，而不是让整个 permission ask 因插件缓存/metadata 故障失败。
+- **单一事实源**：request-tail catalog 与 runtime skill allow 必须读取同一个 Session Skill Overlay。Session metadata 是持久真相源，插件内 SessionStore/digest 仅是派生缓存。
+- **缓存与恢复语义**：动态 Skill snapshot 每个正常模型请求都从当前 overlay 重新生成并追加在尾部；由于 transform 内容不落 DB，digest 只能缓存格式化结果，不能做跨请求发送抑制。Skill descriptor discovery 可独立短 TTL 缓存，但不改变 overlay 每请求重读语义；catalog lookup 失败时该次注入 fail-open（不追加 snapshot），不能中断整个 model step。Ellamaka 生成 compaction summary 时同样会触发 `messages.transform`，因此 compacting 期间必须抑制这份 transient catalog，避免其被摘要回持久历史；compaction 完成后丢弃 SessionStore 中的 overlay 派生缓存，下一次 catalog/permission 读取从 Session metadata 重建。新增 Skill 因而只影响已有 retained prefix 之后的尾部。
 
-武器库扫描端点只调发现层方法，完全不触碰运行时过滤层。两条路径读不同的方法，互不干扰——武器库拿到完整能力列表，ellamaka 运行时的权限过滤逻辑不受影响。
-
-武器库查询由 wopal-cli 的 `wopal space capability list` 命令承载。该命令通过 SDK 连接 ellamaka 引擎获取四类武器清单：引擎在运行时直连现有实例；引擎未运行时由 SDK 启动临时子进程。wopal-cli 裁剪输出为武器元数据（名称、描述、来源标注、路径），不传递工具的执行方法。命令契约见 `projects/wopal-cli/docs/DESIGN.md` 的 Space Capability。
-
-#### Session Assembly Injection Channel
-
-会话装配通过**会话级权限**实现。能力在会话创建时授予，会话生命周期内保持稳定，中途不改变装配。授予依据是 ellamaka 的权限合并规则：后者覆盖前者，因此会话级规则能够超越角色基线。
-
-内置工具不进会话装配。角色基线已经完整控制工具的可见性与执行授权，重复装配只会引入歧义。
-
-装配对 skills / rules / mcp 三类能力分别生效，合成规则、注入方式与压缩后的行为细节see the Capability Assembly Module in `./DESIGN-wopal-plugin.md`.
+Tool 与 Rule 的动态能力不属于本切片；现有 Tool/Rule 行为保持不变，后续单独设计。没有 Skill Overlay 时，ellamaka 的现有 config、agent frontmatter、permission、plugin 和 SDK 行为保持不变。
 
 ### Outcome-Oriented Prompts
 
@@ -108,7 +95,7 @@ Wopal 的挑选权**不受角色基线限制**。装配给会话的能力经权�
 
 两个工作流技能按对象分工：`dev-flow` 面向 `projects/` 下的代码仓库，`ontology-evolution` 面向空间自身的本体能力资产。四个核心角色在所有空间类型常驻，本体能力进化因此对每个空间可用，不依赖空间是否装配代码开发工作流。两条流程的状态词汇互不重合，实施与交付纪律见 `./DESIGN-evolution.md`。
 
-本体资产的全部维护面由 `ontology-evolution` 技能单点拥有：能力进化的完整流程（提案、状态机、隔离实施、交付终端），以及本体维护操作（`ontology update` / `space sync` / `ontology contribute` / 能力装配增删）的执行协议。`space-master` 只保留路由职责——把本体相关请求导向 `ontology-evolution`，不重复维护规范；`wopal/ontology-maintain` 命令是薄触发入口，加载该技能后按其协议执行，自身不承载规范。
+本体资产的全部维护面由 `ontology-evolution` 技能单点拥有：能力进化的完整流程（提案、状态机、隔离实施、交付终端），以及本体维护操作（`ontology sync` / `space sync` / 原生 Git/GitHub PR / 能力装配增删）的执行协议。`space-master` 只保留路由职责——把本体相关请求导向 `ontology-evolution`，不重复维护规范；`wopal/ontology-maintain` 命令是薄触发入口，加载该技能后按其协议执行，自身不承载规范。
 
 `space-master` 是 ontology 的根技能，定位为概念模型入口、流程选择器与核心技能路由器。本体维护规范收编至 `ontology-evolution` 后，其职责边界收窄为「选哪个技能」，不再持有任何执行协议的完整副本。
 
@@ -121,7 +108,7 @@ Wopal 的挑选权**不受角色基线限制**。装配给会话的能力经权�
 | 唤醒与感知 | `/wopal:summon` | `commands/wopal/summon.md` |
 | 文档管理 | `/cupdate-prd`、`/cupdate-design`、`/cupdate-roadmap`、`/cupdate-readme`、`/cupdate-br`、`/cupdate-agent-rules` | `commands/cupdate-*.md` |
 | 开发支持 | `/commit`、`/review` | `commands/commit.md`、`commands/review.md` |
-| 上下文管理 | `/context-continue`、`/context-handoff`、`/context-recover` | `commands/context-*.md` |
+| 上下文管理 | `/context-continue`、`/context-handoff`、`/context-recover` | 薄命令入口 `commands/context-*.md` → `skills/context-manage` |
 | 其他 | `/evaluate-skill` | `commands/evaluate-skill.md` |
 
 ontology 命令可覆盖 ellamaka 内置命令。

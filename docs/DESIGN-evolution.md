@@ -1,7 +1,7 @@
 # DESIGN — Evolution Loop
 
 > **Status**: Active
-> **Updated**: 2026-09-27
+> **Updated**: 2026-10-25
 > **Parent**: `./DESIGN.md`（ontology overall design: Module Architecture section）
 > **Parent Architecture**: `../../docs/products/wopal-space/DESIGN.md`
 > **Parent Product**: `../../docs/products/wopal-space/PRD.md`
@@ -72,7 +72,7 @@ space evo advance <name> --to archived                    Stage: archived
   ▼
 space evo archive <name>（事务化归档 + 隔离清理）
   ▼
-交付终端：space sync 汇入 local main / ontology contribute 回流上游
+交付终端：space sync 汇入 local main / git + gh PR 回流上游
   —— 由用户逐次拍板，不在实施路径内
 ```
 
@@ -86,7 +86,7 @@ space evo archive <name>（事务化归档 + 隔离清理）
 
 ## Capability Evolution Workflow
 
-本体能力进化的执行机制由 `ontology-evolution` 技能承载。该技能是四个核心角色在所有空间类型下的常驻能力：任意空间都能维护与补充自己的本体能力，无需装配代码开发工作流。代码项目开发流程由 `dev-flow` 拥有（见 `./DESIGN-capabilities.md`）；本体能力进化流程由 `ontology-evolution` 拥有。两条流程的对象不同——前者面向 `projects/` 下的代码仓库，后者面向空间自身的本体能力资产。技能同时承载本体维护操作的执行协议（`ontology update` / `space sync` / `ontology contribute` / 能力装配增删）——进化的机制操作与日常维护共用同一套命令面与安全纪律，规范单点维护在技能内。
+本体能力进化的执行机制由 `ontology-evolution` 技能承载。该技能是四个核心角色在所有空间类型下的常驻能力：任意空间都能维护与补充自己的本体能力，无需装配代码开发工作流。代码项目开发流程由 `dev-flow` 拥有（见 `./DESIGN-capabilities.md`）；本体能力进化流程由 `ontology-evolution` 拥有。两条流程的对象不同——前者面向 `projects/` 下的代码仓库，后者面向空间自身的本体能力资产。技能同时承载本体维护操作的执行协议（`ontology sync` / `space sync` / 原生 Git/GitHub PR / 能力装配增删）——进化的机制操作与日常维护共用同一套命令面与安全纪律，规范单点维护在技能内。
 
 技能覆盖这项工作的两个环节，职责不重叠：
 
@@ -119,7 +119,7 @@ draft → accepted → implementing → validating → archived
 
 ### Evolution Documents
 
-进化提案文档位于本体仓库的 `docs/evolutions/`。提案描述的是本体自身的变更，因此与它所改变的能力资产同处一条版本控制谱系：随装配分发到每个空间，并随 `space sync` 与 `ontology contribute` 汇入能力池与上游。任何空间都能读到完整的进化历史。
+进化提案文档位于本体仓库的 `docs/evolutions/`。提案描述的是本体自身的变更，因此与它所改变的能力资产同处一条版本控制谱系：随装配分发到每个空间，并随 `space sync` 与 原生 Git/GitHub PR 汇入能力池与上游。任何空间都能读到完整的进化历史。
 
 | 位置 | 内容 |
 |------|------|
@@ -129,7 +129,7 @@ draft → accepted → implementing → validating → archived
 
 ### Isolation Discipline
 
-本体能力的改动先在空间侧落地，再经 `space sync` 汇入 local main，最后由用户决定是否经 `ontology contribute` 回流上游。默认实施模式是**从 `.wopal` 派生稀疏 worktree**：派生的 worktree 继承空间的稀疏装配范围，实施边界因此天然等于空间确权的能力范围，宿主中央仓库无需切换分支。
+本体能力的改动先在空间侧落地，再经 `space sync` 汇入 local main，最后由用户决定是否经 原生 Git/GitHub PR 回流上游。默认实施模式是**从 `.wopal` 派生稀疏 worktree**：派生的 worktree 继承空间的稀疏装配范围，实施边界因此天然等于空间确权的能力范围，宿主中央仓库无需切换分支。
 
 快速模式在 `.wopal` 空间分支内直接小步提交，适用于 typo、bug-fix 与用户明确指定的小范围文件改动；判定不清时默认走隔离模式。
 
@@ -141,7 +141,11 @@ draft → accepted → implementing → validating → archived
 
 ### Delivery Terminal
 
-进化的交付终点由用户拍板：实施产物停留在空间分支，`space sync`（汇入 local main）与 `ontology contribute`（回流上游）均由用户逐次决定，技能不内置自动上行。
+进化的交付终点由用户拍板：实施产物停留在空间分支，`space sync`（汇入 local main）与原生 Git/GitHub PR（回流上游）均由用户逐次决定，技能不内置自动上行。
+
+贡献流程的操作规范由 `ontology-evolution` 技能单点拥有：分支 `contribute/<slug>`，slug 为 2–4 个英文词、最多 24 个字符；worktree 固定在 `<space-root>/.worktrees/ontology-contribute-<slug>/`，从创建保留到 PR 处理及授权清理结束。Agent 用 `git` 与 `gh` 创建、修复和收尾，正文说明原因、改动、文件与增删统计、范围依据及验证结果。
+
+`ontology status` 合并本地/远端贡献分支与 worktree，按需查询对应 PR，区分未找到、查询失败、open、merged、closed 与身份歧义；不保存贡献记账文件。“已合并，待收尾”只是提示。`ontology sync` 只同步 main；Agent 取得用户删除授权后，核对合并回流、干净现场与分支 head 无额外提交，再精确清理对应资源。失败与不明状态保留现场。具体服务边界见 `../../projects/ellamaka/docs/DESIGN-wopalspace.md`。
 
 加载链路相关改动以用户重启 ellamaka 后的加载结果作为验证标准。
 
@@ -156,22 +160,22 @@ draft → accepted → implementing → validating → archived
 | `space capability add/remove` | — | 无旗标：调整类型装配单，变更按正常本体 Git 提交上行；`--local`：以能力或 `path:<ref>` 完整身份调整本空间选择，CLI 提交空间根仓库状态，不生成本体内容提交 |
 | `space evo <family>` | — | 提案落地：提案状态机、隔离实施、稀疏安全落盘、集成与验证切换；CLI `space evo` 命令族为唯一操作面 |
 | `ontology capability list` | — | 只读：列出本体拥有的全部能力，供空间装配挑选 |
-| `ontology update` | 下行 | upstream/main → local main，本地中央仓库整合 |
-| `ontology contribute` | 上行 | local main → upstream PR（fork 模式；clone 模式不支持） |
+| `ontology sync` | 三角 | `upstream ⇄ origin ⇄ local main` 三步双向对齐（fork：origin/main merge 进 local → upstream/main merge 进同一 local 结果 → local push origin；clone 仅 origin/main → local），`ontology update` 为兼容别名 |
+| `git` + `gh`（技能指导） | 上行 | 选取已验证的主题改动 → upstream PR（fork 模式）；一个 PR 复用一个分支/worktree |
 
 **内容与挂载分界**：文件是否共享由是否进入本体 Git 决定，能力或通用路径是否在本空间挂载由装配单和空间选择决定。`space capability` 无旗标调整类型装配单，变更按正常提交上行；`--local` 调整空间根仓库 `space-meta.json` 中的 `include` / `exclude` / `private`，由 CLI 限定路径提交。显式卸载完整资产与共享删除其内部文件是不同操作。新建共享资产可只由当前空间挂载；进化提交/集成根据明确的整项资产归属一次登记，无需对每个内部文件手动 add/remove。多空间目录删除与重命名以全部适用装配单的候选树引用完整性为门禁，详见 `./DESIGN-assembly.md`。
 
 **上行不泄漏私有内容（上行闸）**：`space sync` 上行前校验空间独有提交的变更路径（`git diff --no-renames --name-only main...space/<name>`）是否落在已登记的 `private` 能力根下；命中即拒绝并给出可执行的解除私有登记或撤出提交路径。`include` / `exclude` 只记录挂载选择，不进入内容泄漏判定。写入命令在提交前执行相同私有检查；sync 闸为手动 Git 提交兜底。
 
-`space sync` 由 CLI 默认 dry-run 预览、`--confirm` 落盘，agent 按用户意图直接执行，不设审批门控；`--dry-run` 保留为诊断用途，展示将贡献、将更新与将纳入范围保护的清单。`ontology contribute` 仅在 fork 模式下可用，clone 模式只支持 `ontology update`。
+`space sync` 由 CLI 默认 dry-run 预览、`--confirm` 落盘，agent 按用户意图直接执行，不设审批门控；`--dry-run` 保留为诊断用途，展示将贡献、将更新与将纳入范围保护的清单。向上游贡献使用 fork 分支上的原生 Git/GitHub PR，clone 模式 `ontology sync` 塌缩为单向下行拉取。
 
 `ontology capability list` 揭示本体拥有的全部共享能力。对已有共享能力，`space capability add/remove` 调整类型默认组合，`--local` 调整本空间挂载；对新建能力，内容先按共享提交或显式私有登记选定归属，再按能力身份确定本空间是否挂载。
 
-空间内日常能力进化由 Maka 提炼为提案、经用户批准后，由 Wopal 主控、委派 Fae 规范实施，提交由主控按任务落盘，再经 `space sync` 汇入 local main，最终经 `ontology contribute` 回流 upstream。空间装配出的能力组合若具备类型通用性，可沉淀为类型装配单，供同类空间复用。
+空间内日常能力进化由 Maka 提炼为提案、经用户批准后，由 Wopal 主控、委派 Fae 规范实施，提交由主控按任务落盘，再经 `space sync` 汇入 local main，最终经原生 Git/GitHub PR 回流 upstream。空间装配出的能力组合若具备类型通用性，可沉淀为类型装配单，供同类空间复用。
 
 ## Distribution Boundary
 
-ontology 的分发走 Git source + worktree 模型。wopal-cli 通过 `wopal space init` / `wopal setup` 封装 clone/fork/worktree 过程，将其与 space runtime 初始化串联。
+ontology 的分发走 Git source + worktree 模型。`wopal space init` 与 Web Onboarding 都消费同一 WopalSpace ontology/space application services，将 clone/fork/worktree 与 space runtime 初始化串联；`wopal setup` 只负责打开该 Onboarding。
 
 稳定边界：
 
@@ -186,7 +190,7 @@ ontology 的分发走 Git source + worktree 模型。wopal-cli 通过 `wopal spa
 
 Ontology 通过两层模型为 WopalSpace 提供可覆盖的能力分发：
 
-**User-level base capabilities**：`~/.wopal/skills`、`~/.wopal/agents`、`~/.wopal/commands`、`~/.wopal/rules`、`~/.wopal/plugins` 以及 `~/.wopal/dsh/agents-presets` 是面向所有 space 的基础能力入口。setup 从 `~/.wopal/ontologies/wopal-space-ontology/{agents,skills,commands,rules,plugins,dsh/agents-presets}` 物化它们：macOS / Linux 使用 symlink，Windows 使用 managed copy。DSH Profile（`web` / `ellamaka-tools`）的 `package.json` 与 `cordis.patch.yml` 声明模板则通过确定性物理复制（Copy）物化至 `$WOPAL_HOME/dsh/home/profiles/`，再由 `ellamaka dsh init` 驱动闭包与依赖补齐。
+**User-level capabilities**：用户级能力目录由 setup 创建，不向它们写入 ontology 内容；本体能力通过空间装配进入各自 worktree。DSH profile 的声明模板物理复制到 SDK 返回的当前环境，再由目标产品 init 准备依赖；用户覆盖与固定路径版本数据保持。
 
 **Space overlay**：`<space>/.wopal/skills`、`<space>/.wopal/agents`、`<space>/.wopal/commands`、`<space>/.wopal/rules`、`<space>/.wopal/plugins` 承载当前 space 的定制能力。同名能力由 space overlay 覆盖 base，ellamaka 按优先级顺序加载：
 
