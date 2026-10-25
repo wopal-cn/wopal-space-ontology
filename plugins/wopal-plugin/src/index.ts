@@ -241,10 +241,21 @@ const openCodeRulesPlugin = async (
   const internalFetch =
     client?._client?.getConfig?.()?.fetch ?? globalThis.fetch;
 
+  // The engine's auth header (`ServerAuth.headers()`) reaches the plugin only
+  // through `pluginInput.serverHeaders` (host-side delivery, ellamaka >= 2.0.9):
+  // `internalFetch` is the bare hey-api fetch function and cannot carry the
+  // client-layer config headers, so without this every v2 client request
+  // (session lookup, skill grant, question.reply) fails with 401 on an
+  // authenticated sidecar. Absent on unauthenticated servers — omit then.
+  const serverHeaders = (
+    pluginInput as PluginInput & { serverHeaders?: Record<string, string> }
+  ).serverHeaders;
+
   const v2Client = createV2OpencodeClient({
     baseUrl: pluginInput.serverUrl.toString(),
     directory: pluginInput.directory,
     fetch: internalFetch,
+    ...(serverHeaders ? { headers: serverHeaders } : {}),
   });
 
   const skillOverlay = new SessionSkillOverlay(
