@@ -1,7 +1,13 @@
-import { tool, type ToolDefinition, type ToolContext } from "@wopal/ellamaka-plugin"
-import type { SimpleTaskManager } from "../tasks/simple-task-manager.js"
+import {
+  tool,
+  type ToolDefinition,
+  type ToolContext,
+} from "@wopal/ellamaka-plugin";
+import type { SimpleTaskManager } from "../tasks/simple-task-manager.js";
 
-export function createWopalTaskTool(manager: SimpleTaskManager): ToolDefinition {
+export function createWopalTaskTool(
+  manager: SimpleTaskManager,
+): ToolDefinition {
   return tool({
     description: `Launch a non-blocking background task with a subagent. Returns task_id in format wopal-task-{session_suffix}.
 
@@ -16,29 +22,51 @@ Prompt requirements: structure the prompt with a self-introduction and task cont
 Use when: delegating implementation/review tasks to fae/rook/general agents.
 Do NOT use: for simple file reads or single-file searches (use Read/Glob instead).`,
     args: {
-      description: tool.schema.string().describe("Short description of the task (3-5 words)"),
-      prompt: tool.schema.string().describe("Detailed instructions for the subagent"),
-      agent: tool.schema.string().optional().default("general").describe("Agent type: 'general', 'explore', 'fae', 'rook', etc."),
+      description: tool.schema
+        .string()
+        .describe("Short description of the task (3-5 words)"),
+      prompt: tool.schema
+        .string()
+        .describe("Detailed instructions for the subagent"),
+      agent: tool.schema
+        .string()
+        .optional()
+        .default("general")
+        .describe("Agent type: 'general', 'explore', 'fae', 'rook', etc."),
+      capabilities: tool.schema
+        .object({
+          skills: tool.schema.array(tool.schema.string()).optional(),
+        })
+        .optional()
+        .describe("Task-specific additive capabilities"),
     },
     execute: async (args, context: ToolContext) => {
       if (!context.sessionID) {
-        return "Failed to launch task: current session ID is unavailable."
+        return "Failed to launch task: current session ID is unavailable.";
       }
 
-      const agent = args.agent ?? "general"
+      const agent = args.agent ?? "general";
+      const capabilities = args.capabilities
+        ? {
+            ...(args.capabilities.skills !== undefined
+              ? { skills: args.capabilities.skills }
+              : {}),
+          }
+        : undefined;
       const result = await manager.launch({
         description: args.description,
         prompt: args.prompt,
         agent,
         parentSessionID: context.sessionID,
-      })
+        ...(capabilities ? { capabilities } : {}),
+      });
 
       if (!result.ok) {
-        const taskLine = result.taskId ? `Task: ${result.taskId}\n` : ""
-        return `Failed to launch task.\n${taskLine}Reason: ${result.error}`
+        const taskLine = result.taskId ? `Task: ${result.taskId}\n` : "";
+        return `Failed to launch task.\n${taskLine}Reason: ${result.error}`;
       }
 
-      return `Task launched: ${result.taskId}\nStatus: ${result.status}\n\nUse \`wopal_task_output(task_id="${result.taskId}")\` to check status and retrieve results.`
+      return `Task launched: ${result.taskId}\nStatus: ${result.status}\n\nUse \`wopal_task_output(task_id="${result.taskId}")\` to check status and retrieve results.`;
     },
-  })
+  });
 }

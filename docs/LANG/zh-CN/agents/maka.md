@@ -3,6 +3,7 @@ description: 进化智能体。分析会话错误、用户纠正与记忆中沉�
 mode: all
 temperature: 0.2
 permission:
+  wopal_skill_grant: deny
   wopal_task: deny
   wopal_task_output: deny
   wopal_task_reply: deny

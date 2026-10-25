@@ -52,6 +52,42 @@ function restoreInjectionEnv() {
   }
 }
 
+function withV2Api<T extends Record<string, unknown>>(client: T): T {
+  const internalFetch = vi.fn(async (input: unknown) => {
+    const raw =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : (input as { url: string }).url;
+    const url = new URL(raw);
+    if (url.pathname === "/skill") {
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    const sessionMatch = url.pathname.match(/^\/session\/([^/]+)$/);
+    if (sessionMatch) {
+      return new Response(
+        JSON.stringify({
+          id: decodeURIComponent(sessionMatch[1]),
+          metadata: {},
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    return new Response(JSON.stringify({}), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  return {
+    ...client,
+    _client: { getConfig: () => ({ fetch: internalFetch }) },
+  };
+}
+
 describe("OpenCodeRulesPlugin", () => {
   beforeEach(() => {
     setupTestDirs();
@@ -81,7 +117,7 @@ describe("OpenCodeRulesPlugin", () => {
     const { default: pluginDef } = await import("./index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const mockInput = {
-      client: {} as any,
+      client: withV2Api({}) as any,
       project: {} as any,
       directory: path.join(testDir, "empty-project"),
       worktree: testDir,
@@ -118,7 +154,7 @@ Do this always`,
 
     try {
       const hooks = await plugin({
-        client: {} as any,
+        client: withV2Api({}) as any,
         project: {} as any,
         directory: testDir,
         worktree: testDir,
@@ -174,7 +210,7 @@ Do this always`,
 
     try {
       const hooks = await plugin({
-        client: {} as any,
+        client: withV2Api({}) as any,
         project: {} as any,
         directory: testDir,
         worktree: testDir,
@@ -214,7 +250,7 @@ Do this always`,
     const { default: pluginDef } = await import("./index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
-      client: {} as any,
+      client: withV2Api({}) as any,
       project: {} as any,
       directory: testDir,
       worktree: testDir,
@@ -284,7 +320,9 @@ describe("SessionState", () => {
       const { default: pluginDef } = await import("./index.js");
       const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
       const hooks = await plugin({
-        client: { tool: { ids: vi.fn(async () => ({ data: [] })) } } as any,
+        client: withV2Api({
+          tool: { ids: vi.fn(async () => ({ data: [] })) },
+        }) as any,
         project: {} as any,
         directory: testDir,
         worktree: testDir,
@@ -295,6 +333,7 @@ describe("SessionState", () => {
       expect(typeof hooks["command.execute.before"]).toBe("function");
       expect(typeof hooks["tool.execute.after"]).toBe("function");
       expect(typeof hooks["tool.definition"]).toBe("function");
+      expect(typeof hooks["experimental.permission.rules"]).toBe("function");
     } finally {
       process.env.HOME = originalHome;
     }
@@ -308,7 +347,9 @@ describe("SessionState", () => {
       const { default: pluginDef } = await import("./index.js");
       const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
       const hooks = await plugin({
-        client: { tool: { ids: vi.fn(async () => ({ data: [] })) } } as any,
+        client: withV2Api({
+          tool: { ids: vi.fn(async () => ({ data: [] })) },
+        }) as any,
         project: {} as any,
         directory: testDir,
         worktree: testDir,
@@ -363,7 +404,7 @@ describe("MonitorEngine registration", () => {
       const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
 
       await plugin({
-        client: {} as any,
+        client: withV2Api({}) as any,
         project: {} as any,
         directory: testDir,
         worktree: testDir,
@@ -402,7 +443,7 @@ describe("MonitorEngine registration", () => {
       const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
 
       await plugin({
-        client: {} as any,
+        client: withV2Api({}) as any,
         project: {} as any,
         directory: testDir,
         worktree: testDir,
@@ -458,7 +499,7 @@ describe("MonitorEngine registration", () => {
 
     const mockMainDeps = {
       sessionStore: { get: vi.fn(), ids: vi.fn().mockReturnValue([]) } as any,
-      client: {} as any,
+      client: withV2Api({}) as any,
       directory: "/test",
       taskManager: { isTaskSession: vi.fn() } as any,
       logger: {
@@ -833,7 +874,7 @@ async function runPluginWithMocks(
   const { default: pluginDef } = await import("./index.js?switch=" + cacheKey);
   const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
   const hooks = await plugin({
-    client: {} as never,
+    client: withV2Api({}) as never,
     project: {} as never,
     directory: testDir,
     worktree: testDir,
@@ -1063,7 +1104,7 @@ describe("connection config migration", () => {
     const { default: pluginDef } = await import("./index.js?conn-migrate=1");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     await plugin({
-      client: {} as never,
+      client: withV2Api({}) as never,
       project: {} as never,
       directory: spaceRoot,
       worktree: spaceRoot,
@@ -1128,7 +1169,7 @@ describe("connection config migration", () => {
     const { default: pluginDef } = await import("./index.js?conn-boot=1");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
-      client: {} as never,
+      client: withV2Api({}) as never,
       project: {} as never,
       directory: spaceRoot,
       worktree: spaceRoot,
@@ -1162,7 +1203,7 @@ describe("connection config migration", () => {
     mkdirSync(sliceRoot, { recursive: true });
 
     const baseInput = (directory: string) => ({
-      client: {} as never,
+      client: withV2Api({}) as never,
       project: {} as never,
       directory,
       worktree: directory,

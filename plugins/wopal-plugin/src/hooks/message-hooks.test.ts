@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import path from "path";
 import os from "os";
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "fs";
+import { mkdirSync, mkdtempSync, rmSync } from "fs";
 import {
   resetSessionState,
   getSessionStateSnapshot,
@@ -74,7 +74,29 @@ describe("message-hooks", () => {
     try {
       const { default: pluginDef } = await import("../index.js");
       const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
-      const mockClient = { tool: { ids: vi.fn(async () => ({ data: [] })) } };
+      const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
+        const raw =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+        const pathname = new URL(raw).pathname;
+        const data =
+          pathname === "/skill"
+            ? []
+            : pathname === "/session/ses_seed"
+              ? { id: "ses_seed", metadata: {} }
+              : {};
+        return new Response(JSON.stringify(data), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      });
+      const mockClient = {
+        tool: { ids: vi.fn(async () => ({ data: [] })) },
+        _client: { getConfig: () => ({ fetch: mockFetch }) },
+      };
       const hooks = await plugin({
         client: mockClient as any,
         project: {} as any,

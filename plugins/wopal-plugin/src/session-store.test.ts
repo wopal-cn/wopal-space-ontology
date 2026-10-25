@@ -2,7 +2,11 @@ import { describe, it, expect } from "vitest";
 import { SessionStore } from "./session-store.js";
 
 /** Helper to set up a session with default state */
-function setupSession(store: SessionStore, sessionID: string, overrides?: Record<string, unknown>) {
+function setupSession(
+  store: SessionStore,
+  sessionID: string,
+  overrides?: Record<string, unknown>,
+) {
   store.upsert(sessionID, (s) => {
     Object.assign(s, overrides);
   });
@@ -105,6 +109,18 @@ describe("SessionStore", () => {
       const state = store.get("ses_c");
       expect(state?.needsAutoContinue).toBe(true);
       expect(state?.needsSkillReload).toBe(true);
+    });
+
+    it("drops the derived skillOverlay cache so post-compact reads rehydrate from metadata", () => {
+      const store = new SessionStore({ max: 100 });
+      store.upsert("ses_c", (s) => {
+        s.isCompacting = true;
+        s.skillOverlay = { initial: ["pdf"], runtime: ["dev-flow"] };
+      });
+
+      store.markCompacted("ses_c");
+
+      expect(store.get("ses_c")?.skillOverlay).toBeUndefined();
     });
 
     it("clears lastTokens to prevent post-compact context false positive", () => {
@@ -251,7 +267,9 @@ describe("SessionStore", () => {
 
     it("queueContextWarning returns false if max warnings reached", () => {
       const store = new SessionStore({ max: 100 });
-      setupSession(store, "ses_main", { contextWarningsSent: SessionStore.MAX_CONTEXT_WARNINGS });
+      setupSession(store, "ses_main", {
+        contextWarningsSent: SessionStore.MAX_CONTEXT_WARNINGS,
+      });
 
       const result = store.queueContextWarning("ses_main", 75, nowMs);
       expect(result).toBe(false);
@@ -301,7 +319,10 @@ describe("SessionStore", () => {
 
       it("commitContextWarningSend increments count", () => {
         const store = new SessionStore({ max: 100 });
-        setupSession(store, "ses_main", { contextWarningSending: true, contextWarningsSent: 2 });
+        setupSession(store, "ses_main", {
+          contextWarningSending: true,
+          contextWarningsSent: 2,
+        });
 
         store.commitContextWarningSend("ses_main", nowMs);
 

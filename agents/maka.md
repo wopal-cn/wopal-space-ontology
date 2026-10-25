@@ -3,6 +3,7 @@ description: Evolution agent. Analyzes session errors, user corrections, and les
 mode: all
 temperature: 0.2
 permission:
+  wopal_skill_grant: deny
   wopal_task: deny
   wopal_task_output: deny
   wopal_task_reply: deny

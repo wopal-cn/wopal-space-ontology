@@ -14,6 +14,8 @@ export interface SessionState {
   injectedRawText?: string | undefined;
   /** Skill names loaded via the `skill` tool in this session */
   loadedSkills: Set<string>;
+  /** Additive Session Skill Overlay cache. Persistent truth remains Session metadata. */
+  skillOverlay?: { initial: string[]; runtime: string[] };
   /** Set to true after compact completes when loadedSkills is non-empty */
   needsSkillReload?: boolean;
   /** Set to true after compact completes, signals event-router to send recovery message */
@@ -86,7 +88,18 @@ export class SessionStore {
   snapshot(sessionID: string): SessionState | undefined {
     const s = this.stateMap.get(sessionID);
     if (!s) return undefined;
-    return { ...s, loadedSkills: new Set(s.loadedSkills) };
+    return {
+      ...s,
+      loadedSkills: new Set(s.loadedSkills),
+      ...(s.skillOverlay
+        ? {
+            skillOverlay: {
+              initial: [...s.skillOverlay.initial],
+              runtime: [...s.skillOverlay.runtime],
+            },
+          }
+        : {}),
+    };
   }
 
   reset(): void {
@@ -151,6 +164,10 @@ export class SessionStore {
       if (!state.compactingTrigger) {
         state.needsRecoveryInjection = true;
       }
+
+      // Skill Overlay is derived cache only. Compaction is a lifecycle boundary:
+      // drop it so the next catalog/permission read rehydrates from Session metadata.
+      delete state.skillOverlay;
 
       if (state.loadedSkills.size > 0) {
         state.needsSkillReload = true;
@@ -254,7 +271,9 @@ export class SessionStore {
     const state = this.stateMap.get(sessionID);
     if (!state || state.pendingContextWarningPct === undefined) return null;
     if (state.isCompacting) {
-      this.upsert(sessionID, (s) => { delete s.pendingContextWarningPct; });
+      this.upsert(sessionID, (s) => {
+        delete s.pendingContextWarningPct;
+      });
       return null;
     }
 
@@ -298,7 +317,10 @@ export class SessionStore {
    * Clear context warning state (used after compact or explicit cleanup).
    * If resetCount is true, also reset the warning count.
    */
-  clearContextWarningState(sessionID: string, options?: { resetCount?: boolean }): void {
+  clearContextWarningState(
+    sessionID: string,
+    options?: { resetCount?: boolean },
+  ): void {
     this.upsert(sessionID, (s) => {
       delete s.pendingContextWarningPct;
       delete s.contextWarningSending;

@@ -19,6 +19,10 @@ import {
   injectMemoryToMessage,
   type MemoryMessageInjectorContext,
 } from "./memory-message-injector.js";
+import {
+  injectSkillCatalog,
+  type SkillCatalogInjectorContext,
+} from "./skill-catalog-injector.js";
 
 /** Max recent messages to store for short-query context enrichment */
 const MAX_RECENT_MESSAGES = 10;
@@ -36,6 +40,7 @@ export interface MessageHookContext {
   ruleMessageCtx: RuleMessageInjectorContext;
   taskManager?: SimpleTaskManager | undefined;
   memoryMessageCtx: MemoryMessageInjectorContext;
+  skillCatalogCtx?: SkillCatalogInjectorContext;
 }
 
 export function createMessageHooks(ctx: MessageHookContext) {
@@ -102,6 +107,12 @@ export function createMessageHooks(ctx: MessageHookContext) {
       output.messages,
       lastUserMsg,
     );
+
+    // Dynamic Skill catalog is append-only and runs after injectors that target
+    // the retained last user message, so it cannot perturb their target lookup.
+    if (ctx.skillCatalogCtx) {
+      await injectSkillCatalog(ctx.skillCatalogCtx, sessionID, output.messages);
+    }
 
     // Store transformed messages for auto dump
     ctx.transformedMessagesMap.set(sessionID, output.messages);

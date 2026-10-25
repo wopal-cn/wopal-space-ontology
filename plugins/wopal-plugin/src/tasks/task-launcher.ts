@@ -3,78 +3,103 @@ import type {
   LaunchOutput,
   WopalTask,
   OpenCodeClient,
-} from "../types.js"
-import type { LoggerInstance } from "../logger.js"
-import { formatSessionID } from "../logger.js"
-import type { ConcurrencyManager } from "./concurrency-manager.js"
-import { toErrorMessage, isPromiseLike } from "./utils.js"
-import { sessionIDToTaskID } from "../session-ref.js"
-import { classifyTaskStop } from "./task-stop-classifier.js"
+} from "../types.js";
+import type { LoggerInstance } from "../logger.js";
+import { formatSessionID } from "../logger.js";
+import type { ConcurrencyManager } from "./concurrency-manager.js";
+import { toErrorMessage, isPromiseLike } from "./utils.js";
+import { sessionIDToTaskID } from "../session-ref.js";
+import { classifyTaskStop } from "./task-stop-classifier.js";
+import type { SessionSkillOverlay } from "../session-skill-overlay.js";
 
-export const DEFAULT_CONCURRENCY_LIMIT = 5
+export const DEFAULT_CONCURRENCY_LIMIT = 5;
 
-export { sessionIDToTaskID } from "../session-ref.js"
+export { sessionIDToTaskID } from "../session-ref.js";
 
 export interface TaskLauncherDeps {
-  tasks: Map<string, WopalTask>
+  tasks: Map<string, WopalTask>;
   client: OpenCodeClient & {
     session?: {
-      create?: (args: { body: { parentID: string; title: string } }) => Promise<{
-        data?: { id?: string }
-        id?: string
-        info?: { id?: string }
-      }>
+      create?: (args: {
+        body: { parentID: string; title: string };
+      }) => Promise<{
+        data?: { id?: string };
+        id?: string;
+        info?: { id?: string };
+      }>;
       promptAsync?: (args: {
-        path: { id: string }
+        path: { id: string };
         body: {
-          agent: string
-          parts: Array<{ type: string; text: string }>
-          tools?: Record<string, boolean>
-        }
-      }) => PromiseLike<unknown> | unknown
-      abort?: (args: { path: { id: string } }) => Promise<unknown>
-    }
-  }
-  debugLog: LoggerInstance
-  concurrency: ConcurrencyManager
-  concurrencyKey: string
+          agent: string;
+          parts: Array<{ type: string; text: string }>;
+          tools?: Record<string, boolean>;
+        };
+      }) => PromiseLike<unknown> | unknown;
+      abort?: (args: { path: { id: string } }) => Promise<unknown>;
+    };
+  };
+  debugLog: LoggerInstance;
+  concurrency: ConcurrencyManager;
+  concurrencyKey: string;
   taskManager: {
-    registerTaskSession: (sessionID: string) => void
-  }
-  abortSession: (sessionID: string | undefined) => Promise<void>
+    registerTaskSession: (sessionID: string) => void;
+  };
+  skillOverlay: Pick<SessionSkillOverlay, "grant">;
+  abortSession: (sessionID: string | undefined) => Promise<void>;
 }
 
-export { toErrorMessage, isPromiseLike }
+export { toErrorMessage, isPromiseLike };
 
 export async function launchTask(
   deps: TaskLauncherDeps,
   input: LaunchInput,
 ): Promise<LaunchOutput> {
-  const { tasks, client, debugLog, concurrency, concurrencyKey, taskManager, abortSession } = deps
+  const {
+    tasks,
+    client,
+    debugLog,
+    concurrency,
+    concurrencyKey,
+    taskManager,
+    skillOverlay,
+    abortSession,
+  } = deps;
 
   const releaseAndReturnError = (error: string): LaunchOutput => {
-    concurrency.release(concurrencyKey)
-    return { ok: false, status: 'failed', error }
-  }
+    concurrency.release(concurrencyKey);
+    return { ok: false, status: "failed", error };
+  };
 
-  debugLog.trace(`[launch] starting: description="${input.description}" agent="${input.agent}" parent=${formatSessionID(input.parentSessionID, false)}`)
+  debugLog.trace(
+    `[launch] starting: description="${input.description}" agent="${input.agent}" parent=${formatSessionID(input.parentSessionID, false)}`,
+  );
 
   if (!concurrency.tryAcquire(concurrencyKey, DEFAULT_CONCURRENCY_LIMIT)) {
-    debugLog.debug(`[launch] concurrency limit reached (${DEFAULT_CONCURRENCY_LIMIT}/${DEFAULT_CONCURRENCY_LIMIT})`)
-    return { ok: false, status: 'failed', error: `Concurrency limit reached (${DEFAULT_CONCURRENCY_LIMIT}/${DEFAULT_CONCURRENCY_LIMIT}). Wait for running tasks to finish.` }
+    debugLog.debug(
+      `[launch] concurrency limit reached (${DEFAULT_CONCURRENCY_LIMIT}/${DEFAULT_CONCURRENCY_LIMIT})`,
+    );
+    return {
+      ok: false,
+      status: "failed",
+      error: `Concurrency limit reached (${DEFAULT_CONCURRENCY_LIMIT}/${DEFAULT_CONCURRENCY_LIMIT}). Wait for running tasks to finish.`,
+    };
   }
 
   if (!input.parentSessionID) {
-    debugLog.debug(`[launch] failed: parent session ID is required`)
-    return releaseAndReturnError("Background task launch failed: parent session ID is required")
+    debugLog.debug(`[launch] failed: parent session ID is required`);
+    return releaseAndReturnError(
+      "Background task launch failed: parent session ID is required",
+    );
   }
 
   if (typeof client.session?.create !== "function") {
-    debugLog.debug(`[launch] failed: session.create is unavailable`)
-    return releaseAndReturnError("Background task launch failed: session.create is unavailable")
+    debugLog.debug(`[launch] failed: session.create is unavailable`);
+    return releaseAndReturnError(
+      "Background task launch failed: session.create is unavailable",
+    );
   }
 
-  let sessionID: string | undefined
+  let sessionID: string | undefined;
   try {
     const session = await client.session.create({
       body: {
@@ -82,31 +107,49 @@ export async function launchTask(
         title: input.description,
         agent: input.agent,
       } as { parentID: string; title: string; agent?: string },
-    })
+    });
 
-    const extractedSessionID = session?.data?.id ?? session?.id ?? session?.info?.id
-    debugLog.trace(`[launch] task created: ${formatSessionID(extractedSessionID, true)}`)
+    const extractedSessionID =
+      session?.data?.id ?? session?.id ?? session?.info?.id;
+    debugLog.trace(
+      `[launch] task created: ${formatSessionID(extractedSessionID, true)}`,
+    );
     if (extractedSessionID) {
-      sessionID = extractedSessionID
+      sessionID = extractedSessionID;
     } else {
-      const error = "Background task launch failed: child session did not provide an ID"
-      debugLog.debug(`[launch] failed: child session did not provide an ID`)
-      return releaseAndReturnError(error)
+      const error =
+        "Background task launch failed: child session did not provide an ID";
+      debugLog.debug(`[launch] failed: child session did not provide an ID`);
+      return releaseAndReturnError(error);
     }
   } catch (err) {
-    debugLog.debug({ err }, "[launch] session.create failed")
-    const error = `Background task launch failed: ${toErrorMessage(err)}`
-    return releaseAndReturnError(error)
+    debugLog.debug({ err }, "[launch] session.create failed");
+    const error = `Background task launch failed: ${toErrorMessage(err)}`;
+    return releaseAndReturnError(error);
   }
 
-  const taskId = sessionIDToTaskID(sessionID)
+  const initialSkills = input.capabilities?.skills ?? [];
+  if (initialSkills.length > 0) {
+    try {
+      await skillOverlay.grant(sessionID, "initial", initialSkills);
+    } catch (err) {
+      debugLog.debug({ err }, "[launch] creation-time skill grant failed");
+      await abortSession(sessionID);
+      return releaseAndReturnError(
+        `Background task launch failed: ${toErrorMessage(err)}`,
+      );
+    }
+  }
+
+  const taskId = sessionIDToTaskID(sessionID);
 
   if (typeof client.session?.promptAsync !== "function") {
-    const error = "Background task launch failed: session.promptAsync is unavailable"
-    debugLog.debug(`[launch] failed: session.promptAsync is unavailable`)
-    await abortSession(sessionID)
+    const error =
+      "Background task launch failed: session.promptAsync is unavailable";
+    debugLog.debug(`[launch] failed: session.promptAsync is unavailable`);
+    await abortSession(sessionID);
     // launch failed, no task retained
-    return { ok: false, status: 'failed', error }
+    return { ok: false, status: "failed", error };
   }
 
   const promptResult = client.session.promptAsync({
@@ -115,24 +158,26 @@ export async function launchTask(
       agent: input.agent,
       parts: [{ type: "text", text: input.prompt }],
       tools: {
-        "wopal_task": false,  // Disable nested task launching
+        wopal_task: false, // Disable nested task launching
+        wopal_skill_grant: false, // Main Wopal owns runtime Skill grants
       },
     },
-  })
+  });
 
   if (!isPromiseLike(promptResult)) {
-    const error = "Background task launch failed: session.promptAsync did not return a promise"
-    debugLog.debug(`[launch] failed: promptAsync did not return a promise`)
-    await abortSession(sessionID)
+    const error =
+      "Background task launch failed: session.promptAsync did not return a promise";
+    debugLog.debug(`[launch] failed: promptAsync did not return a promise`);
+    await abortSession(sessionID);
     // launch failed, no task retained
-    return { ok: false, status: 'failed', error }
+    return { ok: false, status: "failed", error };
   }
 
   // Success: create running task
   const task: WopalTask = {
     id: taskId,
     sessionID,
-    status: 'running',
+    status: "running",
     description: input.description,
     agent: input.agent,
     prompt: input.prompt,
@@ -141,9 +186,9 @@ export async function launchTask(
     startedAt: new Date(),
     progress: { toolCalls: 0, lastUpdate: new Date() },
     concurrencyKey,
-  }
-  tasks.set(taskId, task)
-  taskManager.registerTaskSession(sessionID)
+  };
+  tasks.set(taskId, task);
+  taskManager.registerTaskSession(sessionID);
 
   debugLog.info(
     {
@@ -151,33 +196,39 @@ export async function launchTask(
       agent: input.agent,
     },
     "Task launched",
-  )
+  );
 
   void Promise.resolve(promptResult).catch(async (_err: unknown) => {
-    debugLog.debug(`[launch] promptAsync error for ${formatSessionID(task.sessionID, true)}: status=${task.status}`)
+    debugLog.debug(
+      `[launch] promptAsync error for ${formatSessionID(task.sessionID, true)}: status=${task.status}`,
+    );
 
     // Only classify if task is still running or waiting
-    if (task.status !== 'running' && task.status !== 'waiting') {
-      debugLog.debug(`[launch] skipping cleanup: ${formatSessionID(task.sessionID, true)} status changed to ${task.status}`)
-      return
+    if (task.status !== "running" && task.status !== "waiting") {
+      debugLog.debug(
+        `[launch] skipping cleanup: ${formatSessionID(task.sessionID, true)} status changed to ${task.status}`,
+      );
+      return;
     }
 
     // Release concurrency slot
-    concurrency.release(concurrencyKey)
-    task.concurrencyKey = undefined
+    concurrency.release(concurrencyKey);
+    task.concurrencyKey = undefined;
 
     await classifyTaskStop({
       task,
       client: client,
       debugLog,
       errorText: toErrorMessage(_err),
-    })
+    });
 
     // Abort the session
-    await abortSession(task.sessionID)
+    await abortSession(task.sessionID);
 
-    debugLog.debug(`[launch] promptAsync error classified: ${formatSessionID(task.sessionID, true)} status=${task.status}`)
-  })
+    debugLog.debug(
+      `[launch] promptAsync error classified: ${formatSessionID(task.sessionID, true)} status=${task.status}`,
+    );
+  });
 
-  return { ok: true, taskId, status: 'running' }
+  return { ok: true, taskId, status: "running" };
 }

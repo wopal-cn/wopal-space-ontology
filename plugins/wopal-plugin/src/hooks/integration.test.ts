@@ -47,6 +47,42 @@ function restoreInjectionEnv() {
   }
 }
 
+function withV2Api<T extends Record<string, unknown>>(client: T): T {
+  const internalFetch = vi.fn(async (input: unknown) => {
+    const raw =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : (input as { url: string }).url;
+    const url = new URL(raw);
+    if (url.pathname === "/skill") {
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    const sessionMatch = url.pathname.match(/^\/session\/([^/]+)$/);
+    if (sessionMatch) {
+      return new Response(
+        JSON.stringify({
+          id: decodeURIComponent(sessionMatch[1]),
+          metadata: {},
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    return new Response(JSON.stringify({}), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  return {
+    ...client,
+    _client: { getConfig: () => ({ fetch: internalFetch }) },
+  };
+}
+
 describe("OpenCodeRulesPlugin", () => {
   beforeEach(() => {
     setupTestDirs();
@@ -77,7 +113,7 @@ describe("OpenCodeRulesPlugin", () => {
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const mockInput = {
-      client: {} as any,
+      client: withV2Api({}) as any,
       project: {} as any,
       directory: path.join(testDir, "empty-project"),
       worktree: testDir,
@@ -123,7 +159,7 @@ Do this always`,
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const mockInput = {
-      client: {} as any,
+      client: withV2Api({}) as any,
       project: {} as any,
       directory: testDir,
       worktree: testDir,
@@ -182,7 +218,7 @@ keywords:
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const mockInput = {
-      client: {} as any,
+      client: withV2Api({}) as any,
       project: {} as any,
       directory: testDir,
       worktree: testDir,
@@ -241,7 +277,7 @@ keywords:
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const mockInput = {
-      client: {} as any,
+      client: withV2Api({}) as any,
       project: {} as any,
       directory: testDir,
       worktree: testDir,
@@ -283,7 +319,7 @@ keywords:
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
-      client: {} as any,
+      client: withV2Api({}) as any,
       project: {} as any,
       directory: testDir,
       worktree: testDir,
@@ -343,7 +379,7 @@ Use React best practices for components.`,
       const { default: pluginDef } = await import("../index.js");
       const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
       const mockInput = {
-        client: {} as any,
+        client: withV2Api({}) as any,
         project: {} as any,
         directory: testDir,
         worktree: testDir,
@@ -404,7 +440,7 @@ Use React best practices for components.`,
       const { default: pluginDef } = await import("../index.js");
       const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
       const mockInput = {
-        client: {} as any,
+        client: withV2Api({}) as any,
         project: {} as any,
         directory: testDir,
         worktree: testDir,
@@ -468,7 +504,7 @@ Special rule content.`,
       const { default: pluginDef } = await import("../index.js");
       const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
       const mockInput = {
-        client: {} as any,
+        client: withV2Api({}) as any,
         project: {} as any,
         directory: testDir,
         worktree: testDir,
@@ -531,7 +567,7 @@ Follow testing best practices.`,
       const { default: pluginDef } = await import("../index.js");
       const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
       const mockInput = {
-        client: {} as any,
+        client: withV2Api({}) as any,
         project: {} as any,
         directory: testDir,
         worktree: testDir,
@@ -592,7 +628,9 @@ Special rule content.`,
 
       const { default: pluginDef } = await import("../index.js");
       const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
-      const mockClient = { tool: { ids: vi.fn(async () => ({ data: [] })) } };
+      const mockClient = withV2Api({
+        tool: { ids: vi.fn(async () => ({ data: [] })) },
+      });
       const hooks = await plugin({
         client: mockClient as any,
         project: {} as any,
@@ -646,7 +684,7 @@ describe("Skill Reload Migration", () => {
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
-      client: {} as any,
+      client: withV2Api({}) as any,
       project: {} as any,
       directory: testDir,
       worktree: testDir,
@@ -701,7 +739,7 @@ describe("Skill Reload Migration", () => {
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
-      client: {} as any,
+      client: withV2Api({}) as any,
       project: {} as any,
       directory: testDir,
       worktree: testDir,
@@ -763,7 +801,7 @@ describe("Skill Reload Migration", () => {
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
-      client: {} as any,
+      client: withV2Api({}) as any,
       project: {} as any,
       directory: testDir,
       worktree: testDir,
@@ -809,7 +847,7 @@ describe("Skill Reload Migration", () => {
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
-      client: {} as any,
+      client: withV2Api({}) as any,
       project: {} as any,
       directory: testDir,
       worktree: testDir,
@@ -852,7 +890,7 @@ describe("Skill Reload Migration", () => {
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
-      client: {} as any,
+      client: withV2Api({}) as any,
       project: {} as any,
       directory: testDir,
       worktree: testDir,
@@ -898,7 +936,7 @@ describe("Skill Reload Migration", () => {
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
-      client: {} as any,
+      client: withV2Api({}) as any,
       project: {} as any,
       directory: testDir,
       worktree: testDir,
@@ -945,7 +983,7 @@ describe("Skill Reload Migration", () => {
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
-      client: {} as any,
+      client: withV2Api({}) as any,
       project: {} as any,
       directory: testDir,
       worktree: testDir,
@@ -1005,7 +1043,7 @@ describe("Skill Reload Migration", () => {
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
-      client: {} as any,
+      client: withV2Api({}) as any,
       project: {} as any,
       directory: testDir,
       worktree: testDir,
@@ -1046,7 +1084,7 @@ describe("Skill Reload Migration", () => {
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
-      client: {} as any,
+      client: withV2Api({}) as any,
       project: {} as any,
       directory: testDir,
       worktree: testDir,
@@ -1108,7 +1146,7 @@ describe("Skill Reload Migration", () => {
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
-      client: {} as any,
+      client: withV2Api({}) as any,
       project: {} as any,
       directory: testDir,
       worktree: testDir,
@@ -1175,7 +1213,7 @@ describe("Skill Reload Migration", () => {
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
-      client: {} as any,
+      client: withV2Api({}) as any,
       project: {} as any,
       directory: testDir,
       worktree: testDir,
@@ -1249,7 +1287,7 @@ describe("Skill Reload Migration", () => {
     const { default: pluginDef } = await import("../index.js");
     const plugin = (pluginDef as { server: Function }).server.bind(pluginDef);
     const hooks = await plugin({
-      client: {} as any,
+      client: withV2Api({}) as any,
       project: {} as any,
       directory: testDir,
       worktree: testDir,

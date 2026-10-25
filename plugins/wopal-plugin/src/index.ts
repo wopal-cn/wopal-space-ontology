@@ -27,6 +27,7 @@ import { MonitorEngine } from "./monitor/monitor-engine.js";
 import { createMainSessionMonitorStrategy } from "./monitor/main-session-monitor.js";
 import { registerManagerForCleanup } from "./lifecycle/process-cleanup.js";
 import { createWopalTools } from "./tools/index.js";
+import { SessionSkillOverlay } from "./session-skill-overlay.js";
 import {
   createRuntimeContext,
   type RuntimeContext,
@@ -246,6 +247,13 @@ const openCodeRulesPlugin = async (
     fetch: internalFetch,
   });
 
+  const skillOverlay = new SessionSkillOverlay(
+    v2Client,
+    sessionStore,
+    pluginInput.directory,
+    loggers.task,
+  );
+
   const taskManager = new SimpleTaskManager(
     pluginInput.client as unknown as OpenCodeClient,
     v2Client as unknown as OpenCodeClient,
@@ -253,6 +261,7 @@ const openCodeRulesPlugin = async (
     pluginInput.serverUrl,
     sessionStore,
     loggers.task,
+    skillOverlay,
   );
 
   // Create MonitorEngine and register strategies
@@ -294,6 +303,7 @@ const openCodeRulesPlugin = async (
     contextLogger: loggers.context,
     taskManager,
     memoryInjector: memory?.injector,
+    skillOverlay,
     systemSnapshots,
     systemMetadataMap,
     systemInjectionsMap,
@@ -323,6 +333,7 @@ const openCodeRulesPlugin = async (
     resources.store,
     resources.embedder,
     sessionStore,
+    skillOverlay,
   );
 
   // memory_manage registration is resource-availability driven (single source

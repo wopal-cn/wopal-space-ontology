@@ -94,20 +94,24 @@ export function createCommandHooks(ctx: CommandHookContext) {
       return;
     }
 
-    if (toolName === "skill") {
-      const skillName = _output?.args?.name;
-      if (typeof skillName === "string" && skillName.length > 0) {
-        ctx.sessionStore.recordSkillLoaded(sessionID, skillName);
-        ctx.contextLogger.debug(`[skill] ${formatSessionID(sessionID, false)} loaded: ${skillName}`);
-      }
-    }
+    // Skill recovery state is recorded only after successful execution in
+    // tool.execute.after. Recording here would turn denied/failed attempts into
+    // false "loaded body" facts.
+    if (toolName === "skill") return;
   }
 
   async function onToolExecuteAfter(
-    _input: ToolExecuteAfterInput,
+    input: ToolExecuteAfterInput,
     _output: ToolExecuteAfterOutput,
   ): Promise<void> {
-    // No-op: memory_manage echo handled via tool return string
+    if (input.tool !== "skill") return;
+    const skillName = input.args?.name;
+    if (typeof skillName !== "string" || skillName.length === 0) return;
+
+    ctx.sessionStore.recordSkillLoaded(input.sessionID, skillName);
+    ctx.contextLogger.debug(
+      `[skill] ${formatSessionID(input.sessionID, false)} loaded: ${skillName}`,
+    );
   }
 
   return {

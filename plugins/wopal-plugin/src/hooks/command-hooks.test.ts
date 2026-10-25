@@ -3,6 +3,8 @@ import path from "path";
 import os from "os";
 import { mkdirSync, mkdtempSync, rmSync } from "fs";
 import { resetSessionState } from "../test-helpers.js";
+import { createCommandHooks } from "./command-hooks.js";
+import { SessionStore } from "../session-store.js";
 
 // Test directories - initialized in setupTestDirs
 let testDir: string;
@@ -68,10 +70,15 @@ describe("command-hooks", () => {
       parts: [{ type: "text", text: "# /memory — 记忆管理命令\n原始内容" }],
     };
 
-    await hook({ command: "memory", sessionID: "ses_mem", arguments: "" }, output);
+    await hook(
+      { command: "memory", sessionID: "ses_mem", arguments: "" },
+      output,
+    );
 
     expect(output.parts[0].text).toContain("这是一个立即执行命令");
-    expect(output.parts[0].text).toContain("必须把工具返回的完整文本逐字写入回复");
+    expect(output.parts[0].text).toContain(
+      "必须把工具返回的完整文本逐字写入回复",
+    );
     expect(output.parts[0].text).toContain("原始内容");
   });
 
@@ -94,5 +101,40 @@ describe("command-hooks", () => {
 
     // onToolDefinition 不再 harden description，工具定义本身已包含展示义务区分
     expect(output.description).toBe("old");
+  });
+  it("records loadedSkills only after a successful native skill tool execution", async () => {
+    const store = new SessionStore();
+    const logger = {
+      trace: vi.fn(),
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      fatal: vi.fn(),
+    };
+    const hooks = createCommandHooks({
+      sessionStore: store,
+      contextLogger: logger as never,
+      projectDirectory: testDir,
+    });
+
+    await hooks["tool.execute.before"](
+      { tool: "skill", sessionID: "ses_skill", callID: "call_1" },
+      { args: { name: "pdf" } },
+    );
+    expect(store.get("ses_skill")?.loadedSkills.has("pdf") ?? false).toBe(
+      false,
+    );
+
+    await hooks["tool.execute.after"](
+      {
+        tool: "skill",
+        sessionID: "ses_skill",
+        callID: "call_1",
+        args: { name: "pdf" },
+      },
+      { title: "pdf", output: "loaded", metadata: {} },
+    );
+    expect(store.get("ses_skill")?.loadedSkills.has("pdf")).toBe(true);
   });
 });

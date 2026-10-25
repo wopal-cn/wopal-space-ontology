@@ -1,26 +1,26 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { SimpleTaskManager } from "./simple-task-manager.js"
-import { sessionIDToTaskID } from "./task-launcher.js"
-import { ConcurrencyManager } from "./concurrency-manager.js"
-import { createSessionStore } from "../session-store.js"
-import type { LoggerInstance } from "../logger.js"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SimpleTaskManager } from "./simple-task-manager.js";
+import { sessionIDToTaskID } from "./task-launcher.js";
+import { ConcurrencyManager } from "./concurrency-manager.js";
+import { createSessionStore } from "../session-store.js";
+import type { LoggerInstance } from "../logger.js";
 
 function createDeferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void
-  let reject!: (reason?: unknown) => void
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
 
   const promise = new Promise<T>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
+    resolve = res;
+    reject = rej;
+  });
 
-  return { promise, resolve, reject }
+  return { promise, resolve, reject };
 }
 
 async function flushAsyncWork(iterations = 5) {
   for (let index = 0; index < iterations; index += 1) {
-    await Promise.resolve()
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
 }
 
@@ -33,7 +33,7 @@ function createMockClient() {
       delete: vi.fn().mockResolvedValue({ data: true }),
       children: vi.fn().mockResolvedValue({ data: [] }),
     },
-  }
+  };
 }
 
 function createMockLogger(): LoggerInstance {
@@ -44,23 +44,30 @@ function createMockLogger(): LoggerInstance {
     warn: vi.fn(),
     error: vi.fn(),
     fatal: vi.fn(),
-  }
+  };
 }
 
 describe("SimpleTaskManager", () => {
-  let manager: SimpleTaskManager
-  let mockClient: ReturnType<typeof createMockClient>
-  const mockDebugLog = createMockLogger()
+  let manager: SimpleTaskManager;
+  let mockClient: ReturnType<typeof createMockClient>;
+  const mockDebugLog = createMockLogger();
 
   beforeEach(() => {
-    mockClient = createMockClient()
-    manager = new SimpleTaskManager(mockClient, mockClient, "/test/dir", undefined, undefined, mockDebugLog)
-    mockDebugLog.debug.mockClear()
-  })
+    mockClient = createMockClient();
+    manager = new SimpleTaskManager(
+      mockClient,
+      mockClient,
+      "/test/dir",
+      undefined,
+      undefined,
+      mockDebugLog,
+    );
+    mockDebugLog.debug.mockClear();
+  });
 
   afterEach(() => {
-    manager.dispose()
-  })
+    manager.dispose();
+  });
 
   describe("launch", () => {
     it("creates a running task and child session", async () => {
@@ -69,14 +76,14 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
-      expect(result).toMatchObject({ ok: true, status: "running" })
+      expect(result).toMatchObject({ ok: true, status: "running" });
       if (!result.ok) {
-        throw new Error("expected successful launch")
+        throw new Error("expected successful launch");
       }
 
-      expect(result.taskId).toBe("wopal-task-child-session-1")
+      expect(result.taskId).toBe("wopal-task-child-session-1");
 
       expect(mockClient.session.create).toHaveBeenCalledWith({
         body: {
@@ -84,56 +91,67 @@ describe("SimpleTaskManager", () => {
           title: "Test task",
           agent: "general",
         },
-      })
+      });
       expect(mockClient.session.promptAsync).toHaveBeenCalledWith({
         path: { id: "ses_child-session-1" },
         body: {
           agent: "general",
           parts: [{ type: "text", text: "Do something" }],
           tools: {
-            "wopal_task": false,
+            wopal_task: false,
+            wopal_skill_grant: false,
           },
         },
-      })
+      });
 
-      const task = manager.getTask(result.taskId)
-      expect(task?.status).toBe("running")
-      expect(manager.findBySession("ses_child-session-1")?.id).toBe(result.taskId)
-    })
+      const task = manager.getTask(result.taskId);
+      expect(task?.status).toBe("running");
+      expect(manager.findBySession("ses_child-session-1")?.id).toBe(
+        result.taskId,
+      );
+    });
 
     it("extracts session id from session.data.id (OpenCode API structure)", async () => {
-      mockClient.session.create.mockResolvedValueOnce({ data: { id: "ses_session-from-data-id" } })
+      mockClient.session.create.mockResolvedValueOnce({
+        data: { id: "ses_session-from-data-id" },
+      });
 
       const result = await manager.launch({
         description: "Test task",
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
-      expect(result).toMatchObject({ ok: true })
-      if (!result.ok) throw new Error("expected success")
+      expect(result).toMatchObject({ ok: true });
+      if (!result.ok) throw new Error("expected success");
 
-      expect(result.taskId).toBe("wopal-task-session-from-data-id")
-      expect(manager.findBySession("ses_session-from-data-id")?.id).toBe(result.taskId)
-    })
+      expect(result.taskId).toBe("wopal-task-session-from-data-id");
+      expect(manager.findBySession("ses_session-from-data-id")?.id).toBe(
+        result.taskId,
+      );
+    });
 
     it("extracts session id from session.id as fallback", async () => {
-      mockClient.session.create.mockResolvedValueOnce({ id: "ses_session-from-id" })
+      mockClient.session.create.mockResolvedValueOnce({
+        id: "ses_session-from-id",
+      });
 
       const result = await manager.launch({
         description: "Test task",
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
-      expect(result).toMatchObject({ ok: true })
-      if (!result.ok) throw new Error("expected success")
+      expect(result).toMatchObject({ ok: true });
+      if (!result.ok) throw new Error("expected success");
 
-      expect(result.taskId).toBe("wopal-task-session-from-id")
-      expect(manager.findBySession("ses_session-from-id")?.id).toBe(result.taskId)
-    })
+      expect(result.taskId).toBe("wopal-task-session-from-id");
+      expect(manager.findBySession("ses_session-from-id")?.id).toBe(
+        result.taskId,
+      );
+    });
 
     it("fails when parent session id is missing", async () => {
       const result = await manager.launch({
@@ -141,68 +159,78 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "",
-      })
+      });
 
       expect(result).toEqual({
         ok: false,
         status: "failed",
         error: "Background task launch failed: parent session ID is required",
-      })
-    })
+      });
+    });
 
     it("fails when session.create is unavailable", async () => {
-      const client = { session: { promptAsync: vi.fn(), abort: vi.fn() } }
-      const failingManager = new SimpleTaskManager(client, client, "/test/dir", undefined, undefined, mockDebugLog)
+      const client = { session: { promptAsync: vi.fn(), abort: vi.fn() } };
+      const failingManager = new SimpleTaskManager(
+        client,
+        client,
+        "/test/dir",
+        undefined,
+        undefined,
+        mockDebugLog,
+      );
 
       const result = await failingManager.launch({
         description: "Test task",
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
       expect(result).toEqual({
         ok: false,
         status: "failed",
         error: "Background task launch failed: session.create is unavailable",
-      })
-    })
+      });
+    });
 
     it("fails when session.create rejects", async () => {
-      mockClient.session.create.mockRejectedValueOnce(new Error("Create failed"))
+      mockClient.session.create.mockRejectedValueOnce(
+        new Error("Create failed"),
+      );
 
       const result = await manager.launch({
         description: "Test task",
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
       expect(result).toMatchObject({
         ok: false,
         status: "failed",
         error: "Background task launch failed: Create failed",
-      })
+      });
       // No taskId when session.create fails
-      expect(result.taskId).toBeUndefined()
-    })
+      expect(result.taskId).toBeUndefined();
+    });
 
     it("fails when child session id is missing", async () => {
-      mockClient.session.create.mockResolvedValueOnce({ info: {} })
+      mockClient.session.create.mockResolvedValueOnce({ info: {} });
 
       const result = await manager.launch({
         description: "Test task",
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
       expect(result).toMatchObject({
         ok: false,
         status: "failed",
-        error: "Background task launch failed: child session did not provide an ID",
-      })
-    })
+        error:
+          "Background task launch failed: child session did not provide an ID",
+      });
+    });
 
     it("fails when session.promptAsync is unavailable", async () => {
       const client = {
@@ -210,83 +238,91 @@ describe("SimpleTaskManager", () => {
           create: vi.fn().mockResolvedValue({ id: "ses_child-session-1" }),
           abort: vi.fn().mockResolvedValue(undefined),
         },
-      }
-      const failingManager = new SimpleTaskManager(client, client, "/test/dir", undefined, undefined, mockDebugLog)
+      };
+      const failingManager = new SimpleTaskManager(
+        client,
+        client,
+        "/test/dir",
+        undefined,
+        undefined,
+        mockDebugLog,
+      );
 
       const result = await failingManager.launch({
         description: "Test task",
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
       expect(result).toMatchObject({
         ok: false,
         status: "failed",
-        error: "Background task launch failed: session.promptAsync is unavailable",
-      })
+        error:
+          "Background task launch failed: session.promptAsync is unavailable",
+      });
       expect(client.session.abort).toHaveBeenCalledWith({
         path: { id: "ses_child-session-1" },
-      })
+      });
       // launch 失败时 task 不保留
-      expect(manager.getTask("wopal-task-child-session-1")).toBeUndefined()
-    })
+      expect(manager.getTask("wopal-task-child-session-1")).toBeUndefined();
+    });
 
     it("fails when session.promptAsync does not return a promise", async () => {
-      mockClient.session.promptAsync.mockReturnValueOnce(undefined)
+      mockClient.session.promptAsync.mockReturnValueOnce(undefined);
 
       const result = await manager.launch({
         description: "Test task",
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
       expect(result).toMatchObject({
         ok: false,
         status: "failed",
         error:
           "Background task launch failed: session.promptAsync did not return a promise",
-      })
+      });
       expect(mockClient.session.abort).toHaveBeenCalledWith({
         path: { id: "ses_child-session-1" },
-      })
+      });
       // launch 失败时 task 不保留
-      expect(manager.getTask("wopal-task-child-session-1")).toBeUndefined()
-    })
+      expect(manager.getTask("wopal-task-child-session-1")).toBeUndefined();
+    });
 
     it("releases concurrency when promptAsync later rejects", async () => {
-      const deferred = createDeferred<void>()
-      mockClient.session.promptAsync.mockReturnValueOnce(deferred.promise)
+      const deferred = createDeferred<void>();
+      mockClient.session.promptAsync.mockReturnValueOnce(deferred.promise);
 
       const result = await manager.launch({
         description: "Test task",
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
       if (!result.ok) {
-        throw new Error("expected successful launch")
+        throw new Error("expected successful launch");
       }
 
       // Concurrency should be held before rejection
-      expect(manager.getConcurrencyStatus().used).toBe(1)
+      expect(manager.getConcurrencyStatus().used).toBe(1);
 
-      deferred.reject(new Error("Prompt failed"))
-      await flushAsyncWork()
+      deferred.reject(new Error("Prompt failed"));
+      await flushAsyncWork();
 
       // Task is classified as error by stop classifier (no assistant activity), concurrency is released
-      const task = manager.getTask(result.taskId)
-      expect(task?.status).toBe("error")
-      expect(task?.error).toBe("Prompt failed")
-      expect(manager.getConcurrencyStatus().used).toBe(0)
+      const task = manager.getTask(result.taskId);
+      expect(task?.status).toBe("error");
+      expect(task?.error).toBe("Prompt failed");
+      expect(manager.getConcurrencyStatus().used).toBe(0);
 
       expect(mockClient.session.abort).toHaveBeenCalledWith({
         path: { id: "ses_child-session-1" },
-      })
-    })
-  })
+      });
+    });
+  });
 
   describe("ownership", () => {
     it("returns task only to owning parent session", async () => {
@@ -295,16 +331,20 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
       if (!result.ok) {
-        throw new Error("expected successful launch")
+        throw new Error("expected successful launch");
       }
 
-      expect(manager.getTaskForParent(result.taskId, "parent-1")?.id).toBe(result.taskId)
-      expect(manager.getTaskForParent(result.taskId, "parent-2")).toBeUndefined()
-    })
-  })
+      expect(manager.getTaskForParent(result.taskId, "parent-1")?.id).toBe(
+        result.taskId,
+      );
+      expect(
+        manager.getTaskForParent(result.taskId, "parent-2"),
+      ).toBeUndefined();
+    });
+  });
 
   describe("task ID resolution (prefix/suffix/ambiguous)", () => {
     it("getTaskForParent resolves a unique truncated prefix", async () => {
@@ -313,13 +353,13 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
-      if (!result.ok) throw new Error("expected successful launch")
+      });
+      if (!result.ok) throw new Error("expected successful launch");
 
-      const task = manager.getTaskForParent("wopal-task-child", "parent-1")
+      const task = manager.getTaskForParent("wopal-task-child", "parent-1");
 
-      expect(task?.id).toBe(result.taskId)
-    })
+      expect(task?.id).toBe(result.taskId);
+    });
 
     it("getTaskForParent resolves a unique suffix fragment", async () => {
       await manager.launch({
@@ -327,12 +367,12 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
-      const task = manager.getTaskForParent("session-1", "parent-1")
+      const task = manager.getTaskForParent("session-1", "parent-1");
 
-      expect(task?.id).toBe("wopal-task-child-session-1")
-    })
+      expect(task?.id).toBe("wopal-task-child-session-1");
+    });
 
     it("getTaskForParent returns undefined for ambiguous prefix (hard block)", async () => {
       await manager.launch({
@@ -340,18 +380,22 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
-      mockClient.session.create.mockResolvedValueOnce({ id: "ses_child-session-1b" })
+      });
+      mockClient.session.create.mockResolvedValueOnce({
+        id: "ses_child-session-1b",
+      });
       await manager.launch({
         description: "Task B",
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
       // "wopal-task-child-session" prefix-matches both tasks
-      expect(manager.getTaskForParent("wopal-task-child-session", "parent-1")).toBeUndefined()
-    })
+      expect(
+        manager.getTaskForParent("wopal-task-child-session", "parent-1"),
+      ).toBeUndefined();
+    });
 
     it("getTaskForParent keeps multi-session isolation for fuzzy matches", async () => {
       const resultA = await manager.launch({
@@ -359,21 +403,26 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
-      mockClient.session.create.mockResolvedValueOnce({ id: "ses_child-2" })
+      });
+      mockClient.session.create.mockResolvedValueOnce({ id: "ses_child-2" });
       const resultB = await manager.launch({
         description: "Task B",
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-2",
-      })
-      if (!resultA.ok || !resultB.ok) throw new Error("expected successful launches")
+      });
+      if (!resultA.ok || !resultB.ok)
+        throw new Error("expected successful launches");
 
       // Both IDs share the "wopal-task-child" prefix, but each parent only
       // sees its own task — scoping happens before fuzzy matching.
-      expect(manager.getTaskForParent("wopal-task-child", "parent-1")?.id).toBe(resultA.taskId)
-      expect(manager.getTaskForParent("wopal-task-child", "parent-2")?.id).toBe(resultB.taskId)
-    })
+      expect(manager.getTaskForParent("wopal-task-child", "parent-1")?.id).toBe(
+        resultA.taskId,
+      );
+      expect(manager.getTaskForParent("wopal-task-child", "parent-2")?.id).toBe(
+        resultB.taskId,
+      );
+    });
 
     it("resolveTaskForParent exposes the full verdict (exact/unique/ambiguous/not_found)", async () => {
       const result = await manager.launch({
@@ -381,35 +430,46 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
-      if (!result.ok) throw new Error("expected successful launch")
-      const taskId = result.taskId
+      });
+      if (!result.ok) throw new Error("expected successful launch");
+      const taskId = result.taskId;
 
-      const exact = manager.resolveTaskForParent(taskId, "parent-1")
-      expect(exact).toMatchObject({ type: "exact" })
+      const exact = manager.resolveTaskForParent(taskId, "parent-1");
+      expect(exact).toMatchObject({ type: "exact" });
 
-      const unique = manager.resolveTaskForParent("wopal-task-child", "parent-1")
-      expect(unique).toMatchObject({ type: "unique", matchedBy: "prefix" })
+      const unique = manager.resolveTaskForParent(
+        "wopal-task-child",
+        "parent-1",
+      );
+      expect(unique).toMatchObject({ type: "unique", matchedBy: "prefix" });
 
-      mockClient.session.create.mockResolvedValueOnce({ id: "ses_child-session-1b" })
+      mockClient.session.create.mockResolvedValueOnce({
+        id: "ses_child-session-1b",
+      });
       await manager.launch({
         description: "Task B",
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
-      const ambiguous = manager.resolveTaskForParent("wopal-task-child-session", "parent-1")
-      expect(ambiguous.type).toBe("ambiguous")
+      });
+      const ambiguous = manager.resolveTaskForParent(
+        "wopal-task-child-session",
+        "parent-1",
+      );
+      expect(ambiguous.type).toBe("ambiguous");
       if (ambiguous.type === "ambiguous") {
-        expect(ambiguous.candidates).toHaveLength(2)
+        expect(ambiguous.candidates).toHaveLength(2);
       }
 
-      const notFound = manager.resolveTaskForParent("wopal-task-zzz", "parent-1")
-      expect(notFound.type).toBe("not_found")
+      const notFound = manager.resolveTaskForParent(
+        "wopal-task-zzz",
+        "parent-1",
+      );
+      expect(notFound.type).toBe("not_found");
       if (notFound.type === "not_found") {
-        expect(notFound.availableTasks.length).toBeGreaterThan(0)
+        expect(notFound.availableTasks.length).toBeGreaterThan(0);
       }
-    })
+    });
 
     it("resolveTaskForParent never returns tasks owned by another session", async () => {
       await manager.launch({
@@ -417,88 +477,101 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
-      const verdict = manager.resolveTaskForParent("wopal-task-child", "parent-2")
+      const verdict = manager.resolveTaskForParent(
+        "wopal-task-child",
+        "parent-2",
+      );
 
-      expect(verdict.type).toBe("not_found")
+      expect(verdict.type).toBe("not_found");
       if (verdict.type === "not_found") {
-        expect(verdict.availableTasks).toEqual([])
+        expect(verdict.availableTasks).toEqual([]);
       }
-    })
-  })
+    });
+  });
 
   describe("recovery", () => {
     it("restores child sessions as idle tasks", async () => {
       mockClient.session.children.mockResolvedValueOnce({
-        data: [{
-          id: "ses_recovered-old",
-          title: "Recovered task",
-          agent: "fae",
-          time: { created: Date.now() - 4_000_000 },
-        }],
-      })
+        data: [
+          {
+            id: "ses_recovered-old",
+            title: "Recovered task",
+            agent: "fae",
+            time: { created: Date.now() - 4_000_000 },
+          },
+        ],
+      });
 
-      await manager.recoverFromSession("parent-1")
+      await manager.recoverFromSession("parent-1");
 
-      const taskId = sessionIDToTaskID("ses_recovered-old")
-      const task = manager.getTaskForParent(taskId, "parent-1")
+      const taskId = sessionIDToTaskID("ses_recovered-old");
+      const task = manager.getTaskForParent(taskId, "parent-1");
 
       // recovered tasks default to idle (not current active run)
-      expect(task?.status).toBe("idle")
-      expect(task?.startedAt?.getTime()).toBeGreaterThan(Date.now() - 5_000)
-      expect(task?.progress).toMatchObject({ toolCalls: 0 })
-    })
+      expect(task?.status).toBe("idle");
+      expect(task?.startedAt?.getTime()).toBeGreaterThan(Date.now() - 5_000);
+      expect(task?.progress).toMatchObject({ toolCalls: 0 });
+    });
 
     it("allows parent to delete recovered idle task", async () => {
       mockClient.session.children.mockResolvedValueOnce({
-        data: [{
-          id: "ses_recovered-delete",
-          title: "Recovered task",
-          agent: "fae",
-          time: { created: Date.now() - 4_000_000 },
-        }],
-      })
+        data: [
+          {
+            id: "ses_recovered-delete",
+            title: "Recovered task",
+            agent: "fae",
+            time: { created: Date.now() - 4_000_000 },
+          },
+        ],
+      });
 
-      await manager.recoverFromSession("parent-1")
+      await manager.recoverFromSession("parent-1");
 
-      const taskId = sessionIDToTaskID("ses_recovered-delete")
-      const task = manager.getTask(taskId)
+      const taskId = sessionIDToTaskID("ses_recovered-delete");
+      const task = manager.getTask(taskId);
       // recovered task is idle, can be deleted
-      expect(task?.status).toBe("idle")
+      expect(task?.status).toBe("idle");
 
-      const result = await manager.finishTask(taskId, "parent-1")
+      const result = await manager.finishTask(taskId, "parent-1");
 
       expect(result).toEqual({
         ok: true,
         message: "Task finished successfully. Session deleted from Ellamaka.",
-      })
+      });
       expect(mockClient.session.delete).toHaveBeenCalledWith({
         path: { id: "ses_recovered-delete" },
-      })
-      expect(manager.getTask(taskId)).toBeUndefined()
-    })
+      });
+      expect(manager.getTask(taskId)).toBeUndefined();
+    });
 
     it("retries recovery after a temporary children API failure", async () => {
       mockClient.session.children
         .mockRejectedValueOnce(new Error("temporary failure"))
         .mockResolvedValueOnce({
-          data: [{
-            id: "ses_recovered-retry",
-            title: "Recovered after retry",
-            agent: "fae",
-            time: { created: Date.now() - 4_000_000 },
-          }],
-        })
+          data: [
+            {
+              id: "ses_recovered-retry",
+              title: "Recovered after retry",
+              agent: "fae",
+              time: { created: Date.now() - 4_000_000 },
+            },
+          ],
+        });
 
-      await manager.recoverFromSession("parent-1")
-      expect(manager.getTask(sessionIDToTaskID("ses_recovered-retry"))).toBeUndefined()
+      await manager.recoverFromSession("parent-1");
+      expect(
+        manager.getTask(sessionIDToTaskID("ses_recovered-retry")),
+      ).toBeUndefined();
 
-      await manager.recoverFromSession("parent-1")
-      const recoveredTask = manager.getTask(sessionIDToTaskID("ses_recovered-retry"))
-      expect(recoveredTask?.status).toBe("idle")
-    })
-  })
+      await manager.recoverFromSession("parent-1");
+      const recoveredTask = manager.getTask(
+        sessionIDToTaskID("ses_recovered-retry"),
+      );
+      expect(recoveredTask?.status).toBe("idle");
+    });
+  });
 
   describe("interrupt", () => {
     it("aborts session and sets task to idle", async () => {
@@ -507,42 +580,42 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
       if (!result.ok) {
-        throw new Error("expected successful launch")
+        throw new Error("expected successful launch");
       }
 
-      const interrupted = await manager.interrupt(result.taskId, "parent-1")
+      const interrupted = await manager.interrupt(result.taskId, "parent-1");
 
-      expect(interrupted).toBe("interrupted")
+      expect(interrupted).toBe("interrupted");
       expect(mockClient.session.abort).toHaveBeenCalledWith({
         path: { id: "ses_child-session-1" },
-      })
+      });
       // interrupt sets status to idle
-      expect(manager.getTask(result.taskId)?.status).toBe("idle")
-    })
+      expect(manager.getTask(result.taskId)?.status).toBe("idle");
+    });
 
     it("still returns interrupted even when session.abort rejects", async () => {
-      mockClient.session.abort.mockRejectedValueOnce(new Error("Abort failed"))
+      mockClient.session.abort.mockRejectedValueOnce(new Error("Abort failed"));
 
       const result = await manager.launch({
         description: "Test task",
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
       if (!result.ok) {
-        throw new Error("expected successful launch")
+        throw new Error("expected successful launch");
       }
 
-      const interrupted = await manager.interrupt(result.taskId, "parent-1")
+      const interrupted = await manager.interrupt(result.taskId, "parent-1");
 
-      expect(interrupted).toBe("interrupted")
+      expect(interrupted).toBe("interrupted");
       // status becomes idle even if abort fails
-      expect(manager.getTask(result.taskId)?.status).toBe("idle")
-    })
+      expect(manager.getTask(result.taskId)?.status).toBe("idle");
+    });
 
     it("rejects interruption from a different parent session", async () => {
       const result = await manager.launch({
@@ -550,62 +623,64 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
       if (!result.ok) {
-        throw new Error("expected successful launch")
+        throw new Error("expected successful launch");
       }
 
-      await expect(manager.interrupt(result.taskId, "parent-2")).resolves.toBe("not_found")
-      expect(mockClient.session.abort).not.toHaveBeenCalled()
-    })
+      await expect(manager.interrupt(result.taskId, "parent-2")).resolves.toBe(
+        "not_found",
+      );
+      expect(mockClient.session.abort).not.toHaveBeenCalled();
+    });
 
     it("interrupt aborts session, task becomes idle", async () => {
-      const abortDeferred = createDeferred<void>()
-      mockClient.session.abort.mockReturnValueOnce(abortDeferred.promise)
+      const abortDeferred = createDeferred<void>();
+      mockClient.session.abort.mockReturnValueOnce(abortDeferred.promise);
 
       const result = await manager.launch({
         description: "Test task",
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
       if (!result.ok) {
-        throw new Error("expected successful launch")
+        throw new Error("expected successful launch");
       }
 
-      const interruptPromise = manager.interrupt(result.taskId, "parent-1")
-      abortDeferred.resolve(undefined)
+      const interruptPromise = manager.interrupt(result.taskId, "parent-1");
+      abortDeferred.resolve(undefined);
 
-      await expect(interruptPromise).resolves.toBe("interrupted")
+      await expect(interruptPromise).resolves.toBe("interrupted");
       // interrupt sets status to idle
-      expect(manager.getTask(result.taskId)?.status).toBe("idle")
-    })
+      expect(manager.getTask(result.taskId)?.status).toBe("idle");
+    });
 
     it("interrupt does not block idle notification", async () => {
-      const abortDeferred = createDeferred<void>()
-      mockClient.session.abort.mockReturnValueOnce(abortDeferred.promise)
+      const abortDeferred = createDeferred<void>();
+      mockClient.session.abort.mockReturnValueOnce(abortDeferred.promise);
 
       const result = await manager.launch({
         description: "Test task",
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
       if (!result.ok) {
-        throw new Error("expected successful launch")
+        throw new Error("expected successful launch");
       }
 
-      const interruptPromise = manager.interrupt(result.taskId, "parent-1")
-      abortDeferred.resolve(undefined)
+      const interruptPromise = manager.interrupt(result.taskId, "parent-1");
+      abortDeferred.resolve(undefined);
 
-      await expect(interruptPromise).resolves.toBe("interrupted")
+      await expect(interruptPromise).resolves.toBe("interrupted");
       // interrupt sets status to idle
-      expect(manager.getTask(result.taskId)?.status).toBe("idle")
-    })
-  })
+      expect(manager.getTask(result.taskId)?.status).toBe("idle");
+    });
+  });
 
   describe("notifyParent", () => {
     it("sends notification with task status", async () => {
@@ -614,42 +689,49 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
       if (!result.ok) {
-        throw new Error("expected successful launch")
+        throw new Error("expected successful launch");
       }
 
-      await manager.notifyParent(result.taskId)
+      await manager.notifyParent(result.taskId);
 
       // Find the call that was made to the parent session (not the child)
       const call = mockClient.session.promptAsync.mock.calls.find(
         (entry) => entry[0]?.path?.id === "parent-1",
-      )
-      expect(call).toBeDefined()
-      const notification = call?.[0]?.body?.parts?.[0]?.text as string
+      );
+      expect(call).toBeDefined();
+      const notification = call?.[0]?.body?.parts?.[0]?.text as string;
 
-      expect(notification).toContain(result.taskId)
-      expect(notification).toContain("[WOPAL TASK")
-    })
-  })
+      expect(notification).toContain(result.taskId);
+      expect(notification).toContain("[WOPAL TASK");
+    });
+  });
 
   describe("dispose", () => {
     it("is idempotent (tick loop is now managed by MonitorEngine)", async () => {
       // Create a manager and dispose — no longer manages ticker internally
-      const newManager = new SimpleTaskManager(mockClient, mockClient, "/test/dir", undefined, undefined, mockDebugLog)
-      newManager.dispose()
+      const newManager = new SimpleTaskManager(
+        mockClient,
+        mockClient,
+        "/test/dir",
+        undefined,
+        undefined,
+        mockDebugLog,
+      );
+      newManager.dispose();
       // Second call should not throw
-      newManager.dispose()
-    })
-  })
+      newManager.dispose();
+    });
+  });
 
   describe("createMonitorStrategy", () => {
     it("returns a strategy with name 'task-monitor'", () => {
-      const strategy = manager.createMonitorStrategy()
-      expect(strategy.name).toBe("task-monitor")
-      expect(typeof strategy.tick).toBe("function")
-    })
+      const strategy = manager.createMonitorStrategy();
+      expect(strategy.name).toBe("task-monitor");
+      expect(typeof strategy.tick).toBe("function");
+    });
 
     it("strategy tick calls runTaskMonitorTick with manager deps", async () => {
       const task = {
@@ -662,18 +744,24 @@ describe("SimpleTaskManager", () => {
         createdAt: new Date(),
         startedAt: new Date(),
         sessionID: "ses_strategy-test",
-        progress: { toolCalls: 0, lastUpdate: new Date(), lastMeaningfulActivity: new Date() },
-      } as const
+        progress: {
+          toolCalls: 0,
+          lastUpdate: new Date(),
+          lastMeaningfulActivity: new Date(),
+        },
+      } as const;
 
       // Access internal tasks map to add a task
-      const internalTasks = (manager as unknown as { tasks: Map<string, unknown> }).tasks
-      internalTasks.set(task.id, task)
+      const internalTasks = (
+        manager as unknown as { tasks: Map<string, unknown> }
+      ).tasks;
+      internalTasks.set(task.id, task);
 
-      const strategy = manager.createMonitorStrategy()
+      const strategy = manager.createMonitorStrategy();
       // tick should not throw even with a running task
-      await strategy.tick()
-    })
-  })
+      await strategy.tick();
+    });
+  });
 
   describe("finishTask (real implementation)", () => {
     it("rejects actively running task", async () => {
@@ -682,17 +770,17 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
-      if (!result.ok) throw new Error("expected successful launch")
+      if (!result.ok) throw new Error("expected successful launch");
 
       // Task is actively running
-      const finishResult = await manager.finishTask(result.taskId, "parent-1")
+      const finishResult = await manager.finishTask(result.taskId, "parent-1");
 
-      expect(finishResult.ok).toBe(false)
-      expect(finishResult.message).toContain("actively running")
-      expect(finishResult.message).toContain("wopal_task_abort")
-    })
+      expect(finishResult.ok).toBe(false);
+      expect(finishResult.message).toContain("actively running");
+      expect(finishResult.message).toContain("wopal_task_abort");
+    });
 
     it("accepts idle task", async () => {
       const result = await manager.launch({
@@ -700,23 +788,25 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
-      if (!result.ok) throw new Error("expected successful launch")
+      if (!result.ok) throw new Error("expected successful launch");
 
-      const task = manager.getTask(result.taskId)
-      if (!task) throw new Error("expected task")
+      const task = manager.getTask(result.taskId);
+      if (!task) throw new Error("expected task");
 
       // Mark as idle (simulating abort or interrupt)
-      task.status = "idle"
+      task.status = "idle";
 
-      const finishResult = await manager.finishTask(result.taskId, "parent-1")
+      const finishResult = await manager.finishTask(result.taskId, "parent-1");
 
-      expect(finishResult.ok).toBe(true)
-      expect(finishResult.message).toBe("Task finished successfully. Session deleted from Ellamaka.")
-      expect(mockClient.session.delete).toHaveBeenCalled()
-      expect(manager.getTask(result.taskId)).toBeUndefined()
-    })
+      expect(finishResult.ok).toBe(true);
+      expect(finishResult.message).toBe(
+        "Task finished successfully. Session deleted from Ellamaka.",
+      );
+      expect(mockClient.session.delete).toHaveBeenCalled();
+      expect(manager.getTask(result.taskId)).toBeUndefined();
+    });
 
     it("accepts waiting task", async () => {
       const result = await manager.launch({
@@ -724,21 +814,21 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
-      if (!result.ok) throw new Error("expected successful launch")
+      if (!result.ok) throw new Error("expected successful launch");
 
-      const task = manager.getTask(result.taskId)
-      if (!task) throw new Error("expected task")
+      const task = manager.getTask(result.taskId);
+      if (!task) throw new Error("expected task");
 
       // Mark as waiting
-      task.status = "waiting"
+      task.status = "waiting";
 
-      const finishResult = await manager.finishTask(result.taskId, "parent-1")
+      const finishResult = await manager.finishTask(result.taskId, "parent-1");
 
-      expect(finishResult.ok).toBe(true)
-      expect(mockClient.session.delete).toHaveBeenCalled()
-    })
+      expect(finishResult.ok).toBe(true);
+      expect(mockClient.session.delete).toHaveBeenCalled();
+    });
 
     it("accepts stuck task", async () => {
       const result = await manager.launch({
@@ -746,21 +836,21 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
-      if (!result.ok) throw new Error("expected successful launch")
+      if (!result.ok) throw new Error("expected successful launch");
 
-      const task = manager.getTask(result.taskId)
-      if (!task) throw new Error("expected task")
+      const task = manager.getTask(result.taskId);
+      if (!task) throw new Error("expected task");
 
       // Mark as stuck
-      task.status = "stuck"
+      task.status = "stuck";
 
-      const finishResult = await manager.finishTask(result.taskId, "parent-1")
+      const finishResult = await manager.finishTask(result.taskId, "parent-1");
 
-      expect(finishResult.ok).toBe(true)
-      expect(mockClient.session.delete).toHaveBeenCalled()
-    })
+      expect(finishResult.ok).toBe(true);
+      expect(mockClient.session.delete).toHaveBeenCalled();
+    });
 
     it("rejects wrong parent session", async () => {
       const result = await manager.launch({
@@ -768,15 +858,15 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
-      if (!result.ok) throw new Error("expected successful launch")
+      if (!result.ok) throw new Error("expected successful launch");
 
-      const finishResult = await manager.finishTask(result.taskId, "parent-2")
+      const finishResult = await manager.finishTask(result.taskId, "parent-2");
 
-      expect(finishResult.ok).toBe(false)
-      expect(finishResult.message).toContain("not found")
-    })
+      expect(finishResult.ok).toBe(false);
+      expect(finishResult.message).toContain("not found");
+    });
 
     it("finishes by unique prefix and frees the concurrency slot", async () => {
       const result = await manager.launch({
@@ -784,24 +874,27 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
-      if (!result.ok) throw new Error("expected successful launch")
-      expect(manager.getConcurrencyStatus().used).toBe(1)
+      });
+      if (!result.ok) throw new Error("expected successful launch");
+      expect(manager.getConcurrencyStatus().used).toBe(1);
 
-      const task = manager.getTask(result.taskId)
-      if (!task) throw new Error("expected task")
-      task.status = "idle"
+      const task = manager.getTask(result.taskId);
+      if (!task) throw new Error("expected task");
+      task.status = "idle";
 
-      const finishResult = await manager.finishTask("wopal-task-child", "parent-1")
+      const finishResult = await manager.finishTask(
+        "wopal-task-child",
+        "parent-1",
+      );
 
-      expect(finishResult.ok).toBe(true)
+      expect(finishResult.ok).toBe(true);
       expect(mockClient.session.delete).toHaveBeenCalledWith({
         path: { id: "ses_child-session-1" },
-      })
+      });
       // tasks.delete(task.id) must remove the map entry even though a prefix
       // was passed in — the slot is freed for future launches.
-      expect(manager.getTask(result.taskId)).toBeUndefined()
-      expect(manager.getConcurrencyStatus().used).toBe(0)
+      expect(manager.getTask(result.taskId)).toBeUndefined();
+      expect(manager.getConcurrencyStatus().used).toBe(0);
 
       // The manager accepts a fresh launch afterwards (slot released).
       const relaunch = await manager.launch({
@@ -809,9 +902,9 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
-      expect(relaunch.ok).toBe(true)
-    })
+      });
+      expect(relaunch.ok).toBe(true);
+    });
 
     it("rejects ambiguous prefix when finishing", async () => {
       await manager.launch({
@@ -819,22 +912,27 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
-      mockClient.session.create.mockResolvedValueOnce({ id: "ses_child-session-1b" })
+      });
+      mockClient.session.create.mockResolvedValueOnce({
+        id: "ses_child-session-1b",
+      });
       await manager.launch({
         description: "Task B",
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
-      const finishResult = await manager.finishTask("wopal-task-child-session", "parent-1")
+      const finishResult = await manager.finishTask(
+        "wopal-task-child-session",
+        "parent-1",
+      );
 
-      expect(finishResult.ok).toBe(false)
-      expect(finishResult.message).toContain("Ambiguous task reference")
-      expect(mockClient.session.delete).not.toHaveBeenCalled()
-    })
-  })
+      expect(finishResult.ok).toBe(false);
+      expect(finishResult.message).toContain("Ambiguous task reference");
+      expect(mockClient.session.delete).not.toHaveBeenCalled();
+    });
+  });
 
   describe("listTasksForParent", () => {
     it("includes model from sessionStore and null when unavailable", async () => {
@@ -843,75 +941,82 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
-      if (!result.ok) throw new Error("expected successful launch")
+      if (!result.ok) throw new Error("expected successful launch");
 
-      const store = manager.getSessionStore()
+      const store = manager.getSessionStore();
       store.upsert("ses_child-session-1", (state) => {
-        state.providerID = "deepseek"
-        state.modelID = "deepseek-chat"
-      })
+        state.providerID = "deepseek";
+        state.modelID = "deepseek-chat";
+      });
 
-      const tasks = manager.listTasksForParent("parent-1")
-      expect(tasks).toHaveLength(1)
+      const tasks = manager.listTasksForParent("parent-1");
+      expect(tasks).toHaveLength(1);
       expect(tasks[0]).toMatchObject({
         taskID: result.taskId,
         model: "deepseek/deepseek-chat",
-      })
+      });
 
       // Second task without store entry → null
-      const otherStore = createSessionStore()
-      const managerNoStore = new SimpleTaskManager(mockClient, mockClient, "/test/dir", undefined, otherStore, mockDebugLog)
+      const otherStore = createSessionStore();
+      const managerNoStore = new SimpleTaskManager(
+        mockClient,
+        mockClient,
+        "/test/dir",
+        undefined,
+        otherStore,
+        mockDebugLog,
+      );
       const result2 = await managerNoStore.launch({
         description: "Other task",
         prompt: "Do something else",
         agent: "general",
         parentSessionID: "parent-2",
-      })
-      if (!result2.ok) throw new Error("expected successful launch")
+      });
+      if (!result2.ok) throw new Error("expected successful launch");
 
-      const tasks2 = managerNoStore.listTasksForParent("parent-2")
-      expect(tasks2).toHaveLength(1)
+      const tasks2 = managerNoStore.listTasksForParent("parent-2");
+      expect(tasks2).toHaveLength(1);
       expect(tasks2[0]).toMatchObject({
         taskID: result2.taskId,
         model: null,
-      })
-      managerNoStore.dispose()
-    })
-  })
+      });
+      managerNoStore.dispose();
+    });
+  });
 
   describe("session registration", () => {
     it("registerTaskSession adds session to taskSessions", () => {
-      const sessionID = "ses_test-session-1"
-      manager.registerTaskSession(sessionID)
-      expect(manager.isTaskSession(sessionID)).toBe(true)
-    })
+      const sessionID = "ses_test-session-1";
+      manager.registerTaskSession(sessionID);
+      expect(manager.isTaskSession(sessionID)).toBe(true);
+    });
 
     it("isTaskSession returns false for unregistered session", () => {
-      expect(manager.isTaskSession("ses_unknown-session")).toBe(false)
-    })
+      expect(manager.isTaskSession("ses_unknown-session")).toBe(false);
+    });
 
     it("isTaskSession returns false after manager creation (no sessions)", () => {
-      expect(manager.isTaskSession("ses_nonexistent")).toBe(false)
-    })
+      expect(manager.isTaskSession("ses_nonexistent")).toBe(false);
+    });
 
     it("registerTaskSession allows registering multiple sessions", () => {
-      manager.registerTaskSession("ses_session-a")
-      manager.registerTaskSession("ses_session-b")
-      manager.registerTaskSession("ses_session-c")
-      expect(manager.isTaskSession("ses_session-a")).toBe(true)
-      expect(manager.isTaskSession("ses_session-b")).toBe(true)
-      expect(manager.isTaskSession("ses_session-c")).toBe(true)
-    })
+      manager.registerTaskSession("ses_session-a");
+      manager.registerTaskSession("ses_session-b");
+      manager.registerTaskSession("ses_session-c");
+      expect(manager.isTaskSession("ses_session-a")).toBe(true);
+      expect(manager.isTaskSession("ses_session-b")).toBe(true);
+      expect(manager.isTaskSession("ses_session-c")).toBe(true);
+    });
 
     it("registerTaskSession is idempotent", () => {
-      const sessionID = "ses_idempotent"
-      manager.registerTaskSession(sessionID)
-      manager.registerTaskSession(sessionID)
-      manager.registerTaskSession(sessionID)
-      expect(manager.isTaskSession(sessionID)).toBe(true)
-    })
+      const sessionID = "ses_idempotent";
+      manager.registerTaskSession(sessionID);
+      manager.registerTaskSession(sessionID);
+      manager.registerTaskSession(sessionID);
+      expect(manager.isTaskSession(sessionID)).toBe(true);
+    });
 
     it("launched task sessions are automatically registered", async () => {
       const result = await manager.launch({
@@ -919,31 +1024,40 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
-      if (!result.ok) throw new Error("expected successful launch")
+      if (!result.ok) throw new Error("expected successful launch");
 
-      expect(manager.isTaskSession("ses_child-session-1")).toBe(true)
-    })
+      expect(manager.isTaskSession("ses_child-session-1")).toBe(true);
+    });
 
     it("recovered task sessions are automatically registered", async () => {
-      const mockClient = createMockClient()
+      const mockClient = createMockClient();
       mockClient.session.children.mockResolvedValueOnce({
-        data: [{
-          id: "ses_recovered-reg",
-          title: "Recovered session",
-          agent: "fae",
-          time: { created: Date.now() - 4_000_000 },
-        }],
-      })
-      const recoveryManager = new SimpleTaskManager(mockClient, mockClient, "/test/dir", undefined, undefined, mockDebugLog)
+        data: [
+          {
+            id: "ses_recovered-reg",
+            title: "Recovered session",
+            agent: "fae",
+            time: { created: Date.now() - 4_000_000 },
+          },
+        ],
+      });
+      const recoveryManager = new SimpleTaskManager(
+        mockClient,
+        mockClient,
+        "/test/dir",
+        undefined,
+        undefined,
+        mockDebugLog,
+      );
 
-      await recoveryManager.recoverFromSession("parent-1")
-      expect(recoveryManager.isTaskSession("ses_recovered-reg")).toBe(true)
+      await recoveryManager.recoverFromSession("parent-1");
+      expect(recoveryManager.isTaskSession("ses_recovered-reg")).toBe(true);
 
-      recoveryManager.dispose()
-    })
-  })
+      recoveryManager.dispose();
+    });
+  });
 
   describe("reacquireSlotOnWakeUp (real concurrency behavior)", () => {
     it("success: acquires slot and clears waitingConcurrencyKey", async () => {
@@ -952,30 +1066,30 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
-      if (!result.ok) throw new Error("expected successful launch")
+      if (!result.ok) throw new Error("expected successful launch");
 
-      const task = manager.getTask(result.taskId)
-      if (!task) throw new Error("expected task")
+      const task = manager.getTask(result.taskId);
+      if (!task) throw new Error("expected task");
 
       // Simulate idle state: task was aborted/interrupted
-      task.status = "idle"
-      task.waitingConcurrencyKey = task.concurrencyKey
-      task.concurrencyKey = undefined
+      task.status = "idle";
+      task.waitingConcurrencyKey = task.concurrencyKey;
+      task.concurrencyKey = undefined;
 
       // Call reacquireSlotOnWakeUp with available slots
-      const acquired = manager.reacquireSlotOnWakeUp(task)
+      const acquired = manager.reacquireSlotOnWakeUp(task);
 
       // Verify: concurrencyKey restored, waitingConcurrencyKey cleared
-      expect(acquired).toBe(true)
-      expect(task.concurrencyKey).toBe("default")
-      expect(task.waitingConcurrencyKey).toBeUndefined()
-      
+      expect(acquired).toBe(true);
+      expect(task.concurrencyKey).toBe("default");
+      expect(task.waitingConcurrencyKey).toBeUndefined();
+
       // Verify concurrency status reflects the acquisition
-      const status = manager.getConcurrencyStatus()
-      expect(status.used).toBeGreaterThan(0)
-    })
+      const status = manager.getConcurrencyStatus();
+      expect(status.used).toBeGreaterThan(0);
+    });
 
     it("concurrency limit reached: preserves waitingConcurrencyKey for retry", async () => {
       // First launch a task (succeeds because slots available)
@@ -984,43 +1098,45 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
-      if (!result.ok) throw new Error("expected successful launch")
+      if (!result.ok) throw new Error("expected successful launch");
 
-      const task = manager.getTask(result.taskId)
-      if (!task) throw new Error("expected task")
+      const task = manager.getTask(result.taskId);
+      if (!task) throw new Error("expected task");
 
       // Task has concurrencyKey from launch
-      expect(task.concurrencyKey).toBe("default")
-      expect(manager.getConcurrencyStatus().used).toBe(1)
+      expect(task.concurrencyKey).toBe("default");
+      expect(manager.getConcurrencyStatus().used).toBe(1);
 
       // Access internal concurrency manager to fill remaining slots
-      const internalConcurrency = (manager as unknown as { concurrency: ConcurrencyManager }).concurrency
-      
+      const internalConcurrency = (
+        manager as unknown as { concurrency: ConcurrencyManager }
+      ).concurrency;
+
       // Fill remaining 4 slots (limit is 5)
       for (let i = 0; i < 4; i++) {
-        internalConcurrency.tryAcquire("default", 5)
+        internalConcurrency.tryAcquire("default", 5);
       }
 
       // Verify limit reached
-      expect(manager.getConcurrencyStatus().used).toBe(5)
-      expect(manager.getConcurrencyStatus().available).toBe(0)
+      expect(manager.getConcurrencyStatus().used).toBe(5);
+      expect(manager.getConcurrencyStatus().available).toBe(0);
 
       // Set idle state
-      task.status = "idle"
-      task.waitingConcurrencyKey = task.concurrencyKey
-      task.concurrencyKey = undefined
+      task.status = "idle";
+      task.waitingConcurrencyKey = task.concurrencyKey;
+      task.concurrencyKey = undefined;
 
       // Call reacquireSlotOnWakeUp when limit is reached
-      const acquired = manager.reacquireSlotOnWakeUp(task)
+      const acquired = manager.reacquireSlotOnWakeUp(task);
 
       // Verify: concurrencyKey NOT set (acquisition failed)
       // waitingConcurrencyKey preserved for retry
-      expect(acquired).toBe(false)
-      expect(task.concurrencyKey).toBeUndefined()
-      expect(task.waitingConcurrencyKey).toBe("default")
-    })
+      expect(acquired).toBe(false);
+      expect(task.concurrencyKey).toBeUndefined();
+      expect(task.waitingConcurrencyKey).toBe("default");
+    });
 
     it("non-resumable task: reacquireSlotOnWakeUp does nothing", async () => {
       const result = await manager.launch({
@@ -1028,23 +1144,23 @@ describe("SimpleTaskManager", () => {
         prompt: "Do something",
         agent: "general",
         parentSessionID: "parent-1",
-      })
+      });
 
-      if (!result.ok) throw new Error("expected successful launch")
+      if (!result.ok) throw new Error("expected successful launch");
 
-      const task = manager.getTask(result.taskId)
-      if (!task) throw new Error("expected task")
+      const task = manager.getTask(result.taskId);
+      if (!task) throw new Error("expected task");
 
       // Task is actively running (not idle)
-      expect(task.status).toBe("running")
+      expect(task.status).toBe("running");
 
       // Call reacquireSlotOnWakeUp - should do nothing
-      const acquired = manager.reacquireSlotOnWakeUp(task)
+      const acquired = manager.reacquireSlotOnWakeUp(task);
 
       // Verify: no state change
-      expect(acquired).toBe(false)
-      expect(task.concurrencyKey).toBe("default") // Still has the original slot
-      expect(task.waitingConcurrencyKey).toBeUndefined()
-    })
-  })
-})
+      expect(acquired).toBe(false);
+      expect(task.concurrencyKey).toBe("default"); // Still has the original slot
+      expect(task.waitingConcurrencyKey).toBeUndefined();
+    });
+  });
+});

@@ -12,6 +12,7 @@ import type { MemoryInjector } from "../memory/index.js";
 import type { DiscoveredRule } from "../rules/index.js";
 import type { OpenCodeClient } from "../types.js";
 import type { SystemPromptMetadata } from "@wopal/ellamaka-plugin";
+import type { SessionSkillOverlay } from "../session-skill-overlay.js";
 import type { MessageWithInfo } from "./message-context.js";
 import { createCommandHooks } from "./command-hooks.js";
 import { createMessageHooks } from "./message-hooks.js";
@@ -20,6 +21,7 @@ import { createEventRouter } from "./event-router.js";
 import { createCompactionHooks } from "./compaction.js";
 import type { RuleInjectorContext } from "./rule-injector.js";
 import type { MemoryInjectorContext } from "./memory-injection-utils.js";
+import { createSkillPermissionRulesHooks } from "./skill-permission-rules.js";
 
 export interface HookCapabilities {
   memoryInjectionEnabled?: boolean; // Default true
@@ -43,6 +45,7 @@ export interface HookContextOptions {
   now?: () => number;
   taskManager?: SimpleTaskManager;
   memoryInjector?: MemoryInjector | undefined;
+  skillOverlay?: SessionSkillOverlay;
   systemSnapshots?: Map<string, string[]>;
   systemMetadataMap?: Map<string, SystemPromptMetadata>;
   systemInjectionsMap?: Map<string, string[]>;
@@ -65,6 +68,7 @@ export interface HookContext {
   now: () => number;
   taskManager: SimpleTaskManager | undefined;
   memoryInjector: MemoryInjector | undefined;
+  skillOverlay: SessionSkillOverlay | undefined;
   childSessionCache: Map<string, boolean>;
   systemSnapshots: Map<string, string[]>;
   systemMetadataMap: Map<string, SystemPromptMetadata>;
@@ -95,6 +99,7 @@ export function createHookContext(opts: HookContextOptions): HookContext {
     now: opts.now ?? (() => Date.now()),
     taskManager: opts.taskManager ?? undefined,
     memoryInjector: opts.memoryInjector,
+    skillOverlay: opts.skillOverlay,
     childSessionCache: new Map<string, boolean>(),
     systemSnapshots: opts.systemSnapshots ?? new Map(),
     systemMetadataMap: opts.systemMetadataMap ?? new Map(),
@@ -148,6 +153,15 @@ export function createAllHooks(ctx: HookContext): AllHooksResult {
       rulesLogger: ctx.rulesLogger,
       capabilities: ctx.capabilities,
     },
+    ...(ctx.skillOverlay
+      ? {
+          skillCatalogCtx: {
+            skillOverlay: ctx.skillOverlay,
+            sessionStore: ctx.sessionStore,
+            logger: ctx.contextLogger,
+          },
+        }
+      : {}),
     memoryMessageCtx: {
       memoryInjectorCtx: {
         client: ctx.client,
@@ -197,6 +211,11 @@ export function createAllHooks(ctx: HookContext): AllHooksResult {
       : {}),
   });
 
+  const skillPermissionHooks = createSkillPermissionRulesHooks(
+    ctx.skillOverlay,
+    ctx.taskLogger,
+  );
+
   const compactionHooks = createCompactionHooks({
     sessionStore: ctx.sessionStore,
     contextLogger: ctx.contextLogger,
@@ -210,6 +229,7 @@ export function createAllHooks(ctx: HookContext): AllHooksResult {
       ...messageHooks,
       ...systemTransformHooks,
       ...eventRouter,
+      ...skillPermissionHooks,
       ...compactionHooks,
     },
     transformedMessagesMap,

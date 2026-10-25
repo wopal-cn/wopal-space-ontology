@@ -4,56 +4,63 @@ import type {
   LaunchOutput,
   WopalTask,
   OpenCodeClient,
-} from "../types.js"
-import type { LoggerInstance } from "../logger.js"
-import type { SessionStore } from "../session-store.js"
-import type { MonitorStrategy } from "../monitor/monitor-engine.js"
-import type { TaskMonitorRuntimeDeps } from "./task-monitor-strategy.js"
-import { taskLogger, formatSessionID } from "../logger.js"
-import { sessionStore as globalSessionStore } from "../session-store-instance.js"
-import { ConcurrencyManager } from "./concurrency-manager.js"
-import { registerManagerForCleanup, unregisterManagerForCleanup } from "./process-cleanup.js"
+} from "../types.js";
+import type { LoggerInstance } from "../logger.js";
+import type { SessionStore } from "../session-store.js";
+import type { MonitorStrategy } from "../monitor/monitor-engine.js";
+import type { TaskMonitorRuntimeDeps } from "./task-monitor-strategy.js";
+import { taskLogger, formatSessionID } from "../logger.js";
+import { sessionStore as globalSessionStore } from "../session-store-instance.js";
+import { ConcurrencyManager } from "./concurrency-manager.js";
 import {
-  launchTask,
-  DEFAULT_CONCURRENCY_LIMIT,
-} from "./task-launcher.js"
-import { notifyParent, sendProgressNotification } from "./task-notifier.js"
-import { createTaskMonitorStrategy } from "./task-monitor-strategy.js"
-import type { ProgressNotifyTrigger } from "./task-monitor.js"
+  registerManagerForCleanup,
+  unregisterManagerForCleanup,
+} from "./process-cleanup.js";
+import { launchTask, DEFAULT_CONCURRENCY_LIMIT } from "./task-launcher.js";
+import { notifyParent, sendProgressNotification } from "./task-notifier.js";
+import { createTaskMonitorStrategy } from "./task-monitor-strategy.js";
+import type { ProgressNotifyTrigger } from "./task-monitor.js";
 import {
   abortSession,
   markTaskIdleBySession,
   interruptTask,
   shutdownManager,
-} from "./task-lifecycle.js"
-import { sessionIDToTaskID } from "../session-ref.js"
+} from "./task-lifecycle.js";
+import { sessionIDToTaskID } from "../session-ref.js";
 import {
   resolveTask,
   formatAmbiguousErrorMessage,
   formatNotFoundErrorMessage,
   type TaskResolveResult,
-} from "./task-resolver.js"
-import { getDisplayStatus, isResumableTask, canDeleteTask } from "./task-phase.js"
-import { isSessionDeleteResult } from "../types.js"
+} from "./task-resolver.js";
+import {
+  getDisplayStatus,
+  isResumableTask,
+  canDeleteTask,
+} from "./task-phase.js";
+import { isSessionDeleteResult } from "../types.js";
+import type { OpencodeClient as V2OpencodeClient } from "@wopal/ellamaka-sdk/v2";
+import { SessionSkillOverlay } from "../session-skill-overlay.js";
 
 /** Runtime product display name used in user-facing task messages. */
-const RUNTIME_DISPLAY_NAME = "Ellamaka"
+const RUNTIME_DISPLAY_NAME = "Ellamaka";
 
 export class SimpleTaskManager {
-  private tasks = new Map<string, WopalTask>()
-  private taskSessions = new Set<string>()
-  private client: OpenCodeClient
-  private v2Client: OpenCodeClient
-  private serverUrl?: URL
-  private directory: string
-  private debugLog: LoggerInstance
-  private sessionStore: SessionStore
-  private concurrency = new ConcurrencyManager()
-  private readonly CONCURRENCY_KEY = 'default'
-  private isShuttingDown = false
-  private unregistered = false
-  private recoveredSessions = new Set<string>()
-  private recoveringSessions = new Set<string>()
+  private tasks = new Map<string, WopalTask>();
+  private taskSessions = new Set<string>();
+  private client: OpenCodeClient;
+  private v2Client: OpenCodeClient;
+  private serverUrl?: URL;
+  private directory: string;
+  private debugLog: LoggerInstance;
+  private sessionStore: SessionStore;
+  private skillOverlay: SessionSkillOverlay;
+  private concurrency = new ConcurrencyManager();
+  private readonly CONCURRENCY_KEY = "default";
+  private isShuttingDown = false;
+  private unregistered = false;
+  private recoveredSessions = new Set<string>();
+  private recoveringSessions = new Set<string>();
 
   constructor(
     client: OpenCodeClient,
@@ -62,43 +69,56 @@ export class SimpleTaskManager {
     serverUrl?: URL,
     sessionStore?: SessionStore,
     debugLog?: LoggerInstance,
+    skillOverlay?: SessionSkillOverlay,
   ) {
-    this.client = client
-    this.v2Client = v2Client
-    this.directory = directory
+    this.client = client;
+    this.v2Client = v2Client;
+    this.directory = directory;
     if (serverUrl !== undefined) {
-      this.serverUrl = serverUrl
+      this.serverUrl = serverUrl;
     }
-    this.sessionStore = sessionStore ?? globalSessionStore
-    this.debugLog = debugLog ?? taskLogger
+    this.sessionStore = sessionStore ?? globalSessionStore;
+    this.debugLog = debugLog ?? taskLogger;
+    this.skillOverlay =
+      skillOverlay ??
+      new SessionSkillOverlay(
+        v2Client as unknown as V2OpencodeClient,
+        this.sessionStore,
+        directory,
+        this.debugLog,
+      );
 
-    registerManagerForCleanup(this)
+    registerManagerForCleanup(this);
   }
 
   unregisterFromCleanup(): void {
-    if (this.unregistered) return
-    this.unregistered = true
-    unregisterManagerForCleanup(this)
+    if (this.unregistered) return;
+    this.unregistered = true;
+    unregisterManagerForCleanup(this);
   }
 
   getDirectory(): string {
-    return this.directory
+    return this.directory;
   }
 
   getSessionStore(): SessionStore {
-    return this.sessionStore
+    return this.sessionStore;
   }
 
   getClient(): OpenCodeClient {
-    return this.client
+    return this.client;
   }
 
   getV2Client(): OpenCodeClient {
-    return this.v2Client
+    return this.v2Client;
+  }
+
+  getSkillOverlay(): SessionSkillOverlay {
+    return this.skillOverlay;
   }
 
   getServerUrl(): URL | undefined {
-    return this.serverUrl
+    return this.serverUrl;
   }
 
   dispose(): void {
@@ -107,22 +127,23 @@ export class SimpleTaskManager {
   }
 
   async shutdown(): Promise<void> {
-    if (this.isShuttingDown) return
-    this.isShuttingDown = true
-    this.dispose()
+    if (this.isShuttingDown) return;
+    this.isShuttingDown = true;
+    this.dispose();
     await shutdownManager({
       ...this.getLifecycleDeps(),
       concurrency: this.concurrency,
-      abortSessionFn: (sessionID) => abortSession(this.client, this.debugLog, sessionID),
-    })
+      abortSessionFn: (sessionID) =>
+        abortSession(this.client, this.debugLog, sessionID),
+    });
   }
 
   async launch(input: LaunchInput): Promise<LaunchOutput> {
-    return launchTask(this.getLauncherDeps(), input)
+    return launchTask(this.getLauncherDeps(), input);
   }
 
   getTask(id: string): WopalTask | undefined {
-    return this.tasks.get(id)
+    return this.tasks.get(id);
   }
 
   /**
@@ -131,14 +152,17 @@ export class SimpleTaskManager {
    * (prefix/suffix/normalized match), ambiguous (candidate list), or
    * not_found (with available tasks of this session).
    */
-  resolveTaskForParent(query: string, parentSessionID: string): TaskResolveResult<WopalTask> {
-    const owned: WopalTask[] = []
+  resolveTaskForParent(
+    query: string,
+    parentSessionID: string,
+  ): TaskResolveResult<WopalTask> {
+    const owned: WopalTask[] = [];
     for (const task of this.tasks.values()) {
       if (task.parentSessionID === parentSessionID) {
-        owned.push(task)
+        owned.push(task);
       }
     }
-    return resolveTask(owned, query)
+    return resolveTask(owned, query);
   }
 
   /**
@@ -147,11 +171,11 @@ export class SimpleTaskManager {
    * fuzzy match, `undefined` on ambiguous (hard block) or not_found.
    */
   getTaskForParent(id: string, parentSessionID: string): WopalTask | undefined {
-    const verdict = this.resolveTaskForParent(id, parentSessionID)
+    const verdict = this.resolveTaskForParent(id, parentSessionID);
     if (verdict.type === "exact" || verdict.type === "unique") {
-      return verdict.task
+      return verdict.task;
     }
-    return undefined
+    return undefined;
   }
 
   /**
@@ -159,123 +183,167 @@ export class SimpleTaskManager {
    * Distinguishes ambiguous references from genuinely unknown ones.
    */
   formatResolveErrorMessage(query: string, parentSessionID: string): string {
-    const verdict = this.resolveTaskForParent(query, parentSessionID)
+    const verdict = this.resolveTaskForParent(query, parentSessionID);
     if (verdict.type === "ambiguous") {
-      return formatAmbiguousErrorMessage(verdict.query, verdict.candidates)
+      return formatAmbiguousErrorMessage(verdict.query, verdict.candidates);
     }
     if (verdict.type === "not_found") {
-      return formatNotFoundErrorMessage(verdict.query, verdict.availableTasks)
+      return formatNotFoundErrorMessage(verdict.query, verdict.availableTasks);
     }
-    return `Task "${query}" resolved.`
+    return `Task "${query}" resolved.`;
   }
 
   listTasksForParent(parentSessionID: string): Array<{
-    taskID: string
-    sessionID: string
-    status: string
-    description: string
-    agent: string
-    model: string | null
+    taskID: string;
+    sessionID: string;
+    status: string;
+    description: string;
+    agent: string;
+    model: string | null;
   }> {
     const result: Array<{
-      taskID: string
-      sessionID: string
-      status: string
-      description: string
-      agent: string
-      model: string | null
-    }> = []
+      taskID: string;
+      sessionID: string;
+      status: string;
+      description: string;
+      agent: string;
+      model: string | null;
+    }> = [];
 
     for (const task of this.tasks.values()) {
       if (task.parentSessionID === parentSessionID) {
-        const effectiveStatus = getDisplayStatus(task)
-        const state = task.sessionID ? this.sessionStore.get(task.sessionID) : undefined
-        const model = state?.providerID && state?.modelID
-          ? `${state.providerID}/${state.modelID}`
-          : null
+        const effectiveStatus = getDisplayStatus(task);
+        const state = task.sessionID
+          ? this.sessionStore.get(task.sessionID)
+          : undefined;
+        const model =
+          state?.providerID && state?.modelID
+            ? `${state.providerID}/${state.modelID}`
+            : null;
         result.push({
           taskID: task.id,
-          sessionID: task.sessionID ?? '',
+          sessionID: task.sessionID ?? "",
           status: effectiveStatus,
           description: task.description,
           agent: task.agent,
           model,
-        })
+        });
       }
     }
 
-    return result
+    return result;
   }
 
   findBySession(sessionID: string): WopalTask | undefined {
-    return this.tasks.get(sessionIDToTaskID(sessionID))
+    return this.tasks.get(sessionIDToTaskID(sessionID));
   }
 
   registerTaskSession(sessionID: string): void {
-    this.taskSessions.add(sessionID)
+    this.taskSessions.add(sessionID);
   }
 
   isTaskSession(sessionID: string): boolean {
-    return this.taskSessions.has(sessionID)
+    return this.taskSessions.has(sessionID);
   }
 
   markTaskCompletedBySession(sessionID: string): WopalTask | undefined {
-    const task = this.findBySession(sessionID)
-    if (!task || task.status !== 'running') {
-      return undefined
+    const task = this.findBySession(sessionID);
+    if (!task || task.status !== "running") {
+      return undefined;
     }
-    return task
+    return task;
   }
 
   markTaskIdleBySession(sessionID: string): WopalTask | undefined {
-    return markTaskIdleBySession(this.getLifecycleDeps(), sessionID)
+    return markTaskIdleBySession(this.getLifecycleDeps(), sessionID);
   }
 
   async interrupt(id: string, parentSessionID: string): Promise<CancelResult> {
-    return interruptTask(this.getLifecycleDeps(), id, parentSessionID)
+    return interruptTask(this.getLifecycleDeps(), id, parentSessionID);
   }
 
-  async finishTask(taskId: string, parentSessionID: string): Promise<{ ok: boolean; message: string }> {
-    const { tasks, client, debugLog, releaseConcurrencySlot } = this.getLifecycleDeps()
+  async finishTask(
+    taskId: string,
+    parentSessionID: string,
+  ): Promise<{ ok: boolean; message: string }> {
+    const { tasks, client, debugLog, releaseConcurrencySlot } =
+      this.getLifecycleDeps();
 
-    const verdict = this.resolveTaskForParent(taskId, parentSessionID)
+    const verdict = this.resolveTaskForParent(taskId, parentSessionID);
     if (verdict.type === "ambiguous" || verdict.type === "not_found") {
-      return { ok: false, message: this.formatResolveErrorMessage(taskId, parentSessionID) }
+      return {
+        ok: false,
+        message: this.formatResolveErrorMessage(taskId, parentSessionID),
+      };
     }
-    const task = verdict.task
+    const task = verdict.task;
 
     if (!canDeleteTask(task)) {
-      return { ok: false, message: "Task is actively running. Use wopal_task_abort or wopal_task_reply(interrupt=true) to stop first, then finish." }
+      return {
+        ok: false,
+        message:
+          "Task is actively running. Use wopal_task_abort or wopal_task_reply(interrupt=true) to stop first, then finish.",
+      };
     }
 
     if (task.sessionID && client.session?.delete) {
       try {
-        const result = await client.session.delete({ path: { id: task.sessionID } })
+        const result = await client.session.delete({
+          path: { id: task.sessionID },
+        });
         if (isSessionDeleteResult(result) && result.error) {
-          debugLog.debug({ task_id: formatSessionID(task.sessionID, true), err: result.error }, "[finishTask] Session delete failed")
-          return { ok: false, message: `Failed to delete session: ${String(result.error)}` }
+          debugLog.debug(
+            {
+              task_id: formatSessionID(task.sessionID, true),
+              err: result.error,
+            },
+            "[finishTask] Session delete failed",
+          );
+          return {
+            ok: false,
+            message: `Failed to delete session: ${String(result.error)}`,
+          };
         }
       } catch (err) {
-        debugLog.debug({ task_id: formatSessionID(task.sessionID, true), err }, "[finishTask] Session delete threw")
-        return { ok: false, message: `Failed to delete session: ${String(err)}` }
+        debugLog.debug(
+          { task_id: formatSessionID(task.sessionID, true), err },
+          "[finishTask] Session delete threw",
+        );
+        return {
+          ok: false,
+          message: `Failed to delete session: ${String(err)}`,
+        };
       }
     }
 
     // Delete by the resolved canonical task.id — the caller may have passed a
     // truncated (prefix/suffix) reference, which would leave the map entry
     // behind and leak the concurrency slot.
-    tasks.delete(task.id)
+    tasks.delete(task.id);
 
-    releaseConcurrencySlot(task)
+    releaseConcurrencySlot(task);
 
-    debugLog.info({ task_id: formatSessionID(task.sessionID, true) }, "[finishTask] Task finished")
-    return { ok: true, message: `Task finished successfully. Session deleted from ${RUNTIME_DISPLAY_NAME}.` }
+    debugLog.info(
+      { task_id: formatSessionID(task.sessionID, true) },
+      "[finishTask] Task finished",
+    );
+    return {
+      ok: true,
+      message: `Task finished successfully. Session deleted from ${RUNTIME_DISPLAY_NAME}.`,
+    };
   }
 
   async notifyParent(taskId: string): Promise<void> {
-    const task = this.tasks.get(taskId)
-    if (!task) return
-    await notifyParent({ client: this.client, debugLog: this.debugLog, sessionStore: this.sessionStore }, task)
+    const task = this.tasks.get(taskId);
+    if (!task) return;
+    await notifyParent(
+      {
+        client: this.client,
+        debugLog: this.debugLog,
+        sessionStore: this.sessionStore,
+      },
+      task,
+    );
   }
 
   /**
@@ -285,87 +353,102 @@ export class SimpleTaskManager {
   createMonitorStrategy(): MonitorStrategy {
     return createTaskMonitorStrategy({
       getDeps: (): TaskMonitorRuntimeDeps => this.getMonitorDeps(),
-    })
+    });
   }
 
   releaseConcurrencySlot(task: WopalTask): void {
     if (task.concurrencyKey) {
-      this.concurrency.release(task.concurrencyKey)
-      task.concurrencyKey = undefined
+      this.concurrency.release(task.concurrencyKey);
+      task.concurrencyKey = undefined;
     }
   }
 
   reacquireSlotOnWakeUp(task: WopalTask): boolean {
     if (!isResumableTask(task)) {
-      return false
+      return false;
     }
 
     if (task.concurrencyKey) {
-      delete task.waitingConcurrencyKey
-      return true
+      delete task.waitingConcurrencyKey;
+      return true;
     }
 
-    if (this.concurrency.tryAcquire(this.CONCURRENCY_KEY, DEFAULT_CONCURRENCY_LIMIT)) {
-      task.concurrencyKey = this.CONCURRENCY_KEY
-      delete task.waitingConcurrencyKey
-      this.debugLog.debug({ task_id: formatSessionID(task.sessionID, true) }, "[reacquireSlot] Acquired slot")
-      return true
+    if (
+      this.concurrency.tryAcquire(
+        this.CONCURRENCY_KEY,
+        DEFAULT_CONCURRENCY_LIMIT,
+      )
+    ) {
+      task.concurrencyKey = this.CONCURRENCY_KEY;
+      delete task.waitingConcurrencyKey;
+      this.debugLog.debug(
+        { task_id: formatSessionID(task.sessionID, true) },
+        "[reacquireSlot] Acquired slot",
+      );
+      return true;
     }
 
-    this.debugLog.debug({ task_id: formatSessionID(task.sessionID, true) }, "[reacquireSlot] Concurrency limit reached")
-    return false
+    this.debugLog.debug(
+      { task_id: formatSessionID(task.sessionID, true) },
+      "[reacquireSlot] Concurrency limit reached",
+    );
+    return false;
   }
 
   getConcurrencyStatus(): { used: number; limit: number; available: number } {
-    const used = this.concurrency.getCount(this.CONCURRENCY_KEY)
+    const used = this.concurrency.getCount(this.CONCURRENCY_KEY);
     return {
       used,
       limit: DEFAULT_CONCURRENCY_LIMIT,
       available: DEFAULT_CONCURRENCY_LIMIT - used,
-    }
+    };
   }
 
   async recoverFromSession(parentSessionID: string): Promise<void> {
     if (this.recoveredSessions.has(parentSessionID)) {
-      return
+      return;
     }
     if (this.recoveringSessions.has(parentSessionID)) {
-      return
+      return;
     }
-    this.recoveringSessions.add(parentSessionID)
+    this.recoveringSessions.add(parentSessionID);
 
     if (typeof this.client?.session?.children !== "function") {
-      this.debugLog.debug(`[recover] skipped: session.children is unavailable`)
-      this.recoveringSessions.delete(parentSessionID)
-      return
+      this.debugLog.debug(`[recover] skipped: session.children is unavailable`);
+      this.recoveringSessions.delete(parentSessionID);
+      return;
     }
 
     try {
-      const result = await this.client.session.children({ path: { id: parentSessionID } })
-      const resultObj = result as Record<string, unknown> | undefined
-      const children = (resultObj?.data ?? result) as unknown
+      const result = await this.client.session.children({
+        path: { id: parentSessionID },
+      });
+      const resultObj = result as Record<string, unknown> | undefined;
+      const children = (resultObj?.data ?? result) as unknown;
       if (!Array.isArray(children)) {
-        this.debugLog.debug(`[recover] skipped: children is not an array, type=${typeof children}`)
-        this.recoveringSessions.delete(parentSessionID)
-        return
+        this.debugLog.debug(
+          `[recover] skipped: children is not an array, type=${typeof children}`,
+        );
+        this.recoveringSessions.delete(parentSessionID);
+        return;
       }
 
-      let recovered = 0
+      let recovered = 0;
       for (const child of children) {
-        const childSessionID = child.id
-        if (!childSessionID) continue
+        const childSessionID = child.id;
+        if (!childSessionID) continue;
 
-        const taskID = sessionIDToTaskID(childSessionID)
-        if (this.tasks.has(taskID)) continue
+        const taskID = sessionIDToTaskID(childSessionID);
+        if (this.tasks.has(taskID)) continue;
 
-        const now = new Date()
+        const now = new Date();
         const task: WopalTask = {
           id: taskID,
           sessionID: childSessionID,
-          status: 'idle',
-          description: child.title ?? '',
-          agent: child.agent ?? 'unknown',
-          prompt: '',
+          status: "idle",
+          description: child.title ?? "",
+          agent: child.agent ?? "unknown",
+          prompt: "",
           parentSessionID,
           createdAt: new Date(child.time?.created ?? Date.now()),
           startedAt: now,
@@ -374,21 +457,30 @@ export class SimpleTaskManager {
             lastUpdate: now,
             lastMeaningfulActivity: now,
           },
-        }
-        this.tasks.set(taskID, task)
-        this.taskSessions.add(childSessionID)
-        recovered++
-        this.debugLog.debug({ task_id: formatSessionID(childSessionID, true), title: child.title ?? '' }, "[recover] Restored task")
+        };
+        this.tasks.set(taskID, task);
+        this.taskSessions.add(childSessionID);
+        recovered++;
+        this.debugLog.debug(
+          {
+            task_id: formatSessionID(childSessionID, true),
+            title: child.title ?? "",
+          },
+          "[recover] Restored task",
+        );
       }
 
       if (recovered > 0) {
-        this.debugLog.info({ recovered, parent_id: formatSessionID(parentSessionID, false) }, "[recover] Recovered tasks")
+        this.debugLog.info(
+          { recovered, parent_id: formatSessionID(parentSessionID, false) },
+          "[recover] Recovered tasks",
+        );
       }
-      this.recoveredSessions.add(parentSessionID)
+      this.recoveredSessions.add(parentSessionID);
     } catch (err) {
-      this.debugLog.debug({ err }, "[recover] Failed")
+      this.debugLog.debug({ err }, "[recover] Failed");
     } finally {
-      this.recoveringSessions.delete(parentSessionID)
+      this.recoveringSessions.delete(parentSessionID);
     }
   }
 
@@ -400,9 +492,10 @@ export class SimpleTaskManager {
       concurrency: this.concurrency,
       concurrencyKey: this.CONCURRENCY_KEY,
       taskManager: this,
+      skillOverlay: this.skillOverlay,
       abortSession: (sessionID: string | undefined) =>
         abortSession(this.client, this.debugLog, sessionID),
-    }
+    };
   }
 
   private getLifecycleDeps() {
@@ -411,7 +504,7 @@ export class SimpleTaskManager {
       client: this.client,
       debugLog: this.debugLog,
       releaseConcurrencySlot: this.releaseConcurrencySlot.bind(this),
-    }
+    };
   }
 
   private getMonitorDeps(): TaskMonitorRuntimeDeps {
@@ -422,8 +515,23 @@ export class SimpleTaskManager {
       debugLog: this.debugLog,
       directory: this.directory,
       taskManager: this,
-      sendProgressNotificationFn: async (task: WopalTask, msgCount: number, ctx: number | null, trigger?: string) =>
-        await sendProgressNotification({ client: this.client, debugLog: this.debugLog, sessionStore: this.sessionStore }, task, msgCount, ctx, trigger as ProgressNotifyTrigger | undefined),
-    }
+      sendProgressNotificationFn: async (
+        task: WopalTask,
+        msgCount: number,
+        ctx: number | null,
+        trigger?: string,
+      ) =>
+        await sendProgressNotification(
+          {
+            client: this.client,
+            debugLog: this.debugLog,
+            sessionStore: this.sessionStore,
+          },
+          task,
+          msgCount,
+          ctx,
+          trigger as ProgressNotifyTrigger | undefined,
+        ),
+    };
   }
 }

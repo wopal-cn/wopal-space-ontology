@@ -3,6 +3,7 @@ description: 栖身于 WopalSpace 的通用巫师智能体，服务用户的一�
 mode: primary
 temperature: 0.1
 permission:
+  wopal_skill_grant: allow
   plan_exit: allow
   skill:
     "*": allow
