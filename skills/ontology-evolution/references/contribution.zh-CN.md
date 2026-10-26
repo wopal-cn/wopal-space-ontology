@@ -120,12 +120,15 @@ gh pr create --repo "$UPSTREAM" --base main --head "$FORK_OWNER:$B" \
 
 改为把 PR 触碰的文件与真相源比对。合并前真相源是 local main：列出路径说明 worktree 里有 local main 从未收到的改动。合并后真相源是 `upstream/main`：列出路径说明 local main 还留着已合并内容的旧副本。
 
-    # 本 PR 的文件集
+    # 合并前：从 worktree 分支相对于 upstream 提取文件集
     PR_PATHS=$(git -C "$W" diff --name-only upstream/main..."$B")
     # 合并前：local main 是否已包含本分支的内容
     git -C "$R" diff --name-only main "$B" -- $PR_PATHS
-    # 合并后：local main 与上游在这些文件上是否一致
-    git -C "$R" diff --name-only upstream/main main -- $PR_PATHS
+
+    # 合并后：从 merge commit 反推 PR 文件集（合并后 triple-dot diff 会退化为空集）
+    MERGED_PATHS=$(git -C "$R" diff --name-only "$MERGE^1" "$MERGE")
+    # 合并后：local main 与上游在这些文件上一致
+    git -C "$R" diff --name-only upstream/main main -- $MERGED_PATHS
 
 回流完整时两者都必须无输出。出现的路径就是要对齐的那个文件。
 
@@ -151,7 +154,7 @@ gh pr edit <pr-number> --repo "$UPSTREAM" --body-file "$BODY"
 执行任何同步之前，按顺序跑完这些检查。每条回答一个不同的问题；前一条通过不代表可以跳过后面。
 
 1. **没有未回流的 PR 内容。** 本 PR 的文件集必须已与 local main 一致：`git -C "$R" diff --name-only main "$B" -- $PR_PATHS` 无输出。有输出说明 worktree 侧的改动从未进入来源 Space，先回流（见「评审修复与中断继续」的回流检查）。不要先跑同步去「看看会怎样」。这里绝不能用 `main.."$B"`——squash 合并后它永远非空。
-2. **PR 文件与上游一致。** 对 `git -C "$W" diff --name-only upstream/main..."$B"` 里的每个路径，`git -C "$R" diff --quiet upstream/main main -- <路径>` 必须成功。某路径有差异，说明 local main 仍留着已合并内容的旧副本；要经来源 Space 对齐，不要直接改 local main。
+2. **PR 文件与上游一致。** 对 `$PR_PATHS`（合并后为 `$MERGED_PATHS`）里的每个路径，`git -C "$R" diff --quiet upstream/main main -- <路径>` 必须成功。某路径有差异，说明 local main 仍留着已合并内容的旧副本；要经来源 Space 对齐，不要直接改 local main。
 3. **来源 Space 干净且已同步。** `git -C "$S/.wopal" status --short` 无输出，且 `wopal space status` 报告没有待贡献提交。
 
 三条都通过后，才按此顺序执行：

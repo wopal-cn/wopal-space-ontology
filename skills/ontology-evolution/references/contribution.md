@@ -108,6 +108,8 @@ Fix in the **source Space** and let the change travel outward; that direction ne
 
     source Space (.wopal) -> space sync -> local main -> contribution worktree -> PR
 
+**Concurrent upstream updates**: If upstream has new commits from others while your PR is in flight, never pull, merge, or rebase `upstream/main` directly inside the contribution worktree. Always ingest upstream into the source Space first (`wopal ontology sync --confirm` followed by `wopal space sync --confirm`), resolve conflicts and verify tests locally, and then advance your verified work out to local main and the PR worktree.
+
 Fixing directly in the contribution worktree is allowed when the review context lives there, but it creates an obligation: **the PR branch now holds commits that local main does not have.** Until they return, local main and upstream disagree about the same lines, and the next `ontology sync` aborts with a conflict that looks like an upstream change but is actually your own unreturned edit.
 
 > **Mandatory return.** Any commit made in the contribution worktree must reach the source Space before this PR is merged, and always before `ontology sync` runs. Use the return check below instead of relying on memory.
@@ -120,12 +122,15 @@ Judge return by content, never by commit identity. A squash merge rewrites the s
 
 Compare the files the PR touches against the source of truth instead. Before merge the source of truth is local main: any listed path means the worktree holds a change local main never received. After merge the source of truth is `upstream/main`: any listed path means local main still carries an older copy of merged content.
 
-    # the PR's own file set
+    # Before merge: derive PR files from worktree branch relative to upstream
     PR_PATHS=$(git -C "$W" diff --name-only upstream/main..."$B")
-    # before merge: does local main already contain this branch's content?
+    # Before merge: does local main already contain this branch's content?
     git -C "$R" diff --name-only main "$B" -- $PR_PATHS
-    # after merge: does local main agree with upstream on those files?
-    git -C "$R" diff --name-only upstream/main main -- $PR_PATHS
+
+    # After merge: derive PR files from the merge commit (triple-dot diff collapses once merged)
+    MERGED_PATHS=$(git -C "$R" diff --name-only "$MERGE^1" "$MERGE")
+    # After merge: does local main agree with upstream on those files?
+    git -C "$R" diff --name-only upstream/main main -- $MERGED_PATHS
 
 Both must print nothing when the return is complete. A path that appears is the exact file to reconcile.
 
@@ -151,7 +156,7 @@ The user decides merging; review approval alone does not authorize the Agent to 
 Run these checks before either synchronization, in this order. Each one answers a distinct question; do not skip ahead because an earlier check passed.
 
 1. **No unreturned PR content.** The PR's file set must already agree with local main: `git -C "$R" diff --name-only main "$B" -- $PR_PATHS` prints nothing. Output means worktree-side work never reached the source Space; return it first (see Review Fixes, Return check). Do not start the sync to "see what happens". Never use `main.."$B"` here — a squash merge keeps that non-empty forever.
-2. **PR files agree with upstream.** For every path in `git -C "$W" diff --name-only upstream/main..."$B"`, `git -C "$R" diff --quiet upstream/main main -- <path>` must succeed. A path that differs means local main still carries an older duplicate of the merged content; align it through the source Space, not by editing local main.
+2. **PR files agree with upstream.** For every path in `$PR_PATHS` (or `$MERGED_PATHS` after merge), `git -C "$R" diff --quiet upstream/main main -- <path>` must succeed. A path that differs means local main still carries an older duplicate of the merged content; align it through the source Space, not by editing local main.
 3. **Source Space is clean and synchronized.** `git -C "$S/.wopal" status --short` prints nothing, and `wopal space status` reports no to-contribute commits.
 
 Only then run, in this order:
