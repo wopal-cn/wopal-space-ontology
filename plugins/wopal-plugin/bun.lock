@@ -6,8 +6,8 @@
       "name": "wopal-plugin",
       "dependencies": {
         "@lancedb/lancedb": "0.22.3",
-        "@wopal/ellamaka-plugin": "2.0.7",
-        "@wopal/ellamaka-sdk": "2.0.7",
+        "@wopal/ellamaka-plugin": "2.0.9",
+        "@wopal/ellamaka-sdk": "2.0.9",
         "jsonc-parser": "^3.3.1",
         "openai": "^6.33.0",
         "yaml": "^2.8.2",
@@ -226,9 +226,9 @@
 
     "@vitest/utils": ["@vitest/utils@1.6.1", "https://registry.npmmirror.com/@vitest/utils/-/utils-1.6.1.tgz", { "dependencies": { "diff-sequences": "29.6.3", "estree-walker": "3.0.3", "loupe": "2.3.7", "pretty-format": "29.7.0" } }, "sha512-jOrrUvXM4Av9ZWiG1EajNto0u96kWAhJ1LmPmJhXXQx/32MecEKd10pOLYgS2BQx1TgkGhloPU1ArDW2vvaY6g=="],
 
-    "@wopal/ellamaka-plugin": ["@wopal/ellamaka-plugin@2.0.7", "", { "dependencies": { "@wopal/ellamaka-sdk": "2.0.7", "effect": "4.0.0-beta.66", "zod": "4.1.8" }, "peerDependencies": { "@opentui/core": ">=0.2.16", "@opentui/keymap": ">=0.2.16", "@opentui/solid": ">=0.2.16" }, "optionalPeers": ["@opentui/core", "@opentui/keymap", "@opentui/solid"] }, "sha512-hZnIBZ1lxr2zZiTLVNfCUfAxZcaMOcUbxNjtJljVdmzM5/L5TrcQt69AD0syITiej/AthjjOZ5R1TNXVmyDUow=="],
+    "@wopal/ellamaka-plugin": ["@wopal/ellamaka-plugin@2.0.9", "https://registry.npmmirror.com/@wopal/ellamaka-plugin/-/ellamaka-plugin-2.0.9.tgz", { "dependencies": { "@wopal/ellamaka-sdk": "2.0.9", "effect": "4.0.0-beta.66", "zod": "4.1.8" }, "peerDependencies": { "@opentui/core": ">=0.2.16", "@opentui/keymap": ">=0.2.16", "@opentui/solid": ">=0.2.16" }, "optionalPeers": ["@opentui/core", "@opentui/keymap", "@opentui/solid"] }, "sha512-KAhsuR911cl5vnfE1hRYpbciDeufTa4/mfZ0PCmNx5VL6YACUrpStHQCq/NeyfAh2IK6RnORvDSneTgbIwfp3w=="],
 
-    "@wopal/ellamaka-sdk": ["@wopal/ellamaka-sdk@2.0.7", "", { "dependencies": { "cross-spawn": "7.0.6" } }, "sha512-bfFEHSvBS4Xx6bg4xp8u/5XRqcnRbS3AeaU2t1LuIJUWqy/a+UXViMSyMtY+aggkVJeC0qRKemGLeL4FH7M6kA=="],
+    "@wopal/ellamaka-sdk": ["@wopal/ellamaka-sdk@2.0.9", "https://registry.npmmirror.com/@wopal/ellamaka-sdk/-/ellamaka-sdk-2.0.9.tgz", { "dependencies": { "cross-spawn": "7.0.6" } }, "sha512-Ksiyqxv6FUHQgWL8l7NR9JFSb9AmAOXda4SXHK5naLuA22uykIjDxv5WUIh0PNVZhPkMXjc5XNsMe8jXMsg1Mw=="],
 
     "acorn": ["acorn@8.16.0", "https://registry.npmmirror.com/acorn/-/acorn-8.16.0.tgz", { "bin": { "acorn": "bin/acorn" } }, "sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw=="],
 

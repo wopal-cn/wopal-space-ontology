@@ -236,26 +236,49 @@ const openCodeRulesPlugin = async (
   // to route requests to the in-process Hono server, bypassing real HTTP).
   // We must pass it to v2 client so question.reply reaches the Question service.
   const client = pluginInput.client as unknown as
-    | { _client?: { getConfig?: () => { fetch?: typeof globalThis.fetch } } }
+    | {
+        _client?: {
+          getConfig?: () => {
+            fetch?: typeof globalThis.fetch;
+            headers?: Headers | Record<string, string>;
+          };
+        };
+      }
     | undefined;
-  const internalFetch =
-    client?._client?.getConfig?.()?.fetch ?? globalThis.fetch;
+  const clientConfig = client?._client?.getConfig?.();
+  const internalFetch = clientConfig?.fetch ?? globalThis.fetch;
 
-  // The engine's auth header (`ServerAuth.headers()`) reaches the plugin only
-  // through `pluginInput.serverHeaders` (host-side delivery, ellamaka >= 2.0.9):
-  // `internalFetch` is the bare hey-api fetch function and cannot carry the
-  // client-layer config headers, so without this every v2 client request
-  // (session lookup, skill grant, question.reply) fails with 401 on an
-  // authenticated sidecar. Absent on unauthenticated servers — omit then.
-  const serverHeaders = (
-    pluginInput as PluginInput & { serverHeaders?: Record<string, string> }
-  ).serverHeaders;
+  // Derive authorization headers for the v2 client.
+  // 1. Direct host delivery via `pluginInput.serverHeaders` (ellamaka engine with serverHeaders support).
+  // 2. Fallback to v1 client config headers (`Authorization` header passed during engine startup).
+  // Without this, v2 client requests on an authenticated sidecar fail with 401.
+  const rawInput = pluginInput as unknown as Record<string, unknown>;
+  const directServerHeaders =
+    rawInput.serverHeaders && typeof rawInput.serverHeaders === "object"
+      ? (rawInput.serverHeaders as Record<string, string>)
+      : undefined;
+
+  let fallbackAuthHeader: string | undefined;
+  if (!directServerHeaders && clientConfig?.headers) {
+    const rawHeaders = clientConfig.headers;
+    if (rawHeaders instanceof Headers) {
+      fallbackAuthHeader = rawHeaders.get("authorization") ?? undefined;
+    } else if (typeof rawHeaders === "object") {
+      fallbackAuthHeader =
+        (rawHeaders as Record<string, string>)["authorization"] ??
+        (rawHeaders as Record<string, string>)["Authorization"];
+    }
+  }
+
+  const effectiveHeaders: Record<string, string> | undefined =
+    directServerHeaders ??
+    (fallbackAuthHeader ? { Authorization: fallbackAuthHeader } : undefined);
 
   const v2Client = createV2OpencodeClient({
     baseUrl: pluginInput.serverUrl.toString(),
     directory: pluginInput.directory,
     fetch: internalFetch,
-    ...(serverHeaders ? { headers: serverHeaders } : {}),
+    ...(effectiveHeaders ? { headers: effectiveHeaders } : {}),
   });
 
   const skillOverlay = new SessionSkillOverlay(
