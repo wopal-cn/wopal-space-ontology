@@ -1,12 +1,7 @@
 ---
 name: dev-flow
 description: >
-  主控 Agent 使用的 Issue/Plan 驱动开发流程。用于创建和推进 Plan、组织实施与评审、
-  处理 approve/complete/verify/archive 生命周期、安排用户验证，以及从 PRD/Issue
-  拆解开发工作。主控者可以自己实施/评审，也可以委派；实施和评审本身分别遵循
-  df-implement 与 df-implement-review。本技能不用于只承担实施或评审的子任务，
-  也不用于一般 bug 修复、纯研究讨论或本体能力资产修改；本体能力资产走
-  ontology-evolution。
+  驱动开发 Plan 的全生命周期管理工作流。触发场景包括：创建或推进开发 Plan、组织代码实现与评审、执行 approve/complete/verify/archive 状态推进、协调用户验证，或将 PRD 与 Issue 拆解为开发任务。
 ---
 
 # dev-flow — Issue / Plan 驱动开发流程
@@ -129,7 +124,18 @@ Plan 进度、AC 命令和 Done 证据是主控者的验收记录，不是实施
 
 所有 Task 完成后，必须执行一次实施评审。主控者可以自己加载 `df-implement-review` 评审，也可以委派评审者；**评审技能而不是 Agent 名字定义评审规则**。
 
-评审未 PASS 时，回到实施修复并按 `df-implement-review` 的预算和复审规则继续。评审 PASS 后再做最终 Agent Verification，避免沿用修复前的验证结果。
+#### 评审轮次治理
+
+主控者把控评审循环，严格设定**最多 3 轮**硬上限，兼顾质量并防止无限循环：
+
+1. **第 1 轮（初审）**：全量扫描 4 个维度，一次性穷尽报告已知缺陷。
+2. **第 2 轮（复审）**：针对性核验修复项及其直接影响面。若 Blocker 全部解决仅剩 Warning，主控者可授予**有条件通过（Pass with Debt）**，将剩余 Warning 记为后续技术债。
+3. **第 3 轮（Blocker 歼灭战）**：专门针对顽固 Blocker 的最后修复验证。
+4. **升级熔断机制**：若第 3 轮结束后仍有 Blocker，禁止继续自动循环。立即停机向用户升级汇报，给出 3 轮总结和两个明确选择：
+   - **重构方案/计划**：在用户指导下回滚或调整方案。
+   - **人工接管**：按用户明确的修复指令推进或由用户确认放行。
+
+评审 PASS（或有条件 PASS）后，再执行最终 Agent Verification，避免沿用修复前的旧验证证据。
 
 ### Agent Verification
 

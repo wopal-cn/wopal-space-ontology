@@ -1,12 +1,7 @@
 ---
 name: dev-flow
 description: >
-  Issue/Plan-driven development workflow for the controlling agent. Use it to create and advance Plans,
-  organize implementation and review, run the approve/complete/verify/archive lifecycle, coordinate user
-  validation, and break PRDs/Issues into development work. The controller may implement/review directly
-  or delegate; implementation and implementation review themselves follow df-implement and
-  df-implement-review. Do not use this skill for execution-only or review-only subtasks, ordinary bug fixes,
-  pure research/discussion, or ontology capability changes; ontology assets use ontology-evolution.
+  Issue/Plan-driven development lifecycle workflow. Use when creating or advancing Plans, organizing implementation and review, running approve/complete/verify/archive gates, coordinating user validation, or breaking PRDs/Issues into tasks.
 ---
 
 # dev-flow — Issue / Plan Development Workflow
@@ -129,7 +124,18 @@ Plan progress, AC commands, and Done evidence are controller-owned acceptance re
 
 After all Tasks are implemented, run an implementation review. The controller may load `df-implement-review` and review directly or delegate a reviewer; **the review skill, not an agent name, defines the review rules**.
 
-If review does not PASS, return to implementation, fix the findings, and follow `df-implement-review`'s review budget and re-review rules. Run final Agent Verification only after review PASS so stale pre-fix evidence cannot be reused.
+#### Review iteration governance
+
+The controller manages review cycles with a hard cap of **at most 3 rounds** to balance quality and prevent infinite loops:
+
+1. **Round 1 (Initial)**: Full sweep across all 4 questions. Exhaustive reporting of all known defects.
+2. **Round 2 (Re-review)**: Focused verification on reported fixes and their immediate blast radius. If all Blockers are resolved and only Warnings remain, the controller may grant **conditional PASS (Pass with Debt)** by recording remaining Warnings as follow-up debt.
+3. **Round 3 (Blocker Elimination)**: Dedicated strictly to resolving persistent Blockers.
+4. **Escalation circuit breaker**: If Blockers persist after Round 3, do not loop further. Halt and escalate to the user with the 3-round summary and two explicit choices:
+   - **Rework design/plan**: Roll back or adjust the flawed approach under user direction.
+   - **Manual intervention**: Proceed with explicit user fix instructions or user override.
+
+Run final Agent Verification only after review PASS (or conditional PASS) so stale pre-fix evidence cannot be reused.
 
 ### Agent Verification
 

@@ -1,17 +1,7 @@
 ---
 name: df-proposal-review
 description: >
-  Review a proposal before it is executed — a dev-flow Plan, an ontology
-  evolution proposal, or a design document. Decide one thing: if someone
-  follows this proposal as written, will it work, will it deliver the goal,
-  and is it the leanest way to deliver it? Use when the user asks to review,
-  check, or verify a Plan, an evolution proposal, or a design document
-  (PRD, DESIGN) before execution — especially risky work such as migration,
-  refactoring, cross-module changes, or destructive operations, for example
-  "review this plan", "review this proposal", "review the design doc",
-  "check whether this plan will work". Do not use for implemented code
-  (use `df-implement-review`), for writing documents or Plans, or for
-  routine Plans that are already auto-checked on submission.
+  Review a proposal before execution. Use when the user asks to review, check, or verify a Plan, evolution proposal, or design document (PRD, DESIGN), e.g. "review this plan", "check proposal", "review design doc".
 ---
 
 # df-proposal-review — Proposal Review
@@ -160,12 +150,14 @@ The artifact's language is part of its quality: plain, concrete, one idea per se
 
 This gate also applies to the skill itself: when the deliverable of an ontology evolution proposal is a skill, its description and body must be plain and precise enough that an agent knows what to do after one read.
 
-## Budget — at most 2 reviews per proposal
+## Review efficiency — target 2 rounds per proposal
 
-Rook reviews each proposal at most **twice**: the initial review plus at most one re-review; the re-review report is final.
+Aim to converge review within **two rounds** (initial review + one re-review):
 
 1. **First review must be exhaustive**: report every finding in one report, including borderline ones. Withholding findings is defective service.
-2. **Re-review = verify fixes + full re-sweep**: anything found this round is final — there is no further round to raise what was missed.
+2. **Re-review focuses on fix verification**: verify reported fixes and check directly touched areas. Avoid inventing ungrounded preferences late.
+
+The review skill reports defects objectively without artificial stopping points. Iteration budgets, stopping gates, and escalation to the user belong to the controlling workflow (such as `dev-flow`).
 
 ## Verdict and report
 

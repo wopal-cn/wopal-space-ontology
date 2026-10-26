@@ -50,9 +50,9 @@ Applies to semantic content in: `agents/`, `rules/`, `commands/`, `assembly/temp
 ### Skill
 
 - To create or modify a skill: load the `skill-creator` skill first.
-- If the user's preferred language is not English, draft or update `SKILL.<locale>.md` first, then translate and sync to `SKILL.md` after approval.
+- Bilingual consistency is mandatory: if the user's preferred language is not English, draft or update `SKILL.<locale>.md` in the same directory first, then translate and sync to official `SKILL.md` after approval.
 - frontmatter must have `name` and `description`.
-- `description` drives triggering: state what it does and when to trigger; triggering conditions go in frontmatter, not the body.
+- `description` drives triggering and must stay lean: state only the usage scenarios and triggering conditions (when to invoke this skill); strictly exclude body workflow details, implementation steps, and rule specifications.
 - The body only covers workflow, output, and notes; long content offloads to `references/`.
 - `scripts/` holds only deterministic, reusable logic.
 

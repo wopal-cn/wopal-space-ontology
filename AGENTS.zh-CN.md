@@ -50,9 +50,9 @@ description: WopalSpace soul, regulations, and capability gene toolkit — agent
 ### 技能
 
 - 新建或修改 skill：先加载 `skill-creator` 技能。
-- 若用户偏好语言不是英文，先在同一 skill 目录生成或更新 `SKILL.<locale>.md`，审核通过后再翻译同步到 `SKILL.md`。
+- 中英文双语必须严格一致：若用户偏好语言不是英文，先在同一 skill 目录生成或更新 `SKILL.<locale>.md`，审核通过后再翻译同步到正式英文版 `SKILL.md`。
 - frontmatter 必须有 `name`、`description`。
-- `description` 负责触发：写清做什么、何时触发；触发条件放 frontmatter，不放正文。
+- `description` 负责触发，必须精简：只能包含该技能的使用场景与触发时机（什么时候触发使用该技能），严禁包含正文里的执行细节、流程步骤或规则说明。
 - 正文只写流程、输出、注意事项；长内容下沉 `references/`。
 - `scripts/` 只放确定性、可复用逻辑。
 

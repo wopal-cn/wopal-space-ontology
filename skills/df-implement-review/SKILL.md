@@ -1,20 +1,7 @@
 ---
 name: df-implement-review
 description: >
-  Review delivered code changes against their design, or audit an existing
-  project for technical debt and bloat — decide whether the change really
-  delivers what the design specifies, breaks existing callers, works under real
-  inputs, and introduces no new orphans or dead code. Use when the user asks to
-  review, check, or verify code changes, a commit, a pull request, or a finished
-  implementation (e.g. "review this change", "check whether this implementation
-  is correct", "review my PR"), or asks to analyze a project's technical debt,
-  audit a codebase, or find dead code, unused dependencies, over-engineering,
-  and cleanup candidates (e.g. "analyze technical debt in this project", "audit
-  this repo", "find dead code and bloat", "what can we delete or simplify").
-  Also the gate for landed ontology evolution proposals before user validation.
-  Do not use for reviewing a Plan or design doc before execution (use
-  `df-proposal-review`), for re-running tests or lint, for running builds, or
-  for fixing code.
+  Review delivered code changes against design, or audit a project for technical debt. Use when the user asks to review code changes, a commit, PR, or finished implementation, or asks to audit a repo and find dead code or bloat.
 ---
 
 # df-implement-review — Implementation Review
@@ -179,12 +166,14 @@ Rules that keep this from becoming a second review:
 
 `Serious Logic Risks` exists for exactly one case: a concrete `file:line` scenario of irreversible destruction, major data corruption, or user harm **that also contradicts an explicit design clause**. This is a stricter bar than Q3's — the harm is severe, and the design did not accept it. A severe outcome the design explicitly accepted belongs in `Design Feedback`, not here.
 
-## Budget — at most 2 reviews per change
+## Review efficiency — target 2 rounds per change
 
-Each change (or each Plan) is reviewed at most **twice**: the initial review plus at most one re-review; the re-review report is final.
+Aim to converge review within **two rounds** (initial review + one re-review):
 
 1. **First review must be exhaustive within the design.** Run all four questions, and report every finding that cites a design basis in one report. Findings you can ground must not be withheld. Findings you cannot ground do not belong in the report at all — "borderline" is not a license to include preferences.
-2. **Re-review = verify fixes + full re-sweep against the same design.** Anything found this round is final — there is no further round to raise what was missed.
+2. **Re-review focuses on fix verification.** Verify reported fixes and inspect the blast radius of changes against the design. Avoid introducing ungrounded preferences or expanding scope late.
+
+The review skill reports defects objectively without artificial stopping points. Iteration budgets, stopping gates, and escalation to the user belong to the controlling workflow (such as `dev-flow`).
 
 ## Verdict and report
 
