@@ -204,14 +204,19 @@ stages named paths only — never `-A`. Named paths are classified on the way
 in: a protected definition's deletion is restored in place and never
 committed; a new or modified path inside a held asset is an ordinary shared
 content change, staged as-is; a new path outside every held asset root is a
-new whole asset and must be declared by an `Assembly Intent` row; a whole
-declared asset's deletion is a shared deletion validated by the candidate-tree
-gate. No deletion auto-generates a local unload — `exclude` is written only by
-the explicit `space capability remove --local` channel.
+new whole asset; a whole declared asset's deletion is a shared deletion
+validated by the candidate-tree gate. No deletion auto-generates a local
+unload — `exclude` is written only by the explicit
+`space capability remove --local` channel.
 
-A new **whole asset** needs an `Assembly Intent` row (`type-default` /
-`space-local`) in the proposal — the row drives the registration; internal
-changes to an existing asset produce no selection.
+Proposal policy and CLI compatibility are separate concerns. A new whole
+asset does **not** require a Proposal merely because it is new. In proposal
+mode, `Assembly Intent` is used only when that proposal intentionally changes
+assembly scope. CLI builds that predate automatic new-capability adoption may
+still reject an instant new-whole-asset commit or require the historical
+Assembly Intent registration path. That is a mechanism limitation, not a
+reason to manufacture a Proposal; follow the controlled compatibility fallback
+in `maintenance.md` instead.
 
 **When the space-side registration happens depends on the mode.** A quick or
 instant commit classifies and registers on the space branch as it writes, so
@@ -220,19 +225,13 @@ only widens the isolation worktree's own range — it never touches the space's
 registration; `integrate` is where the space-side registration is written,
 atomically with the squash.
 
-Once registered, a space-local asset sits in the space root state as an
-`include` mount — a mount choice: its content still travels up with `sync` as
-shared content. Disk-only untracked content is held as `private` and never
-syncs: the upload gate rejects any space-unique commit that touches a
-`private`-registered capability root, and the refusal names the remedy
-(withdraw the commit, or drop the registration with
-`capability remove --local`). Content that should reach the pool must arrive
-as pool content rather than as a space-private path: `space capability add`
-**without** `--local` is the shared channel, but it only accepts a capability
-the pool **already owns** — a pool-absent name is refused before the manifest
-is touched — and it edits the archetype manifest and re-materializes
-**without creating a Git commit**, so committing that manifest change is a
-separate, explicit step.
+Once shared, capability content belongs to the Ontology pool. Assembly is a
+separate fact: a type-default reference lives in the archetype; a current-Space
+addition lives in `include`; a current-Space exclusion lives in `exclude`.
+`private` is reserved for content the user explicitly wants to keep out of
+Ontology Git for now. Older CLI builds may still expose the historical
+pool-absent/private behavior; do not use that behavior as the normal path for
+a formal new capability.
 
 ### Why widening is not `--sparse`
 
@@ -248,11 +247,11 @@ the failure surfaces later and misleadingly, as `git add` refusing the path with
 `path exists outside your sparse-checkout definition`. A directory pattern that
 looks right and matches nothing is the tell.
 
-### Instant mode: defect repair
+### Instant mode: direct maintenance
 
-Without a proposal name, `commit` is the repair path for existing,
-already-agreed behavior that is wrong — no proposal, no worktree, no stage;
-the commit is the record.
+Without a proposal name, `commit` is the direct-maintenance path for defects
+and bounded capability changes with clear ownership and no separate validation
+boundary — no proposal, no worktree, no stage; the commit is the record.
 
 - Requires `-m <message>` and exactly one of `--paths <path>...` / `--all`.
   The explicit list is the only thing standing between a stray file and the
@@ -266,14 +265,15 @@ the commit is the record.
   The fast path skips process, never safety.
 - No proposal artifact is created or modified; no stage moves.
 
-Instant mode is the designed repair path: a separate `fix` command was
-retired on purpose and must not be reintroduced (no alias, no shim); its
-local-unload duty (`exclude` registration) now lives with
-`capability remove --local`.
+Instant mode is the designed direct path: a separate `fix` command was retired
+on purpose and must not be reintroduced (no alias, no shim); its local-unload
+duty (`exclude` registration) now lives with `capability remove --local`.
 
-Use it when behavior that was already agreed is broken. Anything that
-changes agreed behavior — a new capability, a contract change — is an
-evolution and follows the proposal lifecycle instead.
+Creating one complete Skill / Rule / Command does not by itself require a
+Proposal. Use the proposal lifecycle when the change needs a separate design
+or validation boundary. If the current CLI rejects direct adoption of the new
+whole asset, use the compatibility fallback in `maintenance.md` rather than
+creating a Proposal solely to satisfy the old mechanism.
 
 ## `wopal space evo integrate [name]`
 

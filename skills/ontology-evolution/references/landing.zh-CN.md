@@ -108,9 +108,9 @@ integrate-first 路径：用户先明确选择提前集成 → `integrate --conf
 12. Wopal `advance --to archived`，然后 `archive`。
 13. `space sync`、上游 PR、合并和删除由用户分别决定。
 
-## Instant：已约定行为的缺陷修复
+## Instant：直接能力维护
 
-如果现有、已约定行为只是实现错了，不需要提案：
+如果是缺陷修复，或 owner 清晰、范围受控、无需独立验证边界的小范围能力维护，不需要提案：
 
 ```bash
 wopal space evo commit -m "<message>" --paths <path>...
@@ -118,7 +118,7 @@ wopal space evo commit -m "<message>" --paths <path>...
 
 Instant 直接提交到空间分支，不创建提案、不移动阶段，但仍执行同样的稀疏范围与按名暂存安全检查。
 
-一旦问题改变了行为契约、增加能力或改变未来工作方式，就不是 defect repair，而是 evolution。
+新增一个完整 Skill / Rule / Command 本身不要求 Proposal。只有变化需要独立设计或验证边界，例如跨能力契约、装配模型、加载生命周期、高风险迁移或多阶段验证时，才进入正式进化流程。
 
 ## 何时读命令参考
 

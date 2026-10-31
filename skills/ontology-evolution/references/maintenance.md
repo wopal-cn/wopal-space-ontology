@@ -8,7 +8,7 @@ Read this file for status inspection, space / ontology synchronization, capabili
 |---------|----------------|
 | `wopal space status` | Show space branch vs `local main`, assembly state, sparse consistency, local include / exclude / private selections, and unregistered files |
 | `wopal space sync [--confirm]` | Align the space branch with `local main`: integrate space-unique evolution upward, then fast-forward downward |
-| `wopal space capability add/remove <kind>:<name> [--local]` | Without `--local`, change shared assembly; with `--local`, change only this space's include / exclude / private selection |
+| `wopal space capability add/remove <kind>:<name> [--local]` | Without `--local`, change type-default assembly; with `--local`, change this space's include / exclude override. Ordinary new capabilities should enter the pool, not default to private. |
 | `wopal ontology capability list` | Show capabilities owned by the central pool |
 | `wopal ontology status` | Show ontology downstream / upstream deltas and contribution status |
 | `wopal ontology sync [--confirm]` | Align the `upstream ⇄ origin ⇄ local main` source chain; clone mode collapses to the applicable topology |
@@ -21,7 +21,7 @@ Read this file for status inspection, space / ontology synchronization, capabili
 - **behind local main**: the space needs ontology-main changes.
 - **include**: an extra shared capability mounted only in this space.
 - **exclude**: a type-default capability disabled in this space.
-- **private**: local-only capability content that must not travel through shared synchronization.
+- **private**: exceptional content the user explicitly wants to keep out of Ontology Git for now; not the normal state of a newly authored capability.
 
 `wopal ontology status` reports:
 
@@ -31,14 +31,16 @@ Read this file for status inspection, space / ontology synchronization, capabili
 
 “Merged, awaiting closeout” is not deletion authorization, but it is an action-required state rather than a passive note. When status shows a merged PR with retained contribution resources, the Agent must surface the exact residue and obtain the user's cleanup decision in the same interaction before concluding. If cleanup for that PR is already authorized, follow `contribution.md` immediately; ordinary synchronization still never authorizes deletion.
 
-## Shared assembly vs local selection
+## Capability pool, type-default assembly, and space-local overrides
 
 `space capability` has two channels:
 
-- **Shared channel** (without `--local`): edit archetype / assembly and re-materialize; only capabilities already owned by the pool are accepted. The command creates no Git commit; committing the manifest is a separate action.
-- **Local channel** (with `--local`): record only this space's include / exclude / private selection and adjust the sparse range. When state changes, the CLI commits only that space-root state record; capability content is not uploaded as part of local-selection state.
+- **Type-default channel** (without `--local`): add or remove the capability from the current Space type's archetype defaults.
+- **Space-local channel** (with `--local`): write `include` when the type does not provide the capability but this Space needs it; write `exclude` when the type provides it but this Space does not want it.
 
-Assembly selection and content propagation are separate concerns. include / exclude decide whether the space mounts shared capability; they do not decide whether shared content can upload. private is the upload-protection boundary.
+Capability content and assembly scope are separate facts. A formal new capability that is kept enters Ontology Git; whether it becomes a type default or only mounts in the current Space is an independent assembly decision. `include` / `exclude` only express the current Space's delta and do not decide whether shared content may upload.
+
+Under the target contract, `space capability add` can adopt a complete new capability that already exists in the current Space worktree, then perform the requested type-default or space-local assembly. **Until the CLI version in use supports that automatic adoption, perform the equivalent maintenance manually: widen sparse safely, commit the complete asset into Ontology Git, then update the archetype or Space `include`; do not register an ordinary new capability as `private` merely to bypass adoption.**
 
 ## Upload gate
 

@@ -102,16 +102,16 @@ The point of a proposal is not to archive what happened; it is to make the same 
 
 A formal proposal is for evolution that needs its own design, implementation, review, or validation boundary. It is not the default entry for every ontology edit. Before creating one, explicitly ask the person who raised the problem whether they want a proposal; do not create one automatically merely because the target is a reusable capability.
 
-Prefer direct maintenance of an existing capability when all of the following describe the work:
+Prefer direct maintenance when all of the following describe the work:
 
-- an existing capability owner is clear, with no new whole asset or ownership split;
+- the capability owner is clear; for a new capability, its kind, purpose, and complete-asset boundary are also clear, with no ownership split;
 - the expected change touches fewer than 10 files;
 - no dedicated automated test, human validation, or multi-stage validation flow is needed;
 - the change does not alter a cross-capability contract, assembly model, loading lifecycle, or high-risk migration boundary.
 
 Make this kind of change directly on the registered `space/<name>` branch and commit it by name through instant mode. Do not create a proposal, working branch, or extra worktree.
 
-When the scope is materially larger, needs dedicated testing or validation, adds a whole capability asset, changes a cross-capability contract, or needs staged implementation and review, explain why and recommend a formal proposal. Run `wopal space evo new` only after the user confirms that choice.
+**Adding a complete Skill / Rule / Command is not, by itself, a Proposal trigger.** If ownership, purpose, scope, and assembly intent are clear and the low-risk conditions above hold, maintain it directly. Recommend a formal proposal only when the change itself needs a separate design boundary, such as a cross-capability contract change, assembly-model or loading-lifecycle change, high-risk migration, dedicated testing, or multi-stage validation. Run `wopal space evo new` only after the user confirms that choice.
 
 When the boundary is unclear, ask whether the user wants a proposal instead of silently choosing the heavier workflow.
 
@@ -121,15 +121,21 @@ When the boundary is unclear, ask whether the user wants a proposal instead of s
 - Keep evidence and constraints that actually determine capability behavior.
 - Test: a reader who has never seen this space can still understand and apply the change.
 
-## Decide where it belongs
+## Decide content ownership and assembly scope separately
 
-| Tier | Destination | Fits when |
-|------|-------------|-----------|
-| **Space-private** | `.wopal-space/memory/` or project `AGENTS.md` | It only holds in this space / project |
-| **Type-specific** | Type assembly or type-scoped assets | It holds for spaces of this type, not for others |
-| **Public core** | Central capability pool such as `agents/`, `skills/`, `rules/` | It holds for any space |
+First decide where the content itself belongs:
 
-Ask in order: does it hold in another space? Another project of the same type? Any space? When uncertain, place it lower.
+- Facts, preferences, or lessons that only belong to the current project / space → project `AGENTS.md` or Space memory.
+- Formal Agent / Skill / Rule / Command / Plugin content that should be retained and reused → the Ontology capability pool.
+- `private` is only for the exceptional case where the user explicitly wants content to stay out of Ontology Git for now. It is not the default destination for a newly authored capability.
+
+Then decide how a formal capability is assembled:
+
+- **Type-default assembly**: add it to `assembly/archetypes/<type>.yaml`; spaces of that type get it by default.
+- **Space-local assembly**: the type does not include it, but this space needs it → `space-meta.include`.
+- **Space-local exclusion**: the type includes it, but this space does not want it → `space-meta.exclude`.
+
+Entering the capability pool does not imply that a capability must enter a type archetype. Assembly scope is a separate decision.
 
 ## Write it
 
@@ -172,8 +178,8 @@ Before landing, read [`references/landing.md`](references/landing.md). For concr
 ## Defect repair vs evolution
 
 - **Defect**: agreed behavior is implemented incorrectly → use `wopal space evo commit` in instant mode; no proposal.
-- **Small capability maintenance**: a bounded change inside an existing owner, expected to touch fewer than 10 files and need no dedicated test/validation flow → maintain it directly on the registered space branch; no proposal by default.
-- **Formal evolution**: add a whole capability, change a cross-capability contract, require dedicated testing/validation, or need staged implementation → recommend the proposal lifecycle, but create the proposal only after explicit user confirmation.
+- **Direct capability maintenance**: a bounded, clearly owned change with no dedicated test/validation flow may land directly; creating one complete Skill / Rule / Command does not automatically escalate it to a Proposal.
+- **Formal evolution**: cross-capability contracts, assembly-model or loading-lifecycle changes, high-risk migrations, or changes that need dedicated testing / staged validation → recommend the proposal lifecycle, but create the proposal only after explicit user confirmation.
 - When the distinction is unclear, ask whether the user wants a proposal. Do not silently escalate to a formal proposal or bypass a formal flow the user requested.
 
 ---

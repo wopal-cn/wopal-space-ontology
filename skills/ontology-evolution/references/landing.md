@@ -108,9 +108,9 @@ Integrate-first path: user explicitly chooses early integration → `integrate -
 12. Wopal runs `advance --to archived`, then `archive`.
 13. `space sync`, upstream PR publication, merge, and deletion are separate user decisions.
 
-## Instant mode: defects in agreed behavior
+## Instant mode: direct capability maintenance
 
-If existing, already-agreed behavior is merely implemented incorrectly, no proposal is needed:
+If the work is a defect repair, or a bounded capability maintenance change with clear ownership and no separate validation boundary, no proposal is needed:
 
 ```bash
 wopal space evo commit -m "<message>" --paths <path>...
@@ -118,7 +118,7 @@ wopal space evo commit -m "<message>" --paths <path>...
 
 Instant mode commits directly to the space branch and creates no proposal or stage movement, while retaining the same sparse-range and named-staging safety checks.
 
-If the work changes the behavior contract, adds capability, or changes how future work should behave, it is evolution rather than defect repair.
+Adding one complete Skill / Rule / Command does not by itself require a Proposal. Use the formal evolution flow when the change needs a separate design or validation boundary, such as a cross-capability contract, assembly-model or loading-lifecycle change, high-risk migration, or staged validation.
 
 ## When to read the command reference
 

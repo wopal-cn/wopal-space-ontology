@@ -114,18 +114,13 @@ What is deliberately excluded and why. Keep "deliberately cut" separate from
 ## Assembly Intent
 
 <!--
-Register only the new whole assets this proposal introduces — one
-canonical reference per asset (`skill:new-skill`, `path:assets`, ...) —
-and only when no held asset already covers the new path. A file inside
-an asset the space already holds is an ordinary content change; reserved
-content (`assembly/`, `config/`, `docs/`, repository-root files) is
-never claimable — neither belongs here. `type-default` writes the
-reference into the current type manifest, so every space of the type
-receives the asset; `space-local` records it in this space's `include`,
-so only this space mounts it. Each reference appears once; a whole asset
-left undeclared is refused when the proposal lands. Leave the table
-empty when nothing new is added; one row reads
-`skill:new-skill | space-local | why only this space`.
+Use this table only when the proposal intentionally changes assembly scope.
+Capability content entering the Ontology pool is a separate fact and does
+not require an Assembly Intent row. `type-default` writes the reference into
+the current type manifest so spaces of that type receive it by default;
+`space-local` records it in this Space's `include`. Leave the table empty
+when the proposal changes capability content without changing assembly.
+One row reads `skill:new-skill | space-local | why only this space`.
 -->
 
 | Ref | Scope | 理由 |

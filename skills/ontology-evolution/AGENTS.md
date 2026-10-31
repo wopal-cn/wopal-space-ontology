@@ -24,11 +24,15 @@ keeps no script layer of its own.
 | `templates/proposal.md` | The proposal skeleton with authoring comments; the single source of the proposal format |
 | `references/` | Command reference, capability-routing guidance, and background |
 
-Sparse state is written **only** through the `wopal space` command family. In the
-space sparse worktree, direct `git add -A`, `git checkout`, or
-`git sparse-checkout` can desynchronize the range and index. Upstream
-contributions use native Git in a separate, fully checked-out contribution
-worktree; follow `references/contribution.md`.
+Sparse state is normally written **only** through the `wopal space` command
+family. In the space sparse worktree, direct `git add -A` or broad checkout /
+sparse rewrites can desynchronize the range and index. The only compatibility
+exception is explicit new-capability adoption when the installed CLI cannot yet
+express the target contract; follow the bounded fallback in
+`references/maintenance.md`, widen only the exact asset path, stage by name,
+and verify sparse patterns plus status before and after. Upstream contributions
+use native Git in a separate, fully checked-out contribution worktree; follow
+`references/contribution.md`.
 
 ## 3. Implementation Rules
 
@@ -61,16 +65,21 @@ commit on the working branch — that task's content together with its
 proposal record. The landing workflow lives in `references/landing.md`; exact
 command behavior lives in `references/commands.md`.
 
-### Defect Repairs Are Immediate
+### Direct Maintenance vs Formal Evolution
 
 A defect — existing, already-agreed behavior that is wrong — is repaired
 directly with `wopal space evo commit` in **instant mode** (no proposal name),
-committed on the space branch. It does not go through the proposal lifecycle:
-the review a proposal exists to provide is already settled for behavior that
-was agreed. The safety contract (sparse preflight, widen-then-stage, named
-staging) still applies. Instant mode is the designed repair path — there is no
-separate `fix` command; do not add one, an alias, or a shim. Anything that changes agreed behavior is an evolution and
-uses the proposal lifecycle.
+committed on the space branch. The same direct path also applies to a bounded,
+clearly owned capability maintenance change that needs no dedicated validation
+boundary; creating one complete Skill, Rule, or Command does not by itself
+require a proposal. The safety contract (sparse preflight, widen-then-stage,
+named staging) still applies. Instant mode is the designed direct path — there
+is no separate `fix` command; do not add one, an alias, or a shim.
+
+Use the proposal lifecycle when the change needs a separate design or validation
+boundary, such as a cross-capability contract, assembly-model or loading-lifecycle
+change, high-risk migration, or staged testing/review. If the user explicitly
+requests a formal proposal, honor that choice.
 
 ### No Automatic Delivery
 

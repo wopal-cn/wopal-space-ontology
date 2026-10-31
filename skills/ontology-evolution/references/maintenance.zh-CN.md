@@ -8,7 +8,7 @@
 |------|------|
 | `wopal space status` | 查看空间分支与 `local main` 的差异、装配状态、稀疏一致性、本地 include / exclude / private 选择和未登记文件 |
 | `wopal space sync [--confirm]` | 在空间分支与 `local main` 之间对齐：先向上整合空间独有进化，再向下 fast-forward |
-| `wopal space capability add/remove <kind>:<name> [--local]` | 不带 `--local` 修改共享装配；带 `--local` 只调整当前空间的 include / exclude / private 选择 |
+| `wopal space capability add/remove <kind>:<name> [--local]` | 不带 `--local` 修改类型默认装配；带 `--local` 调整当前空间的 include / exclude 覆盖；普通新能力应进入能力池，不默认登记为 private |
 | `wopal ontology capability list` | 查看中央能力池拥有的能力 |
 | `wopal ontology status` | 查看本体 downstream / upstream 差异和 contribution 状态 |
 | `wopal ontology sync [--confirm]` | 对齐 `upstream ⇄ origin ⇄ local main` 来源链；clone 模式按实际拓扑收缩 |
@@ -21,7 +21,7 @@
 - **behind local main**：空间需要吸收本体主线变化。
 - **include**：当前空间额外挂载的共享能力。
 - **exclude**：当前空间停用的类型默认能力。
-- **private**：只留本地、不允许随共享同步上传的能力内容。
+- **private**：用户明确要求暂不进入本体 Git 的特殊持有内容；不是普通新能力的默认状态。
 
 `wopal ontology status` 同时报告：
 
@@ -31,14 +31,16 @@
 
 “已合并、等待收尾”不代表已经获得删除授权，但它也不是可以被动忽略的提示。状态一旦显示某个已合并 PR 仍保留 contribution 资源，Agent 必须在同一次交互中报告具体残留并取得用户的清理决定后再结束；如果当前指令已经授权清理该 PR，就立即按 `contribution.zh-CN.md` 执行。普通同步仍然绝不自动获得删除权限。
 
-## 共享装配与本地选择
+## 能力池、类型默认装配与空间本地覆盖
 
 `space capability` 有两个通道：
 
-- **共享通道**（不带 `--local`）：修改 archetype / assembly，并重新物化；只接受能力池已经拥有的能力。命令本身不创建 Git commit，manifest 的提交是后续独立动作。
-- **本地通道**（带 `--local`）：只记录当前空间的 include / exclude / private，并调整稀疏范围；状态发生变化时，CLI 只提交空间根仓中的这份状态记录，不把能力内容当成本地状态一起上传。
+- **类型默认通道**（不带 `--local`）：把能力加入或移出当前空间类型的 archetype 默认装配。
+- **空间本地通道**（带 `--local`）：类型默认没有但当前空间需要时写 `include`；类型默认有但当前空间不要时写 `exclude`。
 
-装配选择与内容传播是两件事。include / exclude 决定“当前空间是否挂载”，不决定“共享内容是否可上传”。private 才是上传保护边界。
+能力内容与装配范围是两个独立事实。正式保留的新能力进入本体 Git 能力池；是否加入类型默认装配或只在当前空间挂载由装配动作决定。`include` / `exclude` 只决定当前空间的装配差量，不决定共享内容是否可以上行。
+
+目标契约下，`space capability add` 遇到当前 Space worktree 中完整、但能力池尚无的新能力时，会先安全纳管该资产，再完成用户选择的类型默认或空间本地装配。**在 CLI 自动纳管尚未实现的版本中，维护者应手工完成等价动作：先扩宽 sparse 范围并把完整资产提交进本体 Git，再更新 archetype 或空间 `include`；不要把普通新能力登记成 `private` 来绕过纳管。**
 
 ## Upload gate
 
