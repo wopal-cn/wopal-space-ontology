@@ -1,7 +1,7 @@
 # DESIGN — Capability System
 
 > **Status**: Active
-> **Updated**: 2026-10-25
+> **Updated**: 2026-10-31
 > **Parent**: `./DESIGN.md`（ontology overall design: Module Architecture section）
 > **Parent Architecture**: `../../docs/products/wopal-space/DESIGN.md`
 > **Parent Product**: `../../docs/products/wopal-space/PRD.md`
@@ -19,7 +19,7 @@
 | **Wopal**（主控 / 统筹脑） | 意图解析、人机对齐、宏观规划、跨空间记忆承载、任务派发 | 全量感知与派发权 (`wopal_*`, `task`, `memory_manage`)，`question: allow` | 双模确认原则（自由对话须确认，工作流按 Plan 执行）；结论先行 |
 | **Fae**（执行手 / 全栈工兵） | 一切实施类工作：编码、重构、构建、测试、写作、编辑、数据处理 | `edit: allow`, `bash: allow`, `task: deny`（防套娃） | 必须产出客观证据；能通过真实验证的成果是唯一指标 |
 | **Rook**（审查眼 / 正交哨兵） | 一切产出质量的独立审计：方案、实施成果、文稿与数据 | 严格只读沙箱 (`read: allow`, `edit: deny`, `bash: allow` 仅限只读命令) | 严格遵守“无证据即无效”（Evidence-or-Downgrade），只认 `file:line` 事实 |
-| **Maka**（进化心） | 分析会话错误、用户纠偏与记忆中的经验教训，形成自进化提案 | 独立会话沙箱 (`read: allow`；`edit` 仅放开 `docs/evolutions/`) | **只出提案、不动刀**；执行严格的防污染归属判定（空间私有 / 类型级 / 公共池） |
+| **Maka**（进化心） | 分析会话错误、用户纠偏与记忆中的经验教训，形成自进化提案 | 独立会话沙箱 (`read: allow`；`edit` 仅放开 `docs/evolutions/`) | **只出提案、不动刀**；执行严格的防污染范围判定（项目/空间局部知识 / 类型装配 / 公共能力） |
 
 ### Role Boundaries Defined by Responsibility
 

@@ -228,10 +228,8 @@ atomically with the squash.
 Once shared, capability content belongs to the Ontology pool. Assembly is a
 separate fact: a type-default reference lives in the archetype; a current-Space
 addition lives in `include`; a current-Space exclusion lives in `exclude`.
-`private` is reserved for content the user explicitly wants to keep out of
-Ontology Git for now. Older CLI builds may still expose the historical
-pool-absent/private behavior; do not use that behavior as the normal path for
-a formal new capability.
+Untracked files have no persistent capability identity. They are protected from
+destructive sparse/rematerialization changes until adopted or removed.
 
 ### Why widening is not `--sparse`
 

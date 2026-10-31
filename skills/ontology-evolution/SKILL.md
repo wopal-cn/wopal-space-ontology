@@ -74,7 +74,7 @@ Maka only diagnoses, classifies, and accumulates evidence; it does not create pr
 Only when Wopal explicitly requests `synthesize`, Maka:
 
 1. Merges same-root / duplicate signals and drops weak evidence or issues already covered by existing capability.
-2. Generalizes mature signals and checks for private contamination.
+2. Generalizes mature signals and checks for local or sensitive-detail contamination.
 3. Finds the capability owner before deciding whether to repair or create capability.
 4. Decides whether the change fits direct maintenance or needs a formal proposal, and gives that recommendation to the user; **never creates a proposal without explicit user confirmation**. Zero proposals is a valid result.
 
@@ -127,7 +127,8 @@ First decide where the content itself belongs:
 
 - Facts, preferences, or lessons that only belong to the current project / space → project `AGENTS.md` or Space memory.
 - Formal Agent / Skill / Rule / Command / Plugin content that should be retained and reused → the Ontology capability pool.
-- `private` is only for the exceptional case where the user explicitly wants content to stay out of Ontology Git for now. It is not the default destination for a newly authored capability.
+
+Untracked capability files are only a transient working-tree state. Once a complete capability is meant to be kept, widen the sparse range safely and commit it to the registered Space branch.
 
 Then decide how a formal capability is assembled:
 
@@ -188,7 +189,7 @@ Before landing, read [`references/landing.md`](references/landing.md). For concr
 
 This skill also owns the maintenance entrypoint for ontology / space status, synchronization, capability assembly, and upstream contribution.
 
-- For `space status/sync`, `ontology status/sync`, capability add/remove, or upload-gate work, read [`references/maintenance.md`](references/maintenance.md).
+- For `space status/sync`, `ontology status/sync`, capability add/remove, or untracked-path protection, read [`references/maintenance.md`](references/maintenance.md).
 - Before creating, revising, retrying, or closing an upstream PR, also read [`references/contribution.md`](references/contribution.md).
 - Synchronization authorization does not authorize PR publication, merge, or deletion; each remains a separate user decision.
 - A merged contribution with a retained contribution worktree or branch is unfinished closeout work: surface the residue in the same interaction and obtain the user's cleanup decision before concluding. If the current instruction already authorizes cleanup for that PR, proceed without asking again; ordinary sync still never implies deletion.

@@ -6,9 +6,9 @@
 
 | 命令 | 作用 |
 |------|------|
-| `wopal space status` | 查看空间分支与 `local main` 的差异、装配状态、稀疏一致性、本地 include / exclude / private 选择和未登记文件 |
+| `wopal space status` | 查看空间分支与 `local main` 的差异、装配状态、稀疏一致性、本地 include / exclude 选择和未登记文件 |
 | `wopal space sync [--confirm]` | 在空间分支与 `local main` 之间对齐：先向上整合空间独有进化，再向下 fast-forward |
-| `wopal space capability add/remove <kind>:<name> [--local]` | 不带 `--local` 修改类型默认装配；带 `--local` 调整当前空间的 include / exclude 覆盖；普通新能力应进入能力池，不默认登记为 private |
+| `wopal space capability add/remove <kind>:<name> [--local]` | 不带 `--local` 修改类型默认装配；带 `--local` 调整当前空间的 include / exclude 覆盖 |
 | `wopal ontology capability list` | 查看中央能力池拥有的能力 |
 | `wopal ontology status` | 查看本体 downstream / upstream 差异和 contribution 状态 |
 | `wopal ontology sync [--confirm]` | 对齐 `upstream ⇄ origin ⇄ local main` 来源链；clone 模式按实际拓扑收缩 |
@@ -21,7 +21,7 @@
 - **behind local main**：空间需要吸收本体主线变化。
 - **include**：当前空间额外挂载的共享能力。
 - **exclude**：当前空间停用的类型默认能力。
-- **private**：用户明确要求暂不进入本体 Git 的特殊持有内容；不是普通新能力的默认状态。
+- **未登记文件**：临时的未跟踪 working-tree 内容；status 只负责报告和保护候选，不把它当成持久能力状态。
 
 `wopal ontology status` 同时报告：
 
@@ -40,13 +40,11 @@
 
 能力内容与装配范围是两个独立事实。正式保留的新能力进入本体 Git 能力池；是否加入类型默认装配或只在当前空间挂载由装配动作决定。`include` / `exclude` 只决定当前空间的装配差量，不决定共享内容是否可以上行。
 
-目标契约下，`space capability add` 遇到当前 Space worktree 中完整、但能力池尚无的新能力时，会先安全纳管该资产，再完成用户选择的类型默认或空间本地装配。**在 CLI 自动纳管尚未实现的版本中，维护者应手工完成等价动作：先扩宽 sparse 范围并把完整资产提交进本体 Git，再更新 archetype 或空间 `include`；不要把普通新能力登记成 `private` 来绕过纳管。**
+目标契约下，`space capability add` 遇到当前 Space worktree 中完整、但能力池尚无的新能力时，会先安全纳管该资产，再完成用户选择的类型默认或空间本地装配。**在 CLI 自动纳管尚未实现的版本中，维护者应手工完成等价动作：先扩宽 sparse 范围并把完整资产提交到注册 Space 分支，再更新 archetype 或空间 `include`。**
 
-## Upload gate
+## 未跟踪工作区保护
 
-`space sync` 向上整合前会检查 private 能力根。任何空间独有提交只要触碰 private-registered capability root，就必须拒绝上传。
-
-这道门用来兜底人工 `git add` / `commit`：本地隔离不能依赖操作者永远记得哪些内容不能上传。
+未跟踪文件不是一种能力状态，也不会自动登记。sync、重物化或 sparse range 变化在触及这些路径前必须检测碰撞并停止，不能覆盖或删除。决定保留的完整能力进入 Space 分支；其他临时文件继续作为普通 working-tree 内容，直到用户移动或删除。
 
 ## 执行原则
 

@@ -4,7 +4,7 @@
 
 Agent 使用原生 `git` 与 GitHub CLI `gh` 创建、修改和收尾上游 PR。本规范不增加脚本、贡献记录文件或另一套恢复状态机：Git 分支/worktree 保存工作，GitHub 保存 PR。`ontology status` 只查看并提醒，`ontology sync` 只同步 main；状态为“已合并”不等于可以删除。
 
-每次上行发布由用户决定；创建 PR 的授权不包含以后评审修复的发布、合并或删除。用户明确要求“同步并清理该 PR”才包含对应收尾动作。普通同步不顺带删除。未经授权不添加/修改 remote，不切换宿主本体主目录的分支。空间稀疏装配与私有保护仍由 `wopal space` 命令负责。
+每次上行发布由用户决定；创建 PR 的授权不包含以后评审修复的发布、合并或删除。用户明确要求“同步并清理该 PR”才包含对应收尾动作。普通同步不顺带删除。未经授权不添加/修改 remote，不切换宿主本体主目录的分支。空间稀疏装配与未跟踪工作区保护仍由 `wopal space` 命令负责。
 
 当 Agent 发现一个本方贡献已经处于 `MERGED`，但它的 contribution worktree 或分支仍然存在时，收尾必须成为当次交互的下一项动作。结束前先核对合并/回流事实，报告具体残留资源，并取得用户的清理决定；不能只报“已合并、等待收尾”就结束。如果用户当前指令已经明确包含“清理这个 PR”，该指令本身就是删除授权，直接完成收尾检查和清理，不再重复确认。
 
@@ -43,7 +43,7 @@ gh pr list --repo "$UPSTREAM" --state all --head "$FORK_OWNER:$B" \
 
 先检查 `wopal space status` 和 `wopal ontology status`。在用户授权范围内，先用 `wopal space sync --confirm` 汇入来源 Space，再用 `wopal ontology sync --confirm` 对齐来源链。同步失败就停，不拿旧状态继续发布。
 
-核对最新 upstream/main 已在来源 main 的祖先链中，再按主题核对 `git diff --name-status upstream/main...main`。私有、空间独有或无关改动不进入 PR；文件名命中某目录不等于属于本主题，同文件内别人的改动也须排除。
+核对最新 upstream/main 已在来源 main 的祖先链中，再按主题核对 `git diff --name-status upstream/main...main`。空间局部、项目局部或无关改动不进入 PR；文件名命中某目录不等于属于本主题，同文件内别人的改动也须排除。
 
 仅在名称/目录不存在、仓库干净且归属已核实后创建；目录已存在时先检查内容，不覆盖。下面的创建命令只用于全新贡献：
 

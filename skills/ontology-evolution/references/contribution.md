@@ -4,7 +4,7 @@
 
 Use native `git` and GitHub CLI `gh` to create, revise, and close out upstream PRs. Add no scripts, contribution ledger, or recovery state machine: Git branches/worktrees hold the work; GitHub holds the PR. `ontology status` only inspects and reminds; `ontology sync` only synchronizes main. A merged status is not deletion clearance.
 
-The user decides each upstream publication. Authorization to create a PR does not authorize later review-fix publication, merging, or deletion. An explicit request to synchronize and clean up that PR includes its closeout; ordinary sync does not. Do not add/change remotes without authorization or switch the host ontology repository's branch. Use `wopal space` operations for sparse assembly and private-content protection.
+The user decides each upstream publication. Authorization to create a PR does not authorize later review-fix publication, merging, or deletion. An explicit request to synchronize and clean up that PR includes its closeout; ordinary sync does not. Do not add/change remotes without authorization or switch the host ontology repository's branch. Use `wopal space` operations for sparse assembly and untracked working-tree protection.
 
 When an owned contribution is discovered in `MERGED` state while its contribution worktree or branch still exists, closeout becomes the mandatory next-step discussion. Before ending the interaction, verify the merge/return facts, report the exact residual resources, and obtain the user's cleanup decision. Do not stop at “merged, awaiting closeout”. If the user's current instruction already includes cleanup of that PR, that instruction is the deletion authorization; run the closeout checks and clean it up without another confirmation.
 
@@ -43,7 +43,7 @@ Verify origin is the intended fork and upstream the intended repository; match t
 
 Inspect `wopal space status` and `wopal ontology status`. Within the user's authorization, run `wopal space sync --confirm` to integrate source Space changes, then `wopal ontology sync --confirm` to align the source chain. Stop on failed synchronization instead of publishing from stale facts.
 
-Verify current upstream/main is an ancestor of source main, then examine `git diff --name-status upstream/main...main` by topic. Exclude private, space-only, and unrelated changes; matching a directory does not establish ownership, and unrelated changes within the same file must also stay out.
+Verify current upstream/main is an ancestor of source main, then examine `git diff --name-status upstream/main...main` by topic. Exclude space-local, project-local, and unrelated changes; matching a directory does not establish ownership, and unrelated changes within the same file must also stay out.
 
 Create only after confirming the branch/path are unused, the repository is clean, and ownership is established. Inspect existing directories rather than overwriting them. This command is only for a new contribution:
 

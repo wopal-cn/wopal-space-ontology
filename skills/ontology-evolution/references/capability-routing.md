@@ -64,7 +64,7 @@ Do not use it to repair behavior inside a capability.
 
 - `REGULATIONS.md`: long-lived workspace rules and safety boundaries shared by all Agents.
 - Project `AGENTS.md`: project-specific facts and development constraints that should govern work in that project.
-- Space memory: user preferences, durable lessons, and private knowledge retrieved when relevant.
+- Space memory: user preferences, durable lessons, and space-local knowledge retrieved when relevant.
 
 If knowledge is true only in the current space or project, do not promote it into public ontology merely because it was useful once.
 

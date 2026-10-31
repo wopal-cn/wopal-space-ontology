@@ -74,7 +74,7 @@ Maka 只诊断、归类、积累证据，不创建提案：
 只有 Wopal 明确要求 `synthesize` 时，Maka 才：
 
 1. 合并同源 / 重复信号，淘汰弱证据和已被现有能力覆盖的问题。
-2. 泛化成熟信号并检查私有信息污染。
+2. 泛化成熟信号并检查局部或敏感信息污染。
 3. 先确定能力 owner，再判断修正已有能力还是新增能力。
 4. 判断该变化适合直接维护还是需要正式提案，并把建议交给用户；**未经用户明确确认，不创建提案**。零提案是有效结果。
 
@@ -127,7 +127,8 @@ owner 交叉、边界不清或准备写正式提案时，读取 [`references/cap
 
 - 只属于当前项目 / 空间的事实、偏好、经验 → 项目 `AGENTS.md` 或空间 memory。
 - 需要长期保留和复用的正式 Agent / Skill / Rule / Command / Plugin → 进入本体能力池。
-- `private` 只用于用户明确要求“内容暂不进入本体 Git”的特殊持有，不是普通新能力的默认去向。
+
+未跟踪的能力文件只是临时 working-tree 状态。完整能力一旦决定保留，就安全扩宽 sparse range 并提交到注册 Space 分支。
 
 再独立决定正式能力如何装配：
 
@@ -188,7 +189,7 @@ draft → accepted → implementing → validating → archived
 
 本技能也负责本体 / 空间的维护入口，包括状态检查、同步、能力装配和上游贡献。
 
-- 做 `space status/sync`、`ontology status/sync`、能力 add/remove 或处理 upload gate 时，读取 [`references/maintenance.zh-CN.md`](references/maintenance.zh-CN.md)。
+- 做 `space status/sync`、`ontology status/sync`、能力 add/remove 或处理未跟踪路径保护时，读取 [`references/maintenance.zh-CN.md`](references/maintenance.zh-CN.md)。
 - 创建、修改、重试或收尾上游 PR 时，再读取 [`references/contribution.zh-CN.md`](references/contribution.zh-CN.md)。
 - 同步授权不等于 PR 发布、合并或删除授权；这些都是用户的独立决定。
 - 已合并的贡献如果仍保留 contribution worktree 或分支，就还没有完成收尾：Agent 必须在同一次交互中主动报告残留并取得用户的清理决定后再结束。当前指令已经明确授权清理该 PR 时直接执行，不重复确认；普通同步仍然绝不隐含删除授权。

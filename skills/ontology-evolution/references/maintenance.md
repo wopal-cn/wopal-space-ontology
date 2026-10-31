@@ -6,9 +6,9 @@ Read this file for status inspection, space / ontology synchronization, capabili
 
 | Command | Responsibility |
 |---------|----------------|
-| `wopal space status` | Show space branch vs `local main`, assembly state, sparse consistency, local include / exclude / private selections, and unregistered files |
+| `wopal space status` | Show space branch vs `local main`, assembly state, sparse consistency, local include / exclude selections, and unregistered files |
 | `wopal space sync [--confirm]` | Align the space branch with `local main`: integrate space-unique evolution upward, then fast-forward downward |
-| `wopal space capability add/remove <kind>:<name> [--local]` | Without `--local`, change type-default assembly; with `--local`, change this space's include / exclude override. Ordinary new capabilities should enter the pool, not default to private. |
+| `wopal space capability add/remove <kind>:<name> [--local]` | Without `--local`, change type-default assembly; with `--local`, change this space's include / exclude override. |
 | `wopal ontology capability list` | Show capabilities owned by the central pool |
 | `wopal ontology status` | Show ontology downstream / upstream deltas and contribution status |
 | `wopal ontology sync [--confirm]` | Align the `upstream ⇄ origin ⇄ local main` source chain; clone mode collapses to the applicable topology |
@@ -21,7 +21,7 @@ Read this file for status inspection, space / ontology synchronization, capabili
 - **behind local main**: the space needs ontology-main changes.
 - **include**: an extra shared capability mounted only in this space.
 - **exclude**: a type-default capability disabled in this space.
-- **private**: exceptional content the user explicitly wants to keep out of Ontology Git for now; not the normal state of a newly authored capability.
+- **unregistered files**: transient untracked working-tree content; status reports it for protection and possible adoption, not as a persistent capability state.
 
 `wopal ontology status` reports:
 
@@ -40,13 +40,11 @@ Read this file for status inspection, space / ontology synchronization, capabili
 
 Capability content and assembly scope are separate facts. A formal new capability that is kept enters Ontology Git; whether it becomes a type default or only mounts in the current Space is an independent assembly decision. `include` / `exclude` only express the current Space's delta and do not decide whether shared content may upload.
 
-Under the target contract, `space capability add` can adopt a complete new capability that already exists in the current Space worktree, then perform the requested type-default or space-local assembly. **Until the CLI version in use supports that automatic adoption, perform the equivalent maintenance manually: widen sparse safely, commit the complete asset into Ontology Git, then update the archetype or Space `include`; do not register an ordinary new capability as `private` merely to bypass adoption.**
+Under the target contract, `space capability add` can adopt a complete new capability that already exists in the current Space worktree, then perform the requested type-default or space-local assembly. **Until the CLI version in use supports that automatic adoption, perform the equivalent maintenance manually: widen sparse safely, commit the complete asset to the registered Space branch, then update the archetype or Space `include`.**
 
-## Upload gate
+## Untracked working-tree protection
 
-Before `space sync` integrates upward, it checks private capability roots. Any space-unique commit that touches a private-registered capability root must be refused.
-
-This gate backstops manual `git add` / `commit`: local isolation must not depend on the operator remembering which content may not upload.
+Untracked files are not a capability state and are never auto-registered. Before sync, rematerialization, or sparse-range changes touch their paths, the operation must detect the collision and stop rather than overwrite or delete them. A complete capability that should be kept is adopted into the Space branch; other transient files remain ordinary working-tree content until the user moves or deletes them.
 
 ## Execution stance
 
