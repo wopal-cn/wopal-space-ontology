@@ -5,7 +5,7 @@
 - **Type**: enhance
 - **Project Path**: .wopal
 - **Created**: 2026-10-29
-- **Stage**: validating
+- **Stage**: archived
 - **Mode**: isolated
 - **Worktree**: .worktrees/ontology-enhance-umbrella-workflow
 - **Branch**: ontology-enhance-umbrella-workflow
