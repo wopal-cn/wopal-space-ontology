@@ -82,7 +82,7 @@ Only on explicit user choice, after entering `validating`:
 wopal space evo integrate <name> --confirm
 ```
 
-The user then validates directly on the space branch. Later rework is a new space-branch commit; there is no second squash.
+The user then validates the current delivery candidate directly on the space branch. If validation finds a problem, rework still lands on the working branch; run `integrate --confirm` again to refresh the same candidate, so the space branch does not accumulate a second delivery commit.
 
 ## Integration gate
 
@@ -90,7 +90,7 @@ The user then validates directly on the space branch. Later rework is a new spac
 
 Branch-switch path: user validation passes → leave validation view → user explicitly confirms → `integrate --confirm`.
 
-Integrate-first path: user explicitly chooses early integration → `integrate --confirm` → user validates; no later integrate step.
+Integrate-first path: user explicitly chooses early integration → `integrate --confirm` → user validates; if rework is needed, keep it on the working branch and re-run `integrate --confirm` to refresh the same candidate before validating again.
 
 ## Complete sequence
 
@@ -102,10 +102,10 @@ Integrate-first path: user explicitly chooses early integration → `integrate -
 6. Rook performs implementation review; budget 2 rounds, with every finding listed in round one; rework and re-review as needed.
 7. Wopal runs `advance --to validating`.
 8. Wopal lets the user choose branch switch (recommended) or integrate-first.
-9. User restarts / observes and reports; rework and validation repeat if needed.
+9. User restarts / observes and reports; rework, candidate refresh, and validation repeat if needed.
 10. User confirms validation passed.
 11. Only the branch-switch path now runs `integrate --confirm`.
-12. Wopal runs `advance --to archived`, then `archive`.
+12. Once user validation has already passed, a successful `integrate` is not a stopping point; Wopal immediately runs `advance --to archived`, then `archive`.
 13. `space sync`, upstream PR publication, merge, and deletion are separate user decisions.
 
 ## Instant mode: direct capability maintenance

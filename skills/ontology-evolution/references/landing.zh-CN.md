@@ -82,7 +82,7 @@ wopal space evo switch <name>   # 返回空间分支
 wopal space evo integrate <name> --confirm
 ```
 
-之后用户直接在空间分支验证；后续返工也是空间分支的新提交，不再做第二次 squash。
+之后用户直接在空间分支验证当前 delivery candidate。若验证发现问题，返工仍提交到 working branch，再次运行 `integrate --confirm` 刷新同一个 candidate；不会在空间分支累积第二条交付提交。
 
 ## 集成门禁
 
@@ -90,7 +90,7 @@ wopal space evo integrate <name> --confirm
 
 branch-switch 路径：用户验证通过 → 退出验证视图 → 用户明确确认 → `integrate --confirm`。
 
-integrate-first 路径：用户先明确选择提前集成 → `integrate --confirm` → 用户验证；后续不再集成。
+integrate-first 路径：用户先明确选择提前集成 → `integrate --confirm` → 用户验证；若有返工，返工仍落 working branch，并重跑 `integrate --confirm` 刷新同一个 candidate 后再验证。
 
 ## 完整时序
 
@@ -102,10 +102,10 @@ integrate-first 路径：用户先明确选择提前集成 → `integrate --conf
 6. Rook 做实施评审；最多 2 轮，首轮一次列全发现；必要时返工并复审。
 7. Wopal `advance --to validating`。
 8. Wopal 让用户选择 branch switch（推荐）或 integrate-first。
-9. 用户重启 / 观察并反馈；必要时继续返工验证。
+9. 用户重启 / 观察并反馈；必要时继续返工、刷新 candidate、重新验证。
 10. 用户确认通过。
 11. branch-switch 路径才执行 `integrate --confirm`。
-12. Wopal `advance --to archived`，然后 `archive`。
+12. 一旦用户验证已通过，成功的 `integrate` 不是停点；Wopal 立即 `advance --to archived`，然后 `archive`。
 13. `space sync`、上游 PR、合并和删除由用户分别决定。
 
 ## Instant：直接能力维护

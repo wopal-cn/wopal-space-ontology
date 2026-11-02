@@ -83,16 +83,15 @@ Moves the proposal to `<state>` after validating the transition.
   legal successor to stderr, and leaves the file byte-for-byte unmodified.
 - A proposal with no `- **Stage**:` field cannot be advanced; recreate it with
   `wopal space evo new`.
-- A real transition writes `Stage` back and commits the proposal file by name
-  on the space branch.
+- A real transition writes `Stage` to the lifecycle truth for that mode:
+  quick commits the proposal on the registered space branch; isolated commits
+  the proposal on its working branch.
 
-When the proposal is isolated and its recorded worktree exists, a real
-transition also mirrors the same `Stage` into that copy — a field-level write,
-committed in place (message `docs(evolutions): <slug> -> <to>`) — so the copy
-stays clean and both sides agree. A failed mirror commit is reported loudly
-with the boundary named: the space-side record already stands, and only the
-copy's commit is pending. With the worktree missing (the validation view),
-only the space-side record is written, and the command still succeeds.
+For isolated mode, the working-branch proposal is the only active lifecycle
+record. When its worktree exists, the transition commits there in place. When
+the worktree has been released for the validation view, the command writes the
+same proposal commit directly to the working branch ref. It does not maintain
+or mirror a second active control record on the space branch.
 
 ## `wopal space evo accept <name> [--no-worktree]`
 
@@ -124,22 +123,22 @@ at step 4 restores the proposal file byte-for-byte. `Base Commit` is the
 worktree's actual fork point — the derive start commit, or the merge base for
 an adopted or re-attached worktree.
 
-In isolated mode, the command fields — `Mode`, `Worktree`, `Branch`, `Base
-Commit`, `Stage` — are then mirrored into the isolation worktree's proposal
-copy with field-level writes and committed in place; a copy whose fields
-already agree produces no mirror commit (re-running `accept` stays
-idempotent), and a copy missing a command field fails loudly — the copy's own
-record content is never overwritten.
+In isolated mode, `accept` records `Mode`, `Worktree`, `Branch`, `Base Commit`
+and `Stage` directly in the working-branch proposal. If the draft existed only
+as an untracked file in the space worktree, that source copy is removed only
+after the working commit is durable. The space branch does not keep a second
+active lifecycle/control copy. Re-running `accept` with matching metadata is
+idempotent and preserves the working branch's own commits.
 
 **Quick mode** (`--no-worktree`) records `Mode: quick` and creates nothing.
 Use it for typo fixes, bug fixes in existing assets, and small changes the
 user explicitly scoped — the space branch is itself the isolation boundary
 against `local main`.
 
-Re-running `accept` is safe: an existing worktree is adopted when it carries
-the expected branch and fast-forwarded onto the space branch head (a worktree
-with its own commits is left alone — the squash at integrate reconciles), and
-its range is widened back over any pattern the space adopted in the meantime.
+Re-running `accept` is safe: an existing recorded worktree is re-attached when
+needed, its branch identity is verified, and its range is widened over any
+patterns the space adopted in the meantime. Existing working-branch commits are
+left intact.
 
 ## `wopal space evo commit [<name>]`
 
@@ -308,13 +307,13 @@ Widening sources can miss (a raw `git add --sparse` path the worktree's range
 never declared); the assertion cannot.
 
 After the squash commits, the range is recomputed so newly covered paths are
-materialized on disk, and the feature branch is **realigned to the squash** —
-its post-condition is that the branch carries no commit the space branch
-lacks, so later stage records and any post-integrate rework no longer make
-the branch read as unintegrated work. `Final Commit` is recorded in the
-space-branch copy of the proposal, and later proposal records mirror into
-the worktree on top of the realigned branch. Running integrate again with
-nothing outstanding prints `no-op` and exits 0.
+materialized on disk. The working branch remains unchanged and continues to
+own lifecycle/process history. The space-branch candidate is identified by
+its proposal trailer plus the recorded Branch / Base Commit fields. Validation
+rework stays on the working branch; re-running `integrate --confirm` refreshes
+the same delivery slot while that candidate is still the space-branch HEAD and
+has not escaped to another ref. New proposals leave `Final Commit` unset;
+recorded values are read only for compatibility with older deliveries.
 
 Why not `git push .` or `git update-ref`: pushing to a branch checked out in
 `.wopal` is refused by git, and moving the ref directly leaves `.wopal` in the
@@ -378,26 +377,25 @@ the dated form.
 
 Transactional preflight, all before the first mutation: the space worktree is
 sparse-coherent and on the registered space branch; the recorded isolation
-worktree must be clean **only when it would be removed** (its removal would
-destroy uncommitted work); and — when isolation cleanup would run — the feature
-branch holds no content that the space branch's history lacks (deleting a
-branch that still carries unintegrated work destroys it). Unrelated uncommitted
-work in the space worktree does not block the archive: the record commit and
-its rollback stage by name, so unrelated paths never ride along and are left
-exactly as they were (modified stays modified, staged stays staged, untracked
-stays untracked), reported only as a non-fatal warning. When the proposal file
-itself carries uncommitted bytes, those working-tree bytes are the archive
-record. Integration leaves the branch realigned to its squash, so the normal
-end state passes this guard by construction; a branch integrated before that
-post-condition existed is still measured by content, not by commit ancestry.
+worktree must have no tracked/staged or non-ignored untracked changes **only
+when it would be removed**. Git-ignored files do not block final cleanup: the
+archive owns that lifecycle worktree and removes it as a whole. When isolation
+cleanup would run, the feature branch must also hold no unintegrated work.
+Unrelated uncommitted work in the space worktree does not block the archive:
+the record commit and its rollback stage by name, so unrelated paths never
+ride along and are left exactly as they were, reported only as a non-fatal
+warning. The working branch intentionally remains separate from the squash;
+cleanup safety comes from the sealed delivery checkpoint and content checks,
+not from commit ancestry.
 
-The mutation sequence: move → record the move on the space branch (the
-undated deletion is staged alongside the dated addition) → mirror into the
-worktree. Cleanup runs **last**, only in isolated mode and only without
-`--keep-worktree`: the recorded worktree is removed and the feature branch
-deleted (`-D`, safe because the content guard proved it integrated). Quick
-mode touches no isolation artifacts. Cleanup failure is loud but does not
-undo the archive: the residue is reported for manual removal.
+For isolated mode, archive seals the delivery slot by replacing the active
+proposal path with the dated archived path in the final space-branch delivery
+commit. It does not mirror that archived record back into the working branch.
+Cleanup runs **last**, only without `--keep-worktree`: the recorded worktree is
+removed and the feature branch deleted (`-D`, after the sealed delivery proves
+which working commit was delivered). Quick mode touches no isolation artifacts.
+Cleanup failure is loud but does not undo the archive: the residue is reported
+for manual removal.
 
 ## Stage is written only by commands
 

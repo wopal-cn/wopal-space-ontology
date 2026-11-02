@@ -22,10 +22,10 @@ skeleton.
 ## Metadata
 
 <!--
-Mode / Worktree / Branch / Base Commit are recorded by `accept`, Final Commit
-by `integrate`; `Stage` advances only through `wopal space evo advance`.
-Never hand-edit any of these — the fields stay `(none)` until the mechanism
-writes them.
+Mode / Worktree / Branch / Base Commit are recorded by `accept`; `Stage`
+advances only through `wopal space evo advance`. New proposals leave Final
+Commit `(none)`; a recorded value is only for compatibility with older
+deliveries. Never hand-edit these mechanism-owned fields.
 -->
 
 - **Type**: {type}
