@@ -148,7 +148,7 @@ Header links and end links are disjoint. A document named in the header never ap
 
 A project's GAPS.md is the **single source of truth** for gap detail. The product DESIGN's Capability Roadmap describes product-level capability direction; a Phase document lists the gaps its scope closes, by identifier, title, priority, and design pointer, without restating their descriptions.
 
-This split exists because duplicated gap descriptions drift. The Phase points at gaps; the project document defines them. Execution order across multiple plans belongs to the Phase document, not to GAPS.
+This split exists because duplicated gap descriptions drift. The Phase points at gaps; the project document defines them. Inherent phase-level ordering between capability lines may remain in the Phase; current execution dependencies and ordering between concrete Plans belong to the Space Active Plan Graph, not to GAPS or the Phase.
 
 ## Gap Discovery
 

@@ -148,7 +148,7 @@ The two older commands are gone, so there is one obvious command to run.
 
 项目 GAPS.md 是差距明细的**唯一真相源**。产品 DESIGN 的 Capability Roadmap 描述产品级能力方向；阶段文档按标识、标题、优先级与设计指针列出其范围关闭的差距，不复述其描述。
 
-这种拆分存在是因为重复的差距描述会漂移。阶段指向差距；项目文档定义它们。跨多个 plan 的执行顺序属于阶段文档，不属于 GAPS。
+这种拆分存在是因为重复的差距描述会漂移。阶段指向差距；项目文档定义它们。能力线之间固有的阶段级前后关系可以留在 Phase；具体 Plan 之间当前的执行依赖与顺序属于 Space Active Plan Graph，不属于 GAPS 或 Phase。
 
 ## 差距发现
 

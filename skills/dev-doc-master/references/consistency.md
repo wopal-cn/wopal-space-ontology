@@ -62,7 +62,7 @@ Body text and header field values follow the document's language. A Chinese docu
 
 Gap detail lives in the project `GAPS.md` and nowhere else. A Phase document lists the gaps its scope closes by identifier, title, priority, and design pointer — it does not restate Current / Target / Exit. Duplicated gap descriptions drift apart, and the reader then cannot tell which copy is authoritative.
 
-The Phase document carries only what no single gap can carry: the phase-level Completion Criteria, the scope grouping, the capability rows advanced, the internal execution order when the scope areas depend on each other, and the residual risks.
+The Phase document carries only what no single gap can carry: phase-level Completion Criteria, scope grouping, capability rows advanced, inherent capability-level ordering between scope areas, and residual risks. Concrete Plan state and Plan-level execution DAGs are owned by Plans and the Space Active Plan Graph respectively, never by the Phase.
 
 ## Process Documents vs Design Documents
 
@@ -218,7 +218,7 @@ not from where the content currently sits or how big the file is.
 | DESIGN (product) | System layering, subsystem boundaries, runtime model, end-to-end flows, capability roadmap | Per-project internals, deployment mechanics, implementation status |
 | DESIGN (project) | Project role and boundaries, capability scope, module architecture, technology choices, interface contracts, data and state model | Another project's internals, delivery progress, task lists |
 | DESIGN (sub) | One architectural concern delegated by the main DESIGN — a contract, a protocol, a layering model, a subsystem | Concerns the main DESIGN keeps; cross-cutting reference tables |
-| Phase / Roadmap | Phase goal, scope grouping, gaps closed by id, phase-level completion criteria, execution order, residual risks | Gap detail (lives in `GAPS.md`), implementation steps (live in Plans) |
+| Phase / Roadmap | Phase goal, scope grouping, gaps closed by id, phase-level completion criteria, capability-level ordering, residual risks | Gap detail (`GAPS.md`), implementation steps/state (Plans), Plan-level execution relationships (Active Plan Graph) |
 | AGENTS.md | Rules an agent follows while working: commands, conventions, boundaries, verification requirements | Architecture narrative, contract definitions, design rationale |
 
 Two consequences follow.

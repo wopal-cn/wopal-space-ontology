@@ -56,7 +56,7 @@ Individual gap exit criteria are carried by each gap in `GAPS.md`. This section 
 
 ## Execution Order
 
-Include this section only when the phase's scope areas have hard dependencies on each other — where the output of one area is the input another cannot start without. The section names the order and the reason each step must precede the next.
+Include this section only when the phase's scope areas have inherent capability dependencies on each other — where one capability outcome is logically required by another. It is a capability-level decomposition aid, not a Plan execution graph.
 
 ```
 <scope area>（<owner>）
@@ -65,25 +65,25 @@ Include this section only when the phase's scope areas have hard dependencies on
           → <scope area>（<owner>）
 ```
 
-When the scope areas can proceed independently, omit this section. It describes dependency between capability lines, never a task list or a schedule.
+When the scope areas can proceed independently, omit this section. Never list current Plan states, Plan-to-Plan blockers, or "what runs next" here; the Space Active Plan Graph owns those facts.
 
 ## Related Plans
 
-The tracking surface for this phase. Plans are created per scope area through dev-flow; their status is owned by the dev-flow state machine and updated by `archive`, never maintained by hand here.
+The stable traceability surface for this phase. Plans are created per scope area through dev-flow. Their workflow status is read from the Plan itself, and their current execution relationships are read from the Space Active Plan Graph.
 
 Each row registers one Plan against its slot; the row label carries the plan linkage so `archive` can update the row automatically:
 
 ```
-| Plan | Range | Gaps | Project | Status |
-|------|-------|------|---------|--------|
-| <slot>: <scope area> · <plan-name> | <what this plan delivers, one line> | <gaps closed by this plan> | <owner project> | |
+| Plan | Range | Gaps | Project |
+|------|-------|------|---------|
+| <slot>: <scope area> · <plan-name> | <what this plan delivers, one line> | <gaps closed by this plan> | <owner project> |
 ```
 
-- `<slot>`: phase slot identifier (e.g. `P-A`), matching the `Execution Order` naming.
+- `<slot>`: stable phase slot identifier (e.g. `P-A`).
 - ` · <plan-name>`: appended when the Plan is created and registered against the slot. Before registration the row label is `<slot>: <scope area>` only.
 - `Range`: one-line statement of what the Plan delivers (scope slice).
 - `Gaps`: the gap identifiers this Plan closes.
-- `Status`: filled automatically by dev-flow `archive` on Plan archive; keep it empty by hand.
+- `Project`: the Plan's owning project. Do not add a status column or Plan-level dependency data.
 
 ## Risks
 

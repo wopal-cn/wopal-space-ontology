@@ -15,9 +15,9 @@
 - 阶段文档不携带能力路线追踪。Goal 用产品语言陈述阶段交付的能力；产品 DESIGN 中的 Capability Roadmap 已回答每个维度站在哪里。复制的追踪需要维护成本，并会偏离它所复制的图。
 - 阶段是登记出来的，不是预测出来的。当一条演进线开始收敛时登记阶段——不要为了填满 roadmap 而预先声明未来阶段。
 - 阶段文档是**索引与跟踪面**，不是第二个差距跟踪器。差距明细在项目 `GAPS.md`；阶段按标识、标题、优先级、设计指针列出它关闭的差距。
-- 阶段文档不跟踪执行状态。Plan 状态由 dev-flow 状态机承载，并通过 `Related Plans` 表格呈现。dev-flow `archive` 命令自动更新 `Status` 单元格——它依据行标签中嵌入的 plan 名定位行，因此手工编辑状态被禁止。
-- `Related Plans` 表格格式是 5 列形式 `| Plan | Range | Gaps | Project | Status |`。每行标签携带 plan 关联：`P-A: 标题 · feature-plan-name`。`Range` 与 `Gaps` 列是阶段的范围与差距归属跟踪面；`Status` 列由 dev-flow 机器持有，绝不手工维护。Plan 尚未创建的行，标签不带 `· plan` 后缀——Plan 登记到槽位时补上后缀。
-- 当范围区之间存在硬依赖时，阶段声明内部执行顺序（`Execution Order`）。这是能力线依赖，供 Plan 分解消费；它不是任务清单。
+- 阶段文档不跟踪执行状态。Plan 状态只由 dev-flow Plan 持有；当前活跃 Plan 的实施关系只由 Space 的 Active Plan Graph 持有。Phase 不复制这两类事实。
+- `Related Plans` 表格格式是 4 列形式 `| Plan | Range | Gaps | Project |`。每行标签携带 plan 关联：`P-A: 标题 · feature-plan-name`。它只做阶段范围、Gap 与项目的稳定 traceability；Plan 尚未创建的行不带 `· plan` 后缀，创建后补上。
+- 当范围区之间存在固有的**能力线依赖**时，阶段可以声明内部 `Execution Order`，供 Plan 分解理解能力前后关系。Plan 级依赖、阻塞和“下一步执行谁”只写入 Active Plan Graph，不在 Phase 重复。
 - 阶段文档只描述目标态。它不携带完成日志、没有"已完成什么"的叙述、也不引用阶段之前的工作。完成的阶段移入 `phases/done/`；那次移动就是记录。
 - 阶段文档在讨论过程中持续书写——每一步的输出直接写进活文档。
 - 阶段文档为下一步提供可靠输入：拆分为 Plan。
@@ -31,7 +31,7 @@
 3. **讨论范围**：Scope = 每区一行的摘要 + Owner。写它。
 4. **构建差距清单**（关键）：为每个范围区，从项目 `GAPS.md` 选择本阶段关闭的差距。记录标识、标题、优先级、以及每个差距指向的设计文档。不复述 Current / Target / Exit——它们留在 `GAPS.md`。没有设计方案的差距不进入清单；它成为风险。
 5. **定义完成标准**：跨越多个差距、不属于任何单个差距的交付事实。这是阶段自身的退出标准；单个差距的退出标准留在 `GAPS.md`。
-6. **陈述内部执行顺序**：范围区相互依赖时，写出顺序以及每步必须先于下一步的原因。可独立推进时省略该章节。顺序指导 Plan 分解；它不是排期。
+6. **陈述能力线内部顺序**：只有范围区本身存在固有能力依赖时，写出顺序与原因。可独立推进时省略。不要把已经拆出的 Plan 名、Plan 状态或当前实施顺序写进这里；这些由 Active Plan Graph 持有。
 7. **审查并呈现残余风险**：整体审查；把风险写入 Risks 章节并附显式"为何没有设计方案"的解释。迭代直到解决或用户接受剩余风险。
 
 ## 文档更新纪律
@@ -61,9 +61,9 @@
 - [ ] 差距清单：每个范围区 ≥1 个差距；每条带标识、标题、优先级、设计指针
 - [ ] 列出的每个差距存在于项目 `GAPS.md`；此处不复述 Current / Target / Exit
 - [ ] 完成标准只承载跨差距交付事实
-- [ ] `Execution Order` 仅在范围区有硬依赖时出现；它陈述能力线依赖与原因，绝不是任务清单或排期
+- [ ] `Execution Order` 仅在范围区有固有能力依赖时出现；它不包含 Plan 级 DAG、Plan 状态或调度顺序
 - [ ] 无完成日志、无"已完成"叙述、无引用阶段之前的工作
-- [ ] Related Plans 表使用 5 列形式（`Plan | Range | Gaps | Project | Status`），每个已登记行标签带 ` · plan-name` 后缀；状态绝不手工维护（dev-flow `archive` 持有它）
+- [ ] Related Plans 表使用 4 列形式（`Plan | Range | Gaps | Project`），每个已登记行标签带 ` · plan-name` 后缀；不复制 Plan 状态
 - [ ] Risks 只含无设计方案的条目，每条带显式 why
 - [ ] References 不重复头部文档
 - [ ] 关联设计文档按 design 参考更新
@@ -71,7 +71,7 @@
 
 ## 指导 Plan 分解
 
-阶段文档就绪后，按 dev-flow 技能标准引导用户为每个范围区创建 Plan。Plan 在自身正文中命名所属阶段；阶段的 `Related Plans` 表是聚合视图。为槽位创建 Plan 时，在表的槽位行标签追加 ` · <plan-name>`——这是 dev-flow `archive` 命令自动更新该行 `Status` 单元格所依赖的机器关联。阶段文档自身不跟踪执行状态——Plan 状态由 dev-flow 状态机跟踪。
+阶段文档就绪后，按 dev-flow 技能标准引导用户为每个范围区创建 Plan。Plan 在自身 Metadata 中声明 Product/Phase；阶段的 `Related Plans` 表只登记范围/Gap/项目对应关系。为槽位创建 Plan 时，在表的槽位行标签追加 ` · <plan-name>`，用于稳定 traceability。Plan 状态读取 Plan；Plan 间当前实施关系读取 Active Plan Graph。
 
 ## 完成后回复
 
