@@ -88,9 +88,9 @@ The repo is the only authority. Check each claim mechanically — never wave one
 | Commands and flags named in ACs | check the command exists and accepts the arguments | |
 | Menu of "new" vs existing files | `test -e` | |
 
-**Revision discipline**: state which revision every check ran against — Base Commit, worktree HEAD, or integration HEAD. When the artifact declares a worktree, probe at the worktree's HEAD, not the integration branch.
+**Content-snapshot discipline**: state which content snapshot every check ran against — current working tree (which may include uncommitted changes), Base Commit, worktree HEAD, or integration HEAD. When the review target lives in the current working tree, check that current content by default; use a declared worktree HEAD when the review target is specifically that committed worktree state.
 
-Revision discipline makes fact checks reproducible; it is not a Git-hygiene gate. When the design / Plan is still uncommitted and the review target is the current working-tree content, **“uncommitted” is not itself a finding**. Report a problem only when the execution path will read a specific committed revision and the proposal falsely assumes that revision already contains required content; describe that actual failure chain.
+Content-snapshot discipline says **what was reviewed**; it is not a Git-hygiene gate. When a design / Plan / proposal is uncommitted, unpushed, unmerged, or untracked and the review target is the current working-tree content, **those Git states are never findings**. Do not infer a future worktree failure merely because an older HEAD, Base Commit, or Integration Branch does not yet contain the current change; that is a later dev-flow execution gate, not proposal quality.
 
 ### 3.2 Anchor-drift judgement
 
@@ -277,7 +277,8 @@ Deliberately absent: **size/count thresholds**. Task count, file count, wave cou
 | Task references a function no other task creates | BLOCKER (Q1) |
 | Task registers 5 error codes, a later task uses a 6th | BLOCKER (Q1) |
 | Anchor `file.ts:964` lands at 967 on the described function | no finding |
-| A DESIGN change is uncommitted during review, but the current working-tree content is the review target and the Plan does not claim it is already in a commit | no finding |
+| A DESIGN / Plan change is uncommitted, unpushed, or unmerged during review, while current working-tree content is available | no finding; review the current content |
+| Current DESIGN changes are not in HEAD, so a future approve-created worktree would not see them yet | no finding; later lifecycle execution gate, not a proposal defect |
 | An AC requires final validation on a real Linux host and explicitly remains unchecked without that evidence; the current development machine has no Linux host | no finding (Execution dependency) |
 | Plan contradicts a design doc it also cites, without acknowledgement | WARNING (Q2) |
 | Plan contradicts a design doc and states "this supersedes §X of doc Y" | no finding |

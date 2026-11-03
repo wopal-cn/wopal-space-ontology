@@ -88,9 +88,9 @@
 | AC 里点名的命令和参数 | 查命令存在、参数接得住 | |
 | "新建" vs 既有文件 | `test -e` | |
 
-**版本纪律**：注明每条核查对着的版本——Base Commit、worktree HEAD 或集成分支 HEAD。文档声明了 worktree 的，就在 worktree 的 HEAD 上探查，不是集成分支。
+**内容快照纪律**：注明每条核查对着的内容快照——当前工作树（可包含未提交修改）、Base Commit、worktree HEAD 或集成分支 HEAD。评审对象位于当前工作树时，默认核对当前内容；文档声明了既有 worktree 且评审目标就是该 worktree 的已提交状态时，再核对对应 HEAD。
 
-版本纪律是为了让事实核查可复现，不是 Git hygiene 门禁。工作树里的设计/Plan 尚未提交，但评审对象就是当前工作树内容时，**“未提交”本身不是 finding**。只有执行路径明确只读取某个已提交 revision，而当前方案又错误假定该 revision 已包含关键内容时，才报告实际失败链路。
+内容快照纪律是为了说明“你到底评了哪份内容”，不是 Git hygiene 门禁。工作树里的设计/Plan/提案尚未提交、未 push、未 merge、甚至 untracked，只要它就是当前评审对象，**这些 Git 状态一律不是 finding**。不要因为旧 HEAD、Base Commit 或 Integration Branch 尚未包含当前修改，就推演未来 worktree 缺内容并报 Blocker/Warning；那属于后续 dev-flow 执行门禁，不属于 proposal review。
 
 ### 3.2 锚点漂移裁决
 
@@ -277,7 +277,8 @@ Blocker / Warning 还必须满足一个影响门：能说清楚**具体触发条
 | 任务引用一个没有任何任务创建的函数 | BLOCKER（Q1） |
 | 任务注册 5 个错误码，后面的任务用了第 6 个 | BLOCKER（Q1） |
 | 锚点 `file.ts:964` 落在 967 行的描述函数上 | 不是 finding |
-| reviewing 中的 DESIGN 修改尚未 commit，但当前工作树内容可核对、Plan 也没声称它已在某个 commit | 不是 finding |
+| reviewing 中的 DESIGN / Plan 尚未 commit、push 或 merge，但当前工作树内容可核对 | 不是 finding；直接评当前内容 |
+| 当前 DESIGN 修改未进 HEAD，未来 approve 创建的 worktree 现在当然还看不到它 | 不是 finding；这是后续生命周期执行门禁，不是方案缺陷 |
 | AC 要求最终在真实 Linux host 验证，并明确没有真实证据就不得勾选；当前开发机没有 Linux host | 不是 finding（Execution dependency） |
 | Plan 和它自己引用的设计文档矛盾，且没承认 | WARNING（Q2） |
 | Plan 和设计文档矛盾，但写明"本文取代 Y 文档 §X" | 不是 finding |

@@ -29,15 +29,17 @@ If the proposal is fine, say so quickly and stop. This review is invoked deliber
 
 Report only problems where the **proposal itself would lead the work wrong**. Do not turn ordinary workflow state, unfinished closeout, or a final-validation resource that is not provisioned yet into a design defect.
 
-The following are normally **not findings**:
+The following are **never findings**:
 
-- a design, Plan, or code change is still uncommitted, while the content itself exists and can be checked;
+- a design, Plan, proposal, or code change is uncommitted, unpushed, unmerged, or even untracked, while the current content exists and is the review target;
 - CI, a test host, an external account, real hardware, or a platform environment is needed only at the final release gate and is not provisioned yet;
 - a dependency is not installed or a build artifact does not exist yet, when the Plan schedules that work before it is needed;
 - the artifact is in a normal lifecycle state such as reviewing, draft, or proposed;
 - an AC correctly says it must remain unchecked when the required environment is unavailable, rather than falsely claiming that environment already exists.
 
 These become findings only when the proposal **incorrectly depends on the condition already being true**, **provides no viable path to obtain it when needed**, or would therefore cause the implementation to be wrong or the goal to be undeliverable.
+
+**Hard Git-state boundary:** Proposal Review never requires the review target or its cited DESIGN / Plan to be committed, pushed, merged, or already present on the integration branch. Reviewing before commit is normal and is often the point of the review. When the current working tree contains the content under review, review that exact content. **Never emit a Blocker, Warning, or Info merely because HEAD, a Base Commit, or the Integration Branch does not contain it yet.** Whether a later lifecycle command requires commit/integration is a dev-flow execution gate, not proposal quality. Unless the user explicitly asks for lifecycle readiness, keep it out of the proposal verdict.
 
 Severity calibration: **a Blocker must show that following the proposal would produce the wrong implementation, dead-end execution, or an undeliverable goal. “There is still a step to do before implementation or final validation” is not, by itself, a Blocker.**
 
@@ -107,11 +109,11 @@ The repo is the only authority. Settle each fact claim mechanically; never wave 
 | "run `flow.sh verify`" | does the command exist, does it take that flag |
 | "create file F" / "delete file F" | `test -e` |
 
-**State the revision you checked against** — Base Commit, worktree HEAD, or integration HEAD. A finding without a revision rots the moment anyone commits. If the artifact declares a worktree, probe at the worktree's HEAD.
+**State the content snapshot you checked against** — for example current working tree (including uncommitted changes), Base Commit, worktree HEAD, or integration HEAD. When the artifact under review lives in the current working tree, use that current content by default; do not downgrade the review to an older HEAD merely for reproducibility.
 
 Then check agreement with the authorities it cites (design docs, `AGENTS.md`, existing interfaces): find what the authority says and compare. Divergence the artifact acknowledges or justifies is a decision; silent divergence is a broken contract. When two documents conflict, establish which one is authoritative for the model this artifact implements before calling it.
 
-This check is about **content truth and execution premises**, not Git hygiene. An uncommitted change is not itself a design defect. Report it only when the proposal claims content is present in a specific revision and the actual execution path will read only that revision, so following the proposal would lose a required contract. In that case, describe the concrete failure chain; never stop at “it is not committed yet.”
+This check is about **content truth and execution premises**, not Git hygiene. Uncommitted DESIGN / Plan content in the current working tree is a first-class review target. **Do not turn “HEAD does not contain this design yet,” “a future worktree would not see it yet,” or “it is not pushed/merged yet” into a proposal finding.** If the artifact explicitly claims that commit X already contains Y and that factual claim is false, you may verify that statement itself; do not upgrade Y's uncommitted state into a design or Plan defect.
 
 Severity: a false premise the work leans on, a silent divergence from a safety constraint, an AC command that cannot run → **BLOCKER**. Silent doc divergence with no effect on the work → **WARNING**; minor wording or line-number drift → **INFO**.
 
