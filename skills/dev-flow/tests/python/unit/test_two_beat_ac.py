@@ -17,9 +17,10 @@ META = """# test-plan
 
 ## Metadata
 
-- **Plan Kind**: umbrella
 - **Issue**: N/A
 - **Type**: test
+- **Target Project**: wopal-space-ontology
+- **Project Path**: .wopal
 - **Product**:
 - **Phase**:
 - **Status**: planning

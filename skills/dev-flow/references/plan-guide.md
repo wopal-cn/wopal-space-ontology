@@ -6,21 +6,19 @@ So a Plan's job is to state three things: **what is wanted (behavior)**, **what 
 
 One line: **pin the contract surface, open up the implementation surface.**
 
-## Choose a normal or umbrella Plan first
+## Plans and multi-Plan organization
 
-- **Normal Plan = one implementation**: it links 0..1 Issue and must have exactly one Target Project. When created from an Issue, the only `project/*` label may be inferred; zero or multiple project labels require explicit `--project <name>`.
-- **Several Issues but one implementation**: run `issue merge --into` first, then author one normal Plan. Multi-Issue Plan metadata is not supported.
-- **One goal requiring several implementations**: use an umbrella Plan. Umbrellas live under `.wopal-space/plans/_umbrella/` and own no Target Project / Project Path. Every child remains a normal Plan, whether several children share one project or span projects.
-- `Child Plans` stores only child Plan name, Target Project, and responsibility. Issue/status are read live from the child rather than copied into the umbrella.
-- An umbrella never advances child state. Its `complete` gate requires every child to be at least `verifying`; `verify --confirm` requires every child `done/archived`; `archive` requires every child archived. `integrate` and `verify-switch` do not apply to umbrellas.
+- **One Plan = one implementation**: it links 0..1 Issue and must have exactly one Target Project. When created from an Issue, the only `project/*` label may be inferred; zero or multiple project labels require explicit `--project <name>`.
+- **Several Issues but one implementation**: run `issue merge --into` first, then author one Plan. Multi-Issue Plan metadata is not supported.
+- **One goal requiring several implementations**: create the Plans separately and organize them in `.wopal-space/plans/active-graph.json` `groups`; express implementation order only with Graph `edges`.
+- A Graph group is not a Plan. It owns no Issue, lifecycle state, Acceptance Criteria, worktree, or Delivery. It records only the shared goal, members, and each member's responsibility. See `active-plan-graph.md`.
+- Current implementation relationships between Plans do not belong in the Plan itself. Active Plan Graph owns the current nodes, hard dependencies, and groups.
 
 Examples:
 
 ```bash
 flow.sh plan new 42 --project api --type feature --slug endpoint
 flow.sh plan new --project api --type feature --slug local-task
-flow.sh plan new --umbrella --type enhance --slug release-train
-flow.sh plan new 42 --umbrella --type enhance --slug release-train
 ```
 
 ## Writing style
@@ -216,7 +214,7 @@ If a mechanism the validation depends on is not yet documented in the project's 
 
 ## Metadata rules
 
-`Product` and `Phase` items are always present in a Plan — creation renders both lines even when empty. The pair is atomic: a phase-linked plan declares both values, an unlinked plan leaves both empty. Values come from the Issue body or the `--product`/`--phase` flags at creation (flags override the body); a half-declared pair is rejected at creation, and `check_doc_plan` gates item presence and pair atomicity at submit/approve. Declaring them only when truly linked matters: archive locates the plan's row in the phase's `Related Plans` table by the `Phase` value — a missing item or half-declared pair silences that sync.
+`Product` and `Phase` items are always present in a Plan — creation renders both lines even when empty. The pair is atomic: a phase-linked plan declares both values, an unlinked plan leaves both empty. Values come from the Issue body or the `--product`/`--phase` flags at creation (flags override the body); a half-declared pair is rejected at creation, and `check_doc_plan` gates item presence and pair atomicity at submit/approve. These fields describe stable product/phase traceability only; they do not drive Plan status synchronization or execution ordering.
 
 `Project Path`, `Project Type`, `Target Project` are looked up from the space's `STRUCTURE.md`:
 
@@ -235,9 +233,10 @@ Common mistakes: treating a subdirectory (e.g. `projects/<name>/packages/app/`) 
 
 Plans add no Gap-related metadata fields. The phase–Gap relationship is carried naturally by product phase documents; a Plan only states its phase in Goal or Context.
 
-- **Plan phase**: the `Phase` metadata field (declared at creation from the Issue body or `--product`/`--phase`). A phase splits into multiple Plans by scope area; the phase's `Related Plans` table is the aggregate view.
-- **Phase table registration**: only Plans linked to a phase (metadata carrying `Product` + `Phase`) trigger phase-doc sync at archive — `archive` locates the row by the ` · <plan-name>` suffix of the slot label and writes `done`. Format spec in dev-doc-master skill `references/phase.md`.
-- **Unlinked Plans** get no phase-doc handling at archive (skipped silently, no warnings, no errors). Ordinary feature/fix/refactor Plans leave `Product`/`Phase` empty and never invent rows in phase tables.
+- **Plan phase**: the `Phase` metadata field (declared at creation from the Issue body or `--product`/`--phase`). A phase splits into multiple Plans by scope area; its `Related Plans` table is stable scope/gap/project traceability and does not copy Plan state.
+- **Plan execution relationships**: Plan-level ordering, blockers, and current implementation sequence belong only to the Active Plan Graph. A Phase may describe capability-level ordering where inherently necessary, but never maintains a Plan DAG.
+- **Archive boundary**: `archive` no longer writes Plan status into the Phase document. A Plan enters the Active Graph after its first successful `submit` and stays there until `archive` succeeds; `done` is only a workflow state and does not remove Graph membership. The Phase does not participate in that lifecycle synchronization.
+- **Unlinked Plans** do not need `Product`/`Phase`, and no Phase row is invented merely to display status or orchestration.
 - **Gaps**: the single source of truth is the project's `GAPS.md`. Plans reference the Gap identifier they close (e.g. `CLI-G3`) in Goal or Context without copying the description. When a Plan reaches `done` and its Exit criteria hold, the entry is removed from `GAPS.md` (the number retires, never reused).
 
 ## Delegation Strategy
@@ -268,7 +267,7 @@ If the implementer is also the controller, keep the same order: implementation �
 
 ## Validation and advancement
 
-`plan check` is intentionally mechanical. It checks lifecycle structure needed by the workflow: valid `Status`, Product/Phase pairing, the 0..1 Issue contract, normal-vs-umbrella project ownership, a usable Project Path for normal Plans, and authoring residue such as HTML comments / known template placeholders. It does **not** judge design quality, TDD choice, Behavior wording, Interface/Constraints, or User Validation prose; those belong to authoring/review.
+`plan check` is intentionally mechanical. It checks lifecycle structure needed by the workflow: valid `Status`, Product/Phase pairing, the 0..1 Issue contract, a Target Project and usable Project Path, and authoring residue such as HTML comments / known template placeholders. It does **not** judge design quality, TDD choice, Behavior wording, Interface/Constraints, or User Validation prose; those belong to authoring/review.
 
 `complete`/`verify` only gate completion state: Task Done, Agent Verification, and User Validation checkboxes must be completed where those sections exist.
 

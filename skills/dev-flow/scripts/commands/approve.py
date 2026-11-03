@@ -49,7 +49,6 @@ from plan import (
     get_plan_issue,
     get_plan_status,
     get_plan_field,
-    is_umbrella_plan,
 )
 from plan import resolve_project_path
 from validation import check_doc_plan, ValidationError
@@ -449,50 +448,6 @@ def cmd_approve(args: argparse.Namespace) -> int:
     # 4. Extract Issue number (if plan has Issue link)
     issue_number = get_plan_issue(plan_path)
 
-    if is_umbrella_plan(plan_path):
-        if existing_worktree:
-            log_error("Umbrella Plans do not own a worktree; operate child Plans instead")
-            return 1
-
-        repo = detect_space_repo(workspace_root)
-        snapshot = PlanFieldSnapshot.capture(plan_path)
-        log_step(f"Transitioning umbrella state: {current_status} -> executing")
-        if not update_plan_status(plan_path, "executing"):
-            log_error("Failed to update umbrella Plan status")
-            return 1
-
-        result = commit_and_push_plan(
-            plan_path, issue_number, workspace_root, message_prefix="approve"
-        )
-        if result == RESULT_PUSH_FAILED:
-            log_warn(
-                "Approve committed locally but push failed; continuing. "
-                "The commit will sync to origin on a later push."
-            )
-        elif result != RESULT_OK:
-            recovery = recover_plan_after_failed_commit(
-                plan_path, snapshot, workspace_root
-            )
-            log_error("Failed to commit umbrella Plan baseline")
-            if not recovery.file_restored:
-                log_error("Umbrella Plan rollback failed; restore the reviewing state manually")
-            return 1
-
-        if issue_number:
-            sync_status_label(issue_number, "executing", repo)
-            sync_plan_to_issue_body(
-                issue_number, plan_path, repo, str(workspace_root)
-            )
-            ensure_issue_labels(issue_number, plan_path, repo)
-
-        print("Status: executing")
-        print("Umbrella Plan: no worktree or code Delivery created")
-        if issue_number:
-            print(f"Issue: #{issue_number}")
-        next_ref = str(issue_number) if issue_number else plan_name
-        print(f"Next: flow.sh complete {next_ref}")
-        return 0
-    
     # ============================================
     # --confirm mode: preflight checks + state transition
     # ============================================

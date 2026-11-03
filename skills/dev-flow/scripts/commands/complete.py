@@ -25,9 +25,7 @@ from plan import (
     get_plan_worktree,
     set_plan_field,
     get_plan_field,
-    is_umbrella_plan,
 )
-from lib.umbrella import child_gate_failures
 from lib.git import is_repo_dirty, commit_paths, get_dirty_lines
 from lib.plan_state import PlanFieldSnapshot, recover_plan_after_failed_commit
 from plan import resolve_project_path
@@ -338,47 +336,6 @@ def cmd_complete(args: argparse.Namespace) -> int:
         log_error("")
         log_error(f"After completing, run: flow.sh complete {input_ref}")
         return 1
-
-    if is_umbrella_plan(active_plan_path):
-        if create_pr:
-            log_error("Umbrella Plans have no code Delivery or PR; complete child Plans instead")
-            return 1
-
-        failures = child_gate_failures(active_plan_path, workspace_root, "complete")
-        if failures:
-            log_error("Cannot complete umbrella Plan; child Plans are not ready:")
-            for failure in failures:
-                log_error(f"  - {failure}")
-            return 1
-
-        target_status = "verifying"
-        if not is_valid_transition(current_status, target_status):
-            log_error(f"Invalid state transition: {current_status} -> {target_status}")
-            return 1
-
-        snapshot = PlanFieldSnapshot.capture(str(active.active_plan_path))
-        if not update_plan_status(str(active.active_plan_path), target_status):
-            log_error("Failed to update umbrella Plan status")
-            return 1
-
-        commit_msg = _build_plan_only_commit_msg(plan_issue, plan_name)
-        if not _commit_plan_status_or_rollback(
-            active, snapshot, commit_msg, workspace_root
-        ):
-            return 1
-
-        repo = resolve_space_repo(plan_issue, workspace_root)
-        if plan_issue and repo:
-            sync_status_label(plan_issue, target_status, repo)
-            sync_plan_to_issue_body(
-                plan_issue, plan_path, repo, str(workspace_root)
-            )
-
-        print("")
-        print("Status: verifying")
-        print("Umbrella Plan: every child is verifying, done, or archived")
-        print(f"Next: flow.sh verify {plan_issue or plan_name} --confirm")
-        return 0
 
     # 7. Dirty working tree check — block if uncommitted implementation code exists.
     # Plan files live in space repo; code lives in project repo or worktree.

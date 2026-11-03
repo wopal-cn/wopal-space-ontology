@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Behavior tests for merging duplicate Issues into one umbrella Issue."""
+"""Behavior tests for merging duplicate Issues into one primary Issue."""
 
 import argparse
 import sys
@@ -24,8 +24,8 @@ def _issue(number, body="", state="OPEN", labels=None):
     }
 
 
-def _args(umbrella="10", sources=None):
-    return argparse.Namespace(into=umbrella, issues=sources or ["11", "12"])
+def _args(target="10", sources=None):
+    return argparse.Namespace(into=target, issues=sources or ["11", "12"])
 
 
 def _ok():
@@ -38,7 +38,7 @@ def _ok():
 
 def test_issue_merge_records_both_sides_and_closes_sources_not_planned():
     infos = {
-        "10": _issue(10, "## Goal\n\nUmbrella\n"),
+        "10": _issue(10, "## Goal\n\nPrimary\n"),
         "11": _issue(11, "## Goal\n\nDuplicate A\n", labels=["status/planning"]),
         "12": _issue(12, "## Goal\n\nDuplicate B\n", labels=["status/planning"]),
     }
@@ -60,10 +60,10 @@ def test_issue_merge_records_both_sides_and_closes_sources_not_planned():
     ]
     close_commands = [command for command in commands if command[:3] == ["gh", "issue", "close"]]
 
-    umbrella_edit = next(command for command in edit_commands if command[3] == "10")
-    umbrella_body = umbrella_edit[umbrella_edit.index("--body") + 1]
-    assert "Merged from: #11" in umbrella_body
-    assert "Merged from: #12" in umbrella_body
+    target_edit = next(command for command in edit_commands if command[3] == "10")
+    target_body = target_edit[target_edit.index("--body") + 1]
+    assert "Merged from: #11" in target_body
+    assert "Merged from: #12" in target_body
 
     source_11 = next(command for command in edit_commands if command[3] == "11")
     source_body = source_11[source_11.index("--body") + 1]
@@ -90,7 +90,7 @@ def test_issue_merge_is_idempotent_for_existing_relationship_and_closed_source()
     assert run.call_count == 0
 
 
-def test_issue_merge_rejects_source_that_is_the_umbrella_before_writes():
+def test_issue_merge_rejects_source_that_is_the_target_before_writes():
     with patch("commands.issue.find_workspace_root", return_value="/workspace"):
         with patch("commands.issue.detect_space_repo", return_value="example/repo"):
             with patch("commands.issue.get_issue_info") as get_info:
@@ -118,7 +118,7 @@ def test_issue_merge_rejects_source_already_merged_elsewhere_before_writes():
 
 def test_issue_merge_stops_if_status_label_cleanup_fails_before_close():
     infos = {
-        "10": _issue(10, "## Goal\n\nUmbrella\n"),
+        "10": _issue(10, "## Goal\n\nPrimary\n"),
         "11": _issue(11, "## Goal\n\nDuplicate\n"),
     }
 

@@ -6,21 +6,19 @@ Plan 有两类读者：**评审的人**（要能看懂你要什么）和**实施
 
 一句话：**把契约面钉死，把实现面放开。**
 
-## 先选普通 Plan 还是伞型 Plan
+## Plan 与多 Plan 组织
 
-- **普通 Plan = 一份实施**：Issue 为 0..1 个，Target Project 必须且只能有一个。若从 Issue 创建且 Issue 恰好只有一个 `project/*`，可以自动采用；Issue 没有项目标签或有多个项目标签时，必须显式 `--project <name>`。
-- **多个 Issue 但只有一份实施**：先 `issue merge --into`，再写一个普通 Plan；禁止多 Issue Plan。
-- **一个目标需要多份实施**：使用伞型 Plan。它统一放在 `.wopal-space/plans/_umbrella/`，自身没有 Target Project / Project Path；子 Plan 仍各自遵守普通 Plan 规则，同项目多份、跨项目多份都允许。
-- 伞型 Plan 的 `Child Plans` 只记录子 Plan 名称、Target Project 与职责。子 Plan 的 Issue 和状态从子 Plan 实时读取，不复制到伞型 Plan。
-- 伞型 Plan 不替子 Plan 推进状态：`complete` 只在全部子 Plan 至少 `verifying` 时放行；`verify --confirm` 要求全部子 Plan `done/archived`；`archive` 要求全部子 Plan 已归档。它不运行 `integrate` / `verify-switch`。
+- **一个 Plan = 一份实施**：Issue 为 0..1 个，Target Project 必须且只能有一个。若从 Issue 创建且 Issue 恰好只有一个 `project/*`，可以自动采用；Issue 没有项目标签或有多个项目标签时，必须显式 `--project <name>`。
+- **多个 Issue 但只有一份实施**：先 `issue merge --into`，再写一个 Plan；禁止多 Issue Plan。
+- **一个目标需要多份实施**：分别创建多份 Plan，在 `.wopal-space/plans/active-graph.json` 的 `groups` 中组织它们；Plan 间实施先后只写 Graph `edges`。
+- Graph group 不是 Plan，不拥有 Issue、状态机、Acceptance Criteria、worktree 或 Delivery。它只记录整体目标、成员及各成员职责；维护规则见 `active-plan-graph.zh-CN.md`。
+- Plan 之间的当前实施关系不写进 Plan 本身；当前节点、硬依赖和分组统一由 Active Plan Graph 持有。
 
 创建示例：
 
 ```bash
 flow.sh plan new 42 --project api --type feature --slug endpoint
 flow.sh plan new --project api --type feature --slug local-task
-flow.sh plan new --umbrella --type enhance --slug release-train
-flow.sh plan new 42 --umbrella --type enhance --slug release-train
 ```
 
 ## 写作风格
@@ -232,9 +230,10 @@ TDD 是用测试先定义行为的工具，不是“只要改代码就必须交�
 
 Plan 不新增 Gap 关联元数据字段。阶段与 Gap 的关系由产品阶段文档天然承载，Plan 只需在 Goal 或 Context 中写明所属阶段。
 
-- **Plan 归属阶段**：`Phase` 元数据字段（从 Issue body 继承）。一个阶段按 scope area 拆出多个 Plan，阶段的 `Related Plans` 表是聚合视图。
-- **阶段表登记**：仅关联了阶段（元数据携带 `Product` + `Phase`）的 Plan 才在归档时触发阶段文档同步——`archive` 依据槽位行标签末尾的 ` · <plan-name>` 定位行并自动写入 `done`。格式规范见 dev-doc-master 技能 `references/phase.md`。
-- **未关联阶段的 Plan** 归档时不做任何阶段文档处理（直接跳过，不警告不报错）。普通功能/修复/重构 Plan 不需要也不应该补写 `Product`/`Phase`，更不允许在阶段表凭空建行。
+- **Plan 归属阶段**：`Phase` 元数据字段（从 Issue body 或创建参数取得）。一个阶段按 scope area 拆出多个 Plan，阶段的 `Related Plans` 只做范围/Gap/项目 traceability，不复制 Plan 状态。
+- **Plan 执行关系**：Plan 级先后、阻塞和当前实施顺序只写入 Active Plan Graph。Phase 只在确有需要时描述 capability-level 顺序，不维护 Plan DAG。
+- **归档边界**：`archive` 不再回写 Phase 状态。Plan 在第一次成功 `submit` 后进入 Active Graph，并一直保留到 `archive` 成功；`done` 只是实施生命周期状态，不触发 Graph 退出。Phase 文档不参与这项生命周期同步。
+- **未关联阶段的 Plan** 不需要也不应该补写 `Product`/`Phase`，更不允许仅为了显示状态或编排而在 Phase 表中凭空建行。
 - **Gap**：唯一真相源是项目 `GAPS.md`。Plan 在 Goal 或 Context 中引用要关闭的 Gap 标识（如 `CLI-G3`），不复制描述。Plan 达到 `done` 且 Exit 判据满足时，从 `GAPS.md` 删除对应条目（编号退役，不复用）。
 
 ## Delegation Strategy
@@ -265,7 +264,7 @@ Task 本身已经承载 `Design Source`、Behavior、Pre-read、需要时的 Int
 
 ## 验证与推进
 
-`plan check` 刻意保持机械：只检查流程真正依赖的结构——`Status` 合法、Product/Phase 成对、Issue 为 0..1、普通/伞型 Plan 的项目归属正确、普通 Plan 的 Project Path 可用，以及 HTML comment / 已知模板占位文本等作者残留。它不判断 Design Source 是否写得好、TDD 是否选对、Behavior 文案、Interface/Constraints 或 User Validation 场景质量；这些属于 Plan 编写和评审。
+`plan check` 刻意保持机械：只检查流程真正依赖的结构——`Status` 合法、Product/Phase 成对、Issue 为 0..1、Target Project 与 Project Path 可用，以及 HTML comment / 已知模板占位文本等作者残留。它不判断 Design Source 是否写得好、TDD 是否选对、Behavior 文案、Interface/Constraints 或 User Validation 场景质量；这些属于 Plan 编写和评审。
 
 `complete` / `verify` 只检查完成状态：存在的 Task Done、Agent Verification、User Validation checkbox 必须完成。
 

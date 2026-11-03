@@ -32,12 +32,12 @@ In restricted environments, use the current harness's native approval mechanism 
 Apply these rules in order before entering the lifecycle; do not use a complicated Plan shape to avoid making this decision:
 
 1. **An Issue records a problem or goal.** Its `project/*` labels describe impact scope and may be absent, singular, or multiple; they do not force one implementation project.
-2. **A normal Plan is one implementation.** It links at most one Issue and belongs to exactly one Target Project.
-3. **Several Issues, one implementation** → merge them first with `issue merge --into`, keep one Issue, then create one normal Plan. Do not create a multi-Issue Plan.
-4. **One goal, several implementations** — including several Plans in one project or Plans across projects — → create an umbrella Plan. Every child remains a normal Plan.
-5. **An umbrella coordinates; it never implements for its children.** It owns no code project, worktree, or Delivery. It reads child state to gate its own lifecycle and never advances child state or mutates child Issues.
+2. **One Plan is one implementation.** It links at most one Issue and belongs to exactly one Target Project.
+3. **Several Issues, one implementation** → merge them first with `issue merge --into`, keep one Issue, then create one Plan. Do not create a multi-Issue Plan.
+4. **One goal, several implementations** — including several Plans in one project or Plans across projects — → create the normal Plans separately and organize them in Active Plan Graph `groups`; express implementation order only with Graph `edges`.
+5. **A Graph group is organization, not a Plan.** It owns no Issue, lifecycle state, Acceptance Criteria, worktree, or Delivery, and no Plan lifecycle command targets it.
 
-See `references/issue-guide.md` for Issue labels/merge, `references/plan-guide.md` for normal and umbrella Plan authoring, and `references/commands.md` for exact commands.
+See `references/issue-guide.md` for Issue labels/merge, `references/plan-guide.md` and `references/active-plan-graph.md` for Plan/Graph authoring, and `references/commands.md` for exact commands.
 
 ## DESIGN, Plan, implementation
 
@@ -76,7 +76,22 @@ State machine:
 
 `planning → reviewing → executing → verifying → done → archived`
 
-Umbrella Plans reuse the same state machine but have no code-integration path: `approve` creates no worktree/Delivery; `complete` requires every child to be at least `verifying`; `verify --confirm` requires every child to be `done` or `archived`; `archive` requires every child to be archived. `integrate` / `verify-switch` apply only to normal Plans.
+### Active Plan Graph
+
+Each Space maintains `.wopal-space/plans/active-graph.json` as the **single source of truth for Plan implementation relationships during the lifecycle window from submit through archive**. Plan files own content and workflow state; Phase documents do not copy live Plan state or a Plan-level execution DAG.
+
+During the current practice phase there is no Graph CLI. The controller maintains the Graph manually at lifecycle points; delegated implementers do not edit it. Read `references/active-plan-graph.md` for the full contract.
+
+The controller enforces these gates:
+
+- `plan new` does not change the Graph; an unsubmitted planning draft stays out.
+- After the first successful `submit`, add the Plan to `nodes`. When several Plans belong to one organizational goal, maintain a Graph `group` directly; do not create another Plan.
+- Before `approve --confirm`, a normal Plan must already be in the Graph, and every incoming-edge producer must already be `done`; otherwise implementation is blocked.
+- `complete` / `verify --confirm` do not change membership. A `done` Plan and its edges remain until archive so the current Graph can still show the implementation order.
+- Only after successful `archive` remove the node, all incident edges, and group membership; delete a group when its last member leaves.
+- `reset` itself does not change membership: a submitted non-archived Plan remains in the Graph even if it returns to planning.
+
+Graph maintenance and lifecycle commands are currently two consecutive controller actions. If the lifecycle command already succeeded but the manual Graph edit fails, do not fabricate a rollback; restore Graph consistency before approving or starting other Plans.
 
 | Stage | Controller action | User gate |
 |---|---|---|
@@ -294,6 +309,7 @@ Load details only when needed instead of duplicating them in the main workflow:
 | File | Read when |
 |---|---|
 | `references/plan-guide.md` | authoring/revising Plans, Tasks, ACs, User Validation, naming, or handoff |
+| `references/active-plan-graph.md` | maintaining active Plan membership, inter-Plan execution constraints, or Graph grouping |
 | `references/commands.md` | command arguments, implementation modes, Git mutation, verify/archive behavior |
 | `references/issue-guide.md` | creating or syncing Issues |
 | `references/troubleshooting.md` | command failure, abnormal state, or edge cases |

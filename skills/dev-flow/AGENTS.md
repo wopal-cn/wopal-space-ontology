@@ -10,6 +10,7 @@ description: Issue/Plan-driven development workflow CLI — state-machine comman
 - Parent Rules: `.wopal/AGENTS.md`
 - Commands: `references/commands.md`
 - Plan Guide: `references/plan-guide.md`
+- Active Plan Graph: `references/active-plan-graph.md`
 - Issue Guide: `references/issue-guide.md`
 - Troubleshooting: `references/troubleshooting.md`
 

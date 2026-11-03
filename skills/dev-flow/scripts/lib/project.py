@@ -105,7 +105,9 @@ def search_plan_dirs(workspace_root: Path) -> list[Path]:
     plans_root = workspace_root / ".wopal-space" / "plans"
     if plans_root.is_dir():
         for project_dir in sorted(plans_root.iterdir()):
-            if project_dir.is_dir():
+            # Only real project directories participate in dev-flow lookup.
+            # Reserved directories (leading underscore) are not Plan stores.
+            if project_dir.is_dir() and not project_dir.name.startswith("_"):
                 dirs.append(project_dir)
                 done = project_dir / "done"
                 if done.is_dir():

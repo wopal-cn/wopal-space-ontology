@@ -32,12 +32,12 @@ description: >
 先按下面顺序判断，再进入生命周期；不要用复杂 Plan 结构代替这个判断：
 
 1. **Issue 记录问题或目标**。`project/*` 标签表示影响范围，可以没有、一个或多个；Issue 本身不决定某一份实施一定落在哪个项目。
-2. **普通 Plan 是一份实施**。最多关联一个 Issue，并且必须只属于一个 Target Project。
-3. **多个 Issue，实际只有一份实施** → 先用 `issue merge --into` 合成一个保留 Issue，再创建一个普通 Plan；不要写多 Issue Plan。
-4. **一个目标需要多份实施**（包括同一项目多份 Plan 或跨项目 Plan）→ 创建伞型 Plan；每个子 Plan 仍是普通 Plan。
-5. **伞型 Plan 只协调，不代做**。它没有自己的代码项目、worktree 或 Delivery，只读取子 Plan 状态并按门禁推进自己；绝不替子 Plan 改状态或改子 Issue。
+2. **一个 Plan 就是一份实施**。最多关联一个 Issue，并且必须只属于一个 Target Project。
+3. **多个 Issue，实际只有一份实施** → 先用 `issue merge --into` 合成一个保留 Issue，再创建一个 Plan；不要写多 Issue Plan。
+4. **一个目标需要多份实施**（包括同一项目多份 Plan 或跨项目 Plan）→ 分别创建多份普通 Plan，并在 Active Plan Graph 的 `groups` 中组织它们；实施先后只用 Graph `edges` 表达。
+5. **Graph group 只是组织结构，不是 Plan**。它没有 Issue、状态机、Acceptance Criteria、worktree 或 Delivery，也不参与任何 Plan 生命周期命令。
 
-具体 Issue 标签、归并命令见 `references/issue-guide.md`；普通/伞型 Plan 写法见 `references/plan-guide.zh-CN.md`；完整命令行为见 `references/commands.md`。
+具体 Issue 标签、归并命令见 `references/issue-guide.md`；Plan 与 Graph group 写法见 `references/plan-guide.zh-CN.md` / `references/active-plan-graph.zh-CN.md`；完整命令行为见 `references/commands.md`。
 
 ## DESIGN、Plan 与实现
 
@@ -76,7 +76,22 @@ description: >
 
 `planning → reviewing → executing → verifying → done → archived`
 
-伞型 Plan 复用同一状态机，但不走代码集成：`approve` 不建 worktree/Delivery；`complete` 要求所有子 Plan 至少到 `verifying`；`verify --confirm` 要求所有子 Plan 已 `done` 或 `archived`；`archive` 要求所有子 Plan 已归档。`integrate` / `verify-switch` 只对普通 Plan 使用。
+### Active Plan Graph
+
+每个 Space 维护一张 `.wopal-space/plans/active-graph.json`，作为 **submit 到 archive 生命周期窗口内 Plan 实施关系的唯一真相源**。Plan 自己只拥有内容与 workflow 状态；Phase 不复制实时 Plan 状态或 Plan 级执行 DAG。
+
+当前实践阶段没有 Graph CLI。Graph 由主控者在生命周期节点中手工维护，被委派的实施者不编辑它。完整规则见 `references/active-plan-graph.zh-CN.md`。
+
+主控者必须遵守以下门禁：
+
+- `plan new` 不改变 Graph；未 submit 的 planning 草稿不进入 Graph。
+- 第一次 `submit` 成功后，Plan 加入 `nodes`。需要把多份 Plan 组织成一个目标时，主控者直接在 Graph `groups` 中维护分组；不创建额外 Plan。
+- 普通 Plan 执行 `approve --confirm` 前必须已经在 Graph 中；所有 incoming edge 的 producer 都必须已达到 `done`，否则不得开始实施。
+- `complete` / `verify --confirm` 不改变成员关系；`done` Plan 仍留在 Graph，边也保留到 archive，用于展示完整实施顺序。
+- `archive` 成功后才移除 node、其所有 incident edges 和 group membership；某个 group 失去最后一个 member 后删除该 group。
+- `reset` 本身不改变 membership：已 submit 且尚未 archive 的 Plan 即使回到 planning 也继续留在 Graph。
+
+Graph 手工更新与 lifecycle 命令目前是两个连续动作。命令已经成功而 Graph 更新失败时，不伪造回滚；先恢复 Graph 一致性，再批准或启动其他 Plan。
 
 | 阶段 | 主控动作 | 用户门 |
 |---|---|---|
@@ -294,6 +309,7 @@ flow.sh archive <plan> [--keep-worktree]
 | 文件 | 何时读 |
 |---|---|
 | `references/plan-guide.zh-CN.md` | 写/修 Plan、Task、AC、User Validation、命名与交接时 |
+| `references/active-plan-graph.zh-CN.md` | 维护活跃 Plan 成员、Plan 间实施约束或 Graph 分组时 |
 | `references/commands.md` | 查命令参数、实施模式、Git mutation 与 verify/archive 行为时 |
 | `references/issue-guide.md` | 创建或同步 Issue 时 |
 | `references/troubleshooting.md` | 命令失败、状态异常或边缘场景时 |

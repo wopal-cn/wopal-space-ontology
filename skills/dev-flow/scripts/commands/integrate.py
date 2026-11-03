@@ -305,14 +305,6 @@ def cmd_integrate(args: argparse.Namespace) -> int:
         log_error(f"No plan found for: {target}")
         return 1
 
-    from plan import is_umbrella_plan
-    if is_umbrella_plan(str(current_plan)):
-        log_error(
-            "Umbrella Plans have no code Delivery to integrate; "
-            "run integrate on the relevant child Plan instead"
-        )
-        return 1
-
     delivery = get_plan_field(str(current_plan), "Delivery") or current_plan.stem
     if _is_unset(delivery):
         delivery = current_plan.stem

@@ -11,7 +11,6 @@
 | 命令 | 说明 |
 |------|------|
 | `plan new <issue>` | 创建新 Plan |
-| `plan new --umbrella ...` | 创建无代码项目归属的伞型 Plan |
 | `plan status <plan-id>` | 查看 Plan 完整状态 |
 | `plan list [--issue]` | 列出活跃 Plan（`--issue` 含 GitHub Issues） |
 | `submit <plan>` | 提交人工审阅（planning → reviewing） |
@@ -20,7 +19,7 @@
 | `complete <issue> [--pr]` | 实施完成，进入用户验证 |
 | `integrate <issue-or-plan> --confirm` | 将已验证的开发分支交付正式写入集成分支 |
 | `verify <issue> --confirm` | 用户验证通过 |
-| `archive <issue>` | 归档 Plan，推送 Plan 变更，同步阶段文档 |
+| `archive <issue>` | 归档 Plan 并推送 Plan 变更 |
 | `verify-switch <issue> [--yes]` | 切换到特性分支验证 |
 
 ### Issue 管理
@@ -29,7 +28,7 @@
 |------|------|
 | `issue create --title "..." [--project <name> ...] --body-file <path>` | 创建 Issue；项目标签 0..N（`--body-file` 为主路径） |
 | `issue edit <issue> [--title] [--type] [--add-project X] [--remove-project X] [--body-file] [--append]` | 编辑 Issue；项目标签逐个增删 |
-| `issue merge --into <umbrella> <issue...>` | 多 Issue、一份实施时归并 Issue |
+| `issue merge --into <primary> <issue...>` | 多 Issue、一份实施时归并 Issue |
 | `issue close <issue>` | 关闭 Issue |
 | `issue delete <issue>` | 删除 Issue |
 | `issue list [--project X] [--status Y] [--limit N]` | 列出空间仓库未完成 Issue（含 repo URL，可按 project/status 过滤） |
@@ -50,6 +49,14 @@
 |------|------|
 | `sync <issue> [--body-only\|--labels-only]` | Plan → Issue 同步 |
 | `reset <issue>` | 重置 Plan 到 planning 状态 |
+
+---
+
+## Active Plan Graph（当前实践阶段）
+
+`flow.sh` 当前**不提供 Graph 维护命令，也不会在 lifecycle 命令内部自动修改 Graph**。主控者按 `references/active-plan-graph.zh-CN.md` 在每个生命周期节点后直接维护 `.wopal-space/plans/active-graph.json`。
+
+Graph 维护是 dev-flow 主控职责，不属于 delegated implementer。Plan 已成功推进但 Graph 手工更新失败时，保留真实 Plan 状态并立即修复 Graph；在 Graph 恢复一致前不要批准或启动下一份 Plan。
 
 ---
 
@@ -86,7 +93,7 @@ flow.sh plan status enhance-dev-flow-resolver    # Plan 名字（歧义时）
 | `integrate --confirm` | `scripts/commands/integrate.py`；本地路径执行 squash / preserve-history，PR 路径通过平台合并；随后只提交 Delivery Plan 记录 | 缺确认、共享字段不一致、dirty project、Git/PR 合入失败均非零退出；正式标题只取 Plan `Commit Subject` 原值 | 成功合入后记录各成员 `Verification Commit` 与负责人 `Integration Commit` | 符合交付历史契约 |
 | `verify --confirm` | `scripts/commands/verify.py` `_commit_plan_status_or_rollback`（commit_paths → `git.py` `commit_paths`） | commit 失败：结构化诊断 + 分层恢复 + 非零退出；不 sync/close | `cmd_verify` 的 sync/close 块仅在 commit 成功后；close 吞错见记录性结论 #1 | 符合契约 |
 | `verify-switch` | `scripts/commands/verify_switch.py` `_git_fetch`（fetch）；`_remove_worktree`（worktree remove → `_prune_worktrees` prune）；`_git_checkout`（checkout）；Plan 元数据 commit 经 `_update_plan_after_switch`（commit_paths） | 全部保留 command/cwd/exit/stderr；元数据 commit 失败：非零 + 手册指引；prune 属 janitor（rc+stderr 双查，报告后继续） | worktree removal 先于 checkout；元数据 commit 失败阻断成功返回 | 符合契约（B-04 修复） |
-| `archive` | `scripts/commands/archive.py` `archive_plan_file`（`git mv` stage）；`commit_archived_plan`（commit_paths → push_repo → is_commit_pushed，`scripts/lib/git.py`）；`cmd_archive` phase-doc commit_paths；`_cleanup_worktree` → `scripts/lib/worktree.py` `clean_worktree`（→ `delete_branch`） | stage/commit/push 失败：结构化诊断 + 非零退出；commit fallback 保留双 attempt 证据；push 绑定当前分支并在 origin 验证包含（`is_commit_pushed`）；cleanup 失败：partial + 非零 | durability（commit + push 验证）成功后才执行 Issue sync/link/labels（`cmd_archive` sync 块）、cleanup、close（`cmd_archive` close 块）；phase-doc 失败不宣称已持久化 | 已修复（B-01/B-02/B-03/B-04/W-02） |
+| `archive` | `scripts/commands/archive.py` `archive_plan_file`（`git mv` stage）；`commit_archived_plan`（commit_paths → push_repo → is_commit_pushed，`scripts/lib/git.py`）；`_cleanup_worktree` → `scripts/lib/worktree.py` `clean_worktree`（→ `delete_branch`） | stage/commit/push 失败：结构化诊断 + 非零退出；commit fallback 保留双 attempt 证据；push 绑定当前分支并在 origin 验证包含（`is_commit_pushed`）；cleanup 失败：partial + 非零 | durability（commit + push 验证）成功后才执行 Issue sync/link/labels（`cmd_archive` sync 块）、cleanup、close（`cmd_archive` close 块） | 符合契约 |
 | `reset` / `plan new` / `sync` / `issue *` | 无本地 Git mutation（仅 Plan 文件 / GitHub API）；首次提交在 `submit` | — | — | 符合契约 |
 
 注：`--no-worktree` / `--existing-worktree` / `--keep-worktree` 会跳过或改变对应的 refs / worktree / checkout mutation；实际执行以所选模式的实际路径为准。
@@ -104,10 +111,9 @@ flow.sh plan status enhance-dev-flow-resolver    # Plan 名字（歧义时）
 
 1. **`verify` 的 Issue close 吞错**：`scripts/commands/verify.py` `cmd_verify` 的 Issue close 块对 `gh issue close` 不检查退出码、异常直接 `pass`；`scripts/commands/archive.py` `close_issue` 失败仅 warn（`cmd_archive` 的 close 块）。保留理由：close 是终态 best-effort，没有依赖它的后继步骤，失败不改变 Plan/记录的持久性；若未来 close 成为门控项需重新审计。
 2. **worktree prune**：`scripts/lib/worktree.py` `remove_worktree` 的 prune 段、`scripts/commands/verify_switch.py` `_prune_worktrees`。已修复：`git worktree prune` 可能在 rc=0 时把删除错误写到 stderr，现同时检查退出码与 stderr 并报告；prune 是 janitor 操作，报告后不中断主流程（非关键继续，但不再静默）。
-3. **phase-doc 非关键步骤**：`scripts/commands/archive.py` `cmd_archive` 的 phase-doc 步骤。已修复：stage/commit 失败保留完整诊断、不宣称「已更新」；archive 整体继续（非关键步骤策略保留）。
-4. **branch delete 幂等语义**：`scripts/lib/worktree.py` `BranchDeleteResult` / `delete_branch` / `clean_worktree`。已修复：区分 deleted / absent / skipped（当前分支）/ failed；真失败保留 `-d`/`-D` 双 attempt 诊断并触发 partial cleanup + 非零退出。
-5. **`write_worktree_context` 末尾 `return False`**：`scripts/lib/worktree.py` `write_worktree_context`。记录性结论：仅当 Plan 存在但既无 Worktree 块又无 Status 行时可达；所有 Plan 经 `check_doc`（Status 必需）后才进入 approve，实际不可达。无证据清理不做。
-6. **`lib/git.py` 死代码**：`scripts/lib/git.py` `push`、`delete_branch` 无调用方。保留理由：删除超出本提案范围（避免无证据清理）；如需移除应走独立演化并确认无外部引用。
+3. **branch delete 幂等语义**：`scripts/lib/worktree.py` `BranchDeleteResult` / `delete_branch` / `clean_worktree`。已修复：区分 deleted / absent / skipped（当前分支）/ failed；真失败保留 `-d`/`-D` 双 attempt 诊断并触发 partial cleanup + 非零退出。
+4. **`write_worktree_context` 末尾 `return False`**：`scripts/lib/worktree.py` `write_worktree_context`。记录性结论：仅当 Plan 存在但既无 Worktree 块又无 Status 行时可达；所有 Plan 经 `check_doc`（Status 必需）后才进入 approve，实际不可达。无证据清理不做。
+5. **`lib/git.py` 死代码**：`scripts/lib/git.py` `push`、`delete_branch` 无调用方。保留理由：删除超出本提案范围（避免无证据清理）；如需移除应走独立演化并确认无外部引用。
 
 ---
 
@@ -218,8 +224,6 @@ Agent 定位 Issue 的顺序：已知编号 → `issue view`；需要浏览/筛�
 flow.sh plan new <issue> --type <type> --slug <slug>  # 从 Issue 创建（type/slug 必填，无 scope 段）
 flow.sh plan new <issue> --project <name> --type <type> --slug <slug>  # Issue 无项目或多项目时显式选本 Plan 项目
 flow.sh plan new --project <name> --type <type> --slug <slug> [--title "..."]  # 无 Issue 普通 Plan
-flow.sh plan new --umbrella --type <type> --slug <slug> [--title "..."]       # 无 Issue 伞型 Plan
-flow.sh plan new <issue> --umbrella --type <type> --slug <slug>               # 带一个 Issue 的伞型 Plan
 # 阶段关联：默认继承 Issue body 的 Product/Phase；--product <name> --phase <id> 可覆盖（须成对，缺一报错；无关联时两项均留空）
 
 # 查询
@@ -233,7 +237,7 @@ flow.sh plan check <plan-name-or-path>  # 校验 Plan 质量（Issue 号 / Plan 
 
 `plan list` 默认离线，仅扫描本地 Plan 文件。`--issue` 增加 GitHub Issues 合并展示，无 Plan 的 Issue 显示 `[recorded]`。
 
-普通 Plan 的 `Issue` 字段只允许 `N/A` 或一个 `#N`，且必须有一个 Target Project。伞型 Plan 创建到 `.wopal-space/plans/_umbrella/`，无 Target Project / Project Path；`plan status <umbrella>` 实时汇总 `Child Plans` 的项目、Issue、状态与缺失情况。
+Plan 的 `Issue` 字段只允许 `N/A` 或一个 `#N`，且必须有一个 Target Project。一个目标需要多份实施时，分别创建多份 Plan，再按 `references/active-plan-graph.zh-CN.md` 在 Graph `groups` 中组织；不再创建额外协调 Plan。
 
 ### sync
 
@@ -265,8 +269,6 @@ flow.sh approve <plan> --confirm --existing-worktree <path> # 独立分支演进
 
 `approve` 不带 `--confirm` 时报错退出，提示使用 `submit`。`--confirm` 接受 `reviewing` 或 `planning`（快捷路径）→ `executing`。
 
-伞型 Plan 的 `approve --confirm` 只推进并持久化 Plan 状态，不创建 worktree、Work Branch 或 Delivery。`--existing-worktree` 不适用于伞型 Plan。
-
 **模式选择**：
 1. **默认模式**：创建独立 feature 分支与工作树（`.worktrees/<project>-<plan-name>`），记录集成分支 HEAD 为 Base Commit。
 2. **`--no-worktree`**：直接在集成分支（main）实施，不建分支不建工作树。
@@ -292,8 +294,6 @@ flow.sh integrate <issue-or-plan> --confirm
 5. 正式提交标题直接使用 Plan 的 `Commit Subject`。PR 路径使用平台的 squash 合并时也必须使用同一标题。
 6. 把正式分支实际生成的提交记录为负责人 Plan 的 `Integration Commit`；成员随后执行 `verify --confirm` 时都校验这同一提交。
 
-伞型 Plan 没有代码 Delivery；对伞型 Plan 调用 `integrate` 会失败并提示改为操作子 Plan。
-
 ### verify --confirm [--keep-worktree]
 
 ```bash
@@ -302,8 +302,6 @@ flow.sh verify <plan> --confirm --keep-worktree # 归档时仍需保留共用 wo
 ```
 
 `--no-worktree` 不使用 `Integration Commit`；`verify --confirm` 校验并记录用户实际查看到的 integration-branch commit 作为 `Verification Commit`。
-
-伞型 Plan 在 `verifying` 阶段只读子 Plan：所有子 Plan 必须已经 `done` 或 `archived`，并且伞型 Plan 自己的 User Validation 通过，才能 `verify --confirm` 进入 `done`。
 
 ### archive [--keep-worktree]
 
@@ -314,8 +312,6 @@ flow.sh archive <plan> --keep-worktree # 演进模式（保留 worktree 与分�
 
 共享 Delivery 先归档非负责人 Plan，并对这些成员使用 `--keep-worktree`；最后归档负责人 Plan，不带 `--keep-worktree`，由正常清理一次性删除共用 work branch 和 worktree。
 
-伞型 Plan 只有在所有子 Plan 已进入各自 `done/` 归档目录后才能归档；伞型归档不执行代码 worktree/branch 清理。
-
 ### complete --pr
 
 ```bash
@@ -325,8 +321,6 @@ flow.sh complete <issue> --pr    # PR 路径（默认不走 PR）
 ### verify-switch
 
 切换工作空间到特性分支供用户验证。
-
-伞型 Plan 没有特性分支，`verify-switch` 会拒绝并提示操作具体子 Plan。
 
 执行流程：
 1. 检查规范路径 git 状态（脏时输出 warning，不阻塞）

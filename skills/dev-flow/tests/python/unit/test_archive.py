@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # test_archive.py - Unit tests for archive command helpers
 #
-# Task 4 (Issue #155): Phase doc Related Plans table update on archive.
 # Bug fix: _detect_worktree must return metadata even when worktree path
 # has been cleaned up by verify-switch.
 
@@ -28,334 +27,9 @@ from support.git_fixtures import (
 )
 
 from commands.archive import (
-    _update_phase_doc_plan_status,
     _detect_worktree,
-    _PHASE_TABLE_HEADER,
-    _PHASE_TABLE_SEP,
     cmd_archive,
 )
-
-
-def _make_phase_doc(path: Path, rows: list[tuple[str, str, str]]) -> None:
-    """Write a minimal phase doc with a Related Plans table.
-
-    Args:
-        path: File path to write.
-        rows: List of (project, plan, status) tuples.
-    """
-    lines = [
-        "# Phase Title\n\n",
-        "Some intro text.\n\n",
-        "## Related Plans\n\n",
-        _PHASE_TABLE_HEADER + "\n",
-        _PHASE_TABLE_SEP + "\n",
-    ]
-    for proj, plan, status in rows:
-        lines.append(f"| {proj} | {plan} | {status} |\n")
-    lines.append("\nOther content.\n")
-    path.write_text("".join(lines))
-
-
-def _make_phase_doc_v5(path: Path, rows: list[tuple[str, str, str, str, str]]) -> None:
-    """Write a phase doc with a 5-column Related Plans table.
-
-    Matches the P2 phase doc format: Plan | Range | Gaps | Project | Status.
-    The Status cell may be empty (plan not yet archived).
-
-    Args:
-        path: File path to write.
-        rows: List of (plan_id, range, gaps, project, status) tuples.
-    """
-    lines = [
-        "# Phase Title\n\n",
-        "Some intro text.\n\n",
-        "## Related Plans\n\n",
-        "| Plan | Range | Gaps | Project | Status |\n",
-        "|------|-------|------|---------|--------|\n",
-    ]
-    for plan_id, range_text, gaps, proj, status in rows:
-        lines.append(f"| {plan_id} | {range_text} | {gaps} | {proj} | {status} |\n")
-    lines.append("\nOther content.\n")
-    path.write_text("".join(lines))
-
-
-class TestUpdatePhaseDocPlanStatus(unittest.TestCase):
-    """Tests for _update_phase_doc_plan_status."""
-
-    def setUp(self):
-        import tempfile
-        self.tmpdir = Path(tempfile.mkdtemp())
-        self.ws_root = self.tmpdir
-
-    def tearDown(self):
-        import shutil
-        shutil.rmtree(self.tmpdir)
-
-    def _create_phase_dir(self, product: str = "wopal-space"):
-        phases = self.ws_root / "docs" / "products" / product / "phases"
-        phases.mkdir(parents=True)
-        return phases
-
-    # ---- happy path: update status to done ----
-
-    @patch("commands.archive.log_info")
-    @patch("commands.archive.log_warn")
-    @patch("commands.archive.log_success")
-    def test_updates_status_to_done(self, mock_ok, mock_warn, mock_info):
-        phases = self._create_phase_dir()
-        doc = phases / "wopal-space-p1-one-click.md"
-        _make_phase_doc(doc, [
-            ("wopal-cli", "feat-cli-publish-p1", "planning"),
-            ("wopal-site", "feat-site-blog", "executing"),
-        ])
-
-        result = _update_phase_doc_plan_status(
-            self.ws_root, "feat-cli-publish-p1", "wopal-space", "p1",
-        )
-
-        self.assertIsNotNone(result)
-        mock_ok.assert_called_once()
-        content = doc.read_text()
-        self.assertIn("| wopal-cli | feat-cli-publish-p1 | done |", content)
-        self.assertIn("| wopal-site | feat-site-blog | executing |", content)
-        mock_info.assert_not_called()
-        mock_warn.assert_not_called()
-
-    # ---- skip: Product missing ----
-
-    @patch("commands.archive.log_info")
-    @patch("commands.archive.log_warn")
-    @patch("commands.archive.log_success")
-    def test_skip_when_product_missing(self, mock_ok, mock_warn, mock_info):
-        result = _update_phase_doc_plan_status(
-            self.ws_root, "some-plan", "", "p1",
-        )
-        self.assertIsNone(result)
-        mock_info.assert_called_once_with(
-            "No Product/Phase metadata, skipping phase doc update"
-        )
-        mock_warn.assert_not_called()
-        mock_ok.assert_not_called()
-
-    # ---- skip: Phase missing ----
-
-    @patch("commands.archive.log_info")
-    @patch("commands.archive.log_warn")
-    @patch("commands.archive.log_success")
-    def test_skip_when_phase_missing(self, mock_ok, mock_warn, mock_info):
-        result = _update_phase_doc_plan_status(
-            self.ws_root, "some-plan", "wopal-space", "",
-        )
-        self.assertIsNone(result)
-        mock_info.assert_called_once_with(
-            "No Product/Phase metadata, skipping phase doc update"
-        )
-        mock_warn.assert_not_called()
-        mock_ok.assert_not_called()
-
-    # ---- warn: phase doc not found ----
-
-    @patch("commands.archive.log_info")
-    @patch("commands.archive.log_warn")
-    @patch("commands.archive.log_success")
-    def test_warn_when_phase_doc_not_found(self, mock_ok, mock_warn, mock_info):
-        self._create_phase_dir()  # empty phases dir
-        result = _update_phase_doc_plan_status(
-            self.ws_root, "some-plan", "wopal-space", "p99",
-        )
-        self.assertIsNone(result)
-        mock_warn.assert_called_once()
-        warn_msg = str(mock_warn.call_args[0][0])
-        self.assertIn("p99", warn_msg)
-        mock_ok.assert_not_called()
-
-    # ---- warn: plan row not found in table ----
-
-    @patch("commands.archive.log_info")
-    @patch("commands.archive.log_warn")
-    @patch("commands.archive.log_success")
-    def test_warn_when_plan_not_in_table(self, mock_ok, mock_warn, mock_info):
-        phases = self._create_phase_dir()
-        doc = phases / "wopal-space-p1-one-click.md"
-        _make_phase_doc(doc, [
-            ("wopal-cli", "other-plan", "planning"),
-        ])
-
-        result = _update_phase_doc_plan_status(
-            self.ws_root, "missing-plan", "wopal-space", "p1",
-        )
-
-        self.assertIsNone(result)
-        mock_warn.assert_called_once()
-        warn_msg = str(mock_warn.call_args[0][0])
-        self.assertIn("missing-plan", warn_msg)
-        content = doc.read_text()
-        self.assertNotIn("done", content)
-        mock_ok.assert_not_called()
-
-    # ---- warn: phases directory does not exist ----
-
-    @patch("commands.archive.log_info")
-    @patch("commands.archive.log_warn")
-    @patch("commands.archive.log_success")
-    def test_warn_when_phases_dir_missing(self, mock_ok, mock_warn, mock_info):
-        result = _update_phase_doc_plan_status(
-            self.ws_root, "some-plan", "nonexistent-product", "p1",
-        )
-        self.assertIsNone(result)
-        mock_warn.assert_called_once()
-        warn_msg = str(mock_warn.call_args[0][0])
-        self.assertIn("Phases directory not found", warn_msg)
-        mock_ok.assert_not_called()
-
-    # ---- no table in doc ----
-
-    @patch("commands.archive.log_info")
-    @patch("commands.archive.log_warn")
-    @patch("commands.archive.log_success")
-    def test_warn_when_no_table_in_doc(self, mock_ok, mock_warn, mock_info):
-        phases = self._create_phase_dir()
-        doc = phases / "wopal-space-p1.md"
-        doc.write_text("# Phase\n\nNo table here.\n")
-
-        result = _update_phase_doc_plan_status(
-            self.ws_root, "some-plan", "wopal-space", "p1",
-        )
-
-        self.assertIsNone(result)
-        mock_warn.assert_called_once()
-        warn_msg = str(mock_warn.call_args[0][0])
-        self.assertIn("No Related Plans table found", warn_msg)
-        mock_ok.assert_not_called()
-
-    # ---- Issue #228: phase doc glob is case-sensitive ----
-
-    @patch("commands.archive.log_info")
-    @patch("commands.archive.log_warn")
-    @patch("commands.archive.log_success")
-    def test_phase_glob_case_insensitive(self, mock_ok, mock_warn, mock_info):
-        """Phase 'P2' (uppercase) must find a doc named with lowercase 'p2'.
-
-        Regression: Plan metadata stores Phase as 'P2' while the phase doc
-        is wopal-space-p2-*.md — the old case-sensitive glob never matched.
-        """
-        phases = self._create_phase_dir()
-        doc = phases / "wopal-space-p2-capability-assembly.md"
-        _make_phase_doc(doc, [
-            ("wopal-cli", "feature-space-materialize-assembly", "planning"),
-        ])
-
-        result = _update_phase_doc_plan_status(
-            self.ws_root, "feature-space-materialize-assembly", "wopal-space", "P2",
-        )
-
-        self.assertIsNotNone(result)
-        mock_ok.assert_called_once()
-        content = doc.read_text()
-        self.assertIn(
-            "| wopal-cli | feature-space-materialize-assembly | done |", content
-        )
-        mock_warn.assert_not_called()
-
-    # ---- Issue #228: 5-column table (Plan | Range | Gaps | Project | Status) ----
-
-    @patch("commands.archive.log_info")
-    @patch("commands.archive.log_warn")
-    @patch("commands.archive.log_success")
-    def test_v5_table_updates_status_by_inline_plan_name(self, mock_ok, mock_warn, mock_info):
-        """5-column P2-style table: row identified by inline plan name
-        ('P-A: 空间初始化与装配物化 · feature-space-materialize-assembly'),
-        Status column updated, Range/Gaps/Project columns preserved.
-        """
-        phases = self._create_phase_dir()
-        doc = phases / "wopal-space-p2-capability-assembly.md"
-        _make_phase_doc_v5(doc, [
-            (
-                "P-A: 空间初始化与装配物化 · feature-space-materialize-assembly",
-                "本体安装取回装配定义，space init 按类型装配单物化",
-                "CLI-G2, CLI-G1, CLI-G12",
-                "wopal-cli",
-                "",
-            ),
-            (
-                "P-B: 同步与能力命令面",
-                "space sync 双向对齐、space status 回答同步与装配状态",
-                "CLI-G3, CLI-G9",
-                "wopal-cli",
-                "",
-            ),
-        ])
-
-        result = _update_phase_doc_plan_status(
-            self.ws_root, "feature-space-materialize-assembly", "wopal-space", "P2",
-        )
-
-        self.assertIsNotNone(result)
-        mock_ok.assert_called_once()
-        content = doc.read_text()
-        # Status cell set to done, everything else untouched
-        self.assertIn(
-            "| P-A: 空间初始化与装配物化 · feature-space-materialize-assembly "
-            "| 本体安装取回装配定义，space init 按类型装配单物化 "
-            "| CLI-G2, CLI-G1, CLI-G12 | wopal-cli | done |", content
-        )
-        self.assertIn(
-            "| P-B: 同步与能力命令面 | space sync 双向对齐、space status 回答同步"
-            "与装配状态 | CLI-G3, CLI-G9 | wopal-cli |  |", content
-        )
-        mock_warn.assert_not_called()
-
-    @patch("commands.archive.log_info")
-    @patch("commands.archive.log_warn")
-    @patch("commands.archive.log_success")
-    def test_v5_table_empty_status_cell_replaced(self, mock_ok, mock_warn, mock_info):
-        """Empty Status cell in a 5-column row is filled with 'done'."""
-        phases = self._create_phase_dir()
-        doc = phases / "wopal-space-p2-capability-assembly.md"
-        _make_phase_doc_v5(doc, [
-            (
-                "P-A: 空间初始化与装配物化 · feature-space-materialize-assembly",
-                "range",
-                "gaps",
-                "wopal-cli",
-                "",
-            ),
-        ])
-
-        result = _update_phase_doc_plan_status(
-            self.ws_root, "feature-space-materialize-assembly", "wopal-space", "P2",
-        )
-
-        self.assertIsNotNone(result)
-        content = doc.read_text()
-        self.assertIn("| wopal-cli | done |", content)
-
-    @patch("commands.archive.log_info")
-    @patch("commands.archive.log_warn")
-    @patch("commands.archive.log_success")
-    def test_v5_table_row_without_plan_name_not_matched(self, mock_ok, mock_warn, mock_info):
-        """Row lacking the inline plan name must NOT be updated.
-
-        Until a Plan is registered against a phase slot (plan name appended
-        to the row label), archive must warn instead of guessing.
-        """
-        phases = self._create_phase_dir()
-        doc = phases / "wopal-space-p2-capability-assembly.md"
-        _make_phase_doc_v5(doc, [
-            ("P-B: 同步与能力命令面", "space sync 双向对齐", "CLI-G3", "wopal-cli", ""),
-        ])
-
-        result = _update_phase_doc_plan_status(
-            self.ws_root, "future-plan-name", "wopal-space", "P2",
-        )
-
-        self.assertIsNone(result)
-        mock_warn.assert_called_once()
-        warn_msg = str(mock_warn.call_args[0][0])
-        self.assertIn("future-plan-name", warn_msg)
-        content = doc.read_text()
-        self.assertNotIn("done", content)
-        mock_ok.assert_not_called()
 
 
 class TestDetectWorktree(unittest.TestCase):
@@ -539,7 +213,6 @@ class TestArchiveMergeDetection(unittest.TestCase):
         mock_resolve_repo,
         mock_get_field,
         mock_resolve_path,
-        mock_update_phase,
         mock_commit,
         mock_close,
     ):
@@ -558,14 +231,12 @@ class TestArchiveMergeDetection(unittest.TestCase):
             "Phase": "",
         }.get(field, "")
         mock_resolve_path.return_value = str(self.proj_dir)
-        mock_update_phase.return_value = None
         mock_commit.return_value = True
         mock_close.return_value = True
 
     @patch("commands.archive.close_issue")
     @patch("commands.archive.update_issue_plan_link")
     @patch("commands.archive.commit_archived_plan")
-    @patch("commands.archive._update_phase_doc_plan_status")
     @patch("commands.archive._cleanup_worktree")
     @patch("commands.archive.check_branch_merged")
     @patch("commands.archive.has_uncommitted_changes")
@@ -604,7 +275,6 @@ class TestArchiveMergeDetection(unittest.TestCase):
         mock_has_uncommitted,
         mock_check_merged,
         mock_cleanup,
-        mock_update_phase,
         mock_commit,
         mock_update_link,
         mock_close,
@@ -613,7 +283,7 @@ class TestArchiveMergeDetection(unittest.TestCase):
         self._setup_common_mocks(
             mock_find_ws, mock_find_plan, mock_parse_status, mock_guard,
             mock_get_project, mock_get_type, mock_get_issue, mock_resolve_repo,
-            mock_get_field, mock_resolve_path, mock_update_phase,
+            mock_get_field, mock_resolve_path,
             mock_commit, mock_close,
         )
         mock_detect_wt.return_value = {
@@ -634,7 +304,6 @@ class TestArchiveMergeDetection(unittest.TestCase):
     @patch("commands.archive.close_issue")
     @patch("commands.archive.update_issue_plan_link")
     @patch("commands.archive.commit_archived_plan")
-    @patch("commands.archive._update_phase_doc_plan_status")
     @patch("commands.archive._cleanup_worktree")
     @patch("commands.archive.check_branch_merged")
     @patch("commands.archive.has_uncommitted_changes")
@@ -673,7 +342,6 @@ class TestArchiveMergeDetection(unittest.TestCase):
         mock_has_uncommitted,
         mock_check_merged,
         mock_cleanup,
-        mock_update_phase,
         mock_commit,
         mock_update_link,
         mock_close,
@@ -682,7 +350,7 @@ class TestArchiveMergeDetection(unittest.TestCase):
         self._setup_common_mocks(
             mock_find_ws, mock_find_plan, mock_parse_status, mock_guard,
             mock_get_project, mock_get_type, mock_get_issue, mock_resolve_repo,
-            mock_get_field, mock_resolve_path, mock_update_phase,
+            mock_get_field, mock_resolve_path,
             mock_commit, mock_close,
         )
         mock_detect_wt.return_value = {
@@ -703,7 +371,6 @@ class TestArchiveMergeDetection(unittest.TestCase):
     @patch("commands.archive.close_issue")
     @patch("commands.archive.update_issue_plan_link")
     @patch("commands.archive.commit_archived_plan")
-    @patch("commands.archive._update_phase_doc_plan_status")
     @patch("commands.archive._cleanup_worktree")
     @patch("commands.archive.check_branch_merged")
     @patch("commands.archive.has_uncommitted_changes")
@@ -742,7 +409,6 @@ class TestArchiveMergeDetection(unittest.TestCase):
         mock_has_uncommitted,
         mock_check_merged,
         mock_cleanup,
-        mock_update_phase,
         mock_commit,
         mock_update_link,
         mock_close,
@@ -751,7 +417,7 @@ class TestArchiveMergeDetection(unittest.TestCase):
         self._setup_common_mocks(
             mock_find_ws, mock_find_plan, mock_parse_status, mock_guard,
             mock_get_project, mock_get_type, mock_get_issue, mock_resolve_repo,
-            mock_get_field, mock_resolve_path, mock_update_phase,
+            mock_get_field, mock_resolve_path,
             mock_commit, mock_close,
         )
         mock_detect_wt.return_value = {
@@ -771,7 +437,6 @@ class TestArchiveMergeDetection(unittest.TestCase):
     @patch("commands.archive.close_issue")
     @patch("commands.archive.update_issue_plan_link")
     @patch("commands.archive.commit_archived_plan")
-    @patch("commands.archive._update_phase_doc_plan_status")
     @patch("commands.archive._cleanup_worktree")
     @patch("commands.archive.check_branch_merged")
     @patch("commands.archive.has_uncommitted_changes")
@@ -810,7 +475,6 @@ class TestArchiveMergeDetection(unittest.TestCase):
         mock_has_uncommitted,
         mock_check_merged,
         mock_cleanup,
-        mock_update_phase,
         mock_commit,
         mock_update_link,
         mock_close,
@@ -819,7 +483,7 @@ class TestArchiveMergeDetection(unittest.TestCase):
         self._setup_common_mocks(
             mock_find_ws, mock_find_plan, mock_parse_status, mock_guard,
             mock_get_project, mock_get_type, mock_get_issue, mock_resolve_repo,
-            mock_get_field, mock_resolve_path, mock_update_phase,
+            mock_get_field, mock_resolve_path,
             mock_commit, mock_close,
         )
         # Worktree metadata exists but directory won't exist on disk
@@ -839,7 +503,6 @@ class TestArchiveMergeDetection(unittest.TestCase):
     @patch("commands.archive.close_issue")
     @patch("commands.archive.update_issue_plan_link")
     @patch("commands.archive.commit_archived_plan")
-    @patch("commands.archive._update_phase_doc_plan_status")
     @patch("commands.archive._cleanup_worktree")
     @patch("commands.archive.check_branch_merged")
     @patch("commands.archive.has_uncommitted_changes")
@@ -878,7 +541,6 @@ class TestArchiveMergeDetection(unittest.TestCase):
         mock_has_uncommitted,
         mock_check_merged,
         mock_cleanup,
-        mock_update_phase,
         mock_commit,
         mock_update_link,
         mock_close,
@@ -887,7 +549,7 @@ class TestArchiveMergeDetection(unittest.TestCase):
         self._setup_common_mocks(
             mock_find_ws, mock_find_plan, mock_parse_status, mock_guard,
             mock_get_project, mock_get_type, mock_get_issue, mock_resolve_repo,
-            mock_get_field, mock_resolve_path, mock_update_phase,
+            mock_get_field, mock_resolve_path,
             mock_commit, mock_close,
         )
         mock_detect_wt.return_value = {
@@ -1295,48 +957,6 @@ class TestArchiveMoveDiagnostics:
         assert "git mv" in message
         assert "destination exists" in message
         assert str(ws.resolve()) in message
-
-
-class TestArchivePhaseDocFailureHonesty:
-    """A failed phase-doc stage must not be masked by a later commit: the
-    document was not persisted, so it must not be reported as updated
-    (W-02). The archive itself continues (non-critical step)."""
-
-    def test_stage_failure_not_reported_as_updated(self, tmp_path, capsys):
-        ws, project, wt_dir, plan = _make_archive_workspace(tmp_path)
-
-        # Plan carries Product/Phase so the phase-doc step runs.
-        plan.write_text(
-            plan.read_text()
-            + "- **Product**: test-product\n- **Phase**: p1\n"
-        )
-        # Phase doc exists on disk but is untracked AND ignored: the stage
-        # fails for real while the archive rename is already staged (the
-        # whole-index commit of the old code would succeed and lie).
-        phases = ws / "docs" / "products" / "test-product" / "phases"
-        phases.mkdir(parents=True)
-        (phases / "test-product-p1.md").write_text(
-            "# Phase\n\n## Related Plans\n\n"
-            "| Project | Plan | Status |\n"
-            "|---------|------|--------|\n"
-            "| test-project | 42-test-plan | planning |\n"
-        )
-        (ws / ".gitignore").write_text(
-            "docs/products/test-product/phases/\n"
-        )
-
-        result, mocks = _run_archive(ws)
-
-        combined = "".join(capsys.readouterr())
-        assert "Phase doc Related Plans updated" not in combined
-        assert "ignored" in combined.lower()
-        # The archive record itself still completed (non-critical step).
-        assert result == 0
-        # The phase doc is not part of the archive commit.
-        changed = _shell_git(
-            "show", "HEAD", "--name-only", "--format=", cwd=ws
-        ).stdout
-        assert "test-product-p1.md" not in changed
 
 
 class TestArchiveStageDiagnostics:

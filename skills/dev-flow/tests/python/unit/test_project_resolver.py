@@ -110,6 +110,14 @@ class TestFindPlan:
         with pytest.raises(FileNotFoundError, match="No plan found"):
             find_plan("nonexistent-plan", workspace)
 
+    def test_reserved_plan_directory_is_ignored(self, workspace):
+        reserved = workspace / ".wopal-space" / "plans" / "_reserved"
+        reserved.mkdir(parents=True)
+        (reserved / "feature-hidden.md").write_text("# Legacy coordination record\n")
+
+        with pytest.raises(FileNotFoundError, match="No plan found"):
+            find_plan("feature-hidden", workspace)
+
 
 # -- resolve_plan_location ------------------------------------------------------
 

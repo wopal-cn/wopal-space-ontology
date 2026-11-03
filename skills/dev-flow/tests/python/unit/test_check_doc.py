@@ -18,12 +18,11 @@ BASE = """# test-plan
 ## Metadata
 
 - **Type**: test
-- **Plan Kind**: umbrella
 - **Issue**: N/A
-- **Target Project**:
+- **Target Project**: wopal-space-ontology
 - **Product**:
 - **Phase**:
-- **Project Path**:
+- **Project Path**: .wopal
 - **Status**: planning
 
 ## Goal
@@ -76,8 +75,7 @@ Free-form task content without Design Source, Behavior, TDD, or special formatti
             remove_plan_file(path)
 
     def test_target_project_requires_project_path(self):
-        content = BASE.replace("- **Plan Kind**: umbrella\n", "")
-        content = content.replace("- **Target Project**:\n", "- **Target Project**: example\n")
+        content = BASE.replace("- **Project Path**: .wopal\n", "- **Project Path**:\n")
         path = write_plan_file(content)
         try:
             with self.assertRaises(ValidationError) as ctx:
@@ -86,23 +84,12 @@ Free-form task content without Design Source, Behavior, TDD, or special formatti
         finally:
             remove_plan_file(path)
 
-    def test_normal_plan_requires_target_project(self):
-        content = BASE.replace("- **Plan Kind**: umbrella\n", "")
+    def test_plan_requires_target_project(self):
+        content = BASE.replace("- **Target Project**: wopal-space-ontology\n", "- **Target Project**:\n")
         path = write_plan_file(content)
         try:
             with self.assertRaises(ValidationError) as ctx:
                 check_doc_plan(path)
-            self.assertIn("Target Project", str(ctx.exception))
-        finally:
-            remove_plan_file(path)
-
-    def test_umbrella_plan_rejects_target_project(self):
-        content = BASE.replace("- **Target Project**:\n", "- **Target Project**: example\n")
-        path = write_plan_file(content)
-        try:
-            with self.assertRaises(ValidationError) as ctx:
-                check_doc_plan(path)
-            self.assertIn("umbrella", str(ctx.exception).lower())
             self.assertIn("Target Project", str(ctx.exception))
         finally:
             remove_plan_file(path)
@@ -130,16 +117,6 @@ Free-form task content without Design Source, Behavior, TDD, or special formatti
 
     def test_known_author_placeholder_is_rejected(self):
         content = BASE + "\n## Goal\n\n<Describe the Plan goal in one sentence.>\n"
-        path = write_plan_file(content)
-        try:
-            with self.assertRaises(ValidationError) as ctx:
-                check_doc_plan(path)
-            self.assertIn("author placeholder", str(ctx.exception))
-        finally:
-            remove_plan_file(path)
-
-    def test_umbrella_template_author_placeholders_are_rejected(self):
-        content = BASE + "\n## Acceptance Criteria\n\n<umbrella-level outcome that can be verified automatically>\n"
         path = write_plan_file(content)
         try:
             with self.assertRaises(ValidationError) as ctx:

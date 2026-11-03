@@ -43,7 +43,7 @@ flow.sh issue edit 42 --remove-project legacy-api
 flow.sh issue merge --into 40 41 42
 ```
 
-`#40` 保留为伞型/主 Issue，并记录 `Merged from`；来源 Issue 记录 `Merged into: #40`，移除活动状态标签并以 `not planned` 关闭。重复执行同一归并是幂等的；已经归并到别处的 Issue 会在写入前被拒绝。
+`#40` 保留为主 Issue，并记录 `Merged from`；来源 Issue 记录 `Merged into: #40`，移除活动状态标签并以 `not planned` 关闭。重复执行同一归并是幂等的；已经归并到别处的 Issue 会在写入前被拒绝。
 
 **不要**为了保留多个 Issue 而写 `Issue: #40, #41` 之类的多 Issue Plan。普通 Plan 的 Issue 字段最多一个。
 
@@ -160,6 +160,6 @@ flow.sh sync <issue> --body-only
 | Issue 驱动 | Issue 号、"处理 issue"、"开发" | 先创建 Issue → 再出 Plan |
 | 无 Issue（Plan 驱动） | "出方案"、"写 Plan" | 直接 `flow.sh plan new --project ... --type ... --slug ...` |
 
-一个目标需要**多份**实施时，不要合并成一个跨项目普通 Plan；改用 `flow.sh plan new --umbrella ...`，再用普通子 Plan 分别实施。详见 `references/plan-guide.md` / `references/plan-guide.zh-CN.md`。
+一个目标需要**多份**实施时，不要合并成一个跨项目 Plan；分别创建多份 Plan，再用 Active Plan Graph `groups` 组织共同目标、用 `edges` 表达实施先后。详见 `references/plan-guide.md` / `references/plan-guide.zh-CN.md` 与 `references/active-plan-graph.md`。
 
 两者都是 dev-flow 流程，区别在于是否有 Issue 载体。

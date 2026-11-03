@@ -36,9 +36,7 @@ from plan import (
     get_plan_status,
     get_plan_worktree,
     get_plan_field,
-    is_umbrella_plan,
 )
-from lib.umbrella import child_gate_failures
 from plan import (
     resolve_project_path,
 )
@@ -66,142 +64,6 @@ from lib.project import resolve_plan_location
 # ============================================
 # Helpers
 # ============================================
-
-
-
-
-# ============================================
-# Phase Doc Plan Status Update
-# ============================================
-
-_PHASE_TABLE_HEADER = "| Project | Plan | Status |"
-_PHASE_TABLE_SEP = "|---------|------|--------|"
-
-
-def _split_table_row(stripped: str) -> list[str]:
-    """Split a markdown table row into cell values, preserving empty cells.
-
-    '| a | b |  |' → ['a', 'b', ''] — empty cells are kept so column
-    indices stay aligned with the header (filtering them would shift
-    columns when a trailing Status cell is empty).
-
-    Args:
-        stripped: Stripped table row line.
-
-    Returns:
-        List of cell values (whitespace-trimmed).
-    """
-    cells = [c.strip() for c in stripped.split("|")]
-    # split("|") on "| a | b |" → ['', ' a ', ' b ', '']; drop edge empties
-    return cells[1:-1]
-
-
-def _find_plan_status_columns(lines: list[str]) -> tuple[int, int, int] | None:
-    """Locate the Related Plans table header by column names.
-
-    Scans table rows (lines starting with '|') until one contains both
-    'Plan' and 'Status' columns — supports the 3-column template
-    (Project | Plan | Status) and the 5-column phase format
-    (Plan | Range | Gaps | Project | Status) in any column order.
-
-    Args:
-        lines: Document lines.
-
-    Returns:
-        (header_idx, plan_col, status_col), or None when no such table exists.
-    """
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped.startswith("|"):
-            continue
-        cells = _split_table_row(stripped)
-        if "Plan" in cells and "Status" in cells:
-            return i, cells.index("Plan"), cells.index("Status")
-    return None
-
-
-def _update_phase_doc_plan_status(
-    workspace_root: Path,
-    plan_name: str,
-    product: str,
-    phase: str,
-    new_status: str = "done",
-) -> str | None:
-    """Update Plan status in a product phase doc's Related Plans table.
-
-    Returns the updated file path on success, None otherwise (silently skipped
-    or warned).
-    """
-    if not product or not phase:
-        log_info("No Product/Phase metadata, skipping phase doc update")
-        return None
-
-    phases_dir = workspace_root / "docs" / "products" / product / "phases"
-    if not phases_dir.exists():
-        log_warn(f"Phases directory not found: {phases_dir}")
-        return None
-
-    # Find matching phase doc(s) — case-insensitive name match, so
-    # Phase 'P2' finds wopal-space-p2-*.md
-    candidates = sorted(
-        p for p in phases_dir.glob("*.md") if phase.lower() in p.name.lower()
-    )
-
-    if not candidates:
-        log_warn(f"No phase doc found for product={product}, phase={phase}")
-        return None
-
-    phase_doc_path = candidates[0]
-
-    content = phase_doc_path.read_text()
-    lines = content.splitlines(keepends=True)
-
-    located = _find_plan_status_columns(lines)
-    if located is None:
-        log_warn(f"No Related Plans table found in {phase_doc_path.name}")
-        return None
-    header_idx, plan_col, status_col = located
-
-    # Skip the separator row (|---|) after the header
-    first_row = header_idx + 1
-    next_line = lines[first_row].strip() if first_row < len(lines) else ""
-    if next_line and set(next_line) <= set("-|: "):
-        first_row += 1
-
-    # Walk rows until blank line or next non-table line
-    updated = False
-    for i in range(first_row, len(lines)):
-        raw = lines[i]
-        # Stop at blank line or next non-table line
-        stripped = raw.strip()
-        if not stripped or not stripped.startswith("|"):
-            break
-
-        cells = _split_table_row(stripped)
-        if len(cells) <= max(plan_col, status_col):
-            continue
-
-        plan_cell = cells[plan_col]
-        # Match by exact plan name (3-column form) or by inline plan name
-        # suffix (5-column form: "P-A: 标题 · feature-plan-name")
-        if plan_cell == plan_name or plan_cell.endswith(f"· {plan_name}"):
-            parts = stripped.split("|")
-            # parts[0] is the leading empty from split; column j ↔ parts[j+1]
-            parts[status_col + 1] = f" {new_status} "
-            new_line = "|".join(parts)
-            if raw.endswith("\n") and not new_line.endswith("\n"):
-                new_line += "\n"
-            lines[i] = new_line
-            updated = True
-            break
-
-    if not updated:
-        log_warn(f"Plan '{plan_name}' not found in phase doc Related Plans table")
-        return None
-
-    phase_doc_path.write_text("".join(lines))
-    log_success(f"Updated phase doc {phase_doc_path.name}: {plan_name} → {new_status}")
-    return str(phase_doc_path)
 
 
 # ============================================
@@ -747,17 +609,8 @@ def cmd_archive(args: argparse.Namespace) -> int:
     if not guard_status(current_status, "done", input_ref):
         return 1
 
-    umbrella = is_umbrella_plan(plan_path)
-    if umbrella:
-        failures = child_gate_failures(plan_path, workspace_root, "archive")
-        if failures:
-            log_error("Cannot archive umbrella Plan; child Plans are not archived:")
-            for failure in failures:
-                log_error(f"  - {failure}")
-            return 1
-
     # Extract Plan metadata
-    project = "" if umbrella else get_plan_project(plan_path)
+    project = get_plan_project(plan_path)
     plan_type = get_plan_type(plan_path) or "chore"
     plan_issue = get_plan_issue(plan_path)
     plan_name = Path(plan_path).stem  # Extract plan name for commit message
@@ -852,11 +705,7 @@ def cmd_archive(args: argparse.Namespace) -> int:
                     # Continue — dirty working tree no longer blocks archive
                 log_warn(f"请手动 push 项目变更: cd {project_path} && git push")
 
-    # 4. Cache Product/Phase metadata before Plan is moved
-    product_meta = get_plan_field(plan_path, "Product")
-    phase_meta = get_plan_field(plan_path, "Phase")
-
-    # 5. Archive Plan file
+    # 4. Archive Plan file
     try:
         archived_file = archive_plan_file(plan_path, workspace_root)
         log_success(f"Plan archived: {archived_file}")
@@ -864,10 +713,10 @@ def cmd_archive(args: argparse.Namespace) -> int:
         log_error(f"Failed to archive plan: {e}")
         return 1
 
-    # 6. Issue Plan link update is durability-gated together with the rest
+    # 5. Issue Plan link update is durability-gated together with the rest
     #    of the Issue side effects (see step 9.5 below).
 
-    # 7. Stage archived plan in Plan's repo (rename is already staged by git mv)
+    # 6. Stage archived plan in Plan's repo (rename is already staged by git mv)
     #    If git mv was used, the rename is already staged. For safety, also
     #    stage the archived file path; a failed stage aborts before any
     #    external or destructive step.
@@ -879,38 +728,7 @@ def cmd_archive(args: argparse.Namespace) -> int:
         _report_archive_not_durable(archived_file)
         return 1
 
-    # 8. Update phase doc Related Plans table and commit in workspace root.
-    #    Non-critical step: a failed stage/commit is reported with full
-    #    diagnostics and never claims the document was persisted; the
-    #    archive itself continues (W-02). Path-isolated: only the phase doc
-    #    rides this commit (B-05).
-    phase_doc_path = _update_phase_doc_plan_status(
-        workspace_root, plan_name, product_meta, phase_meta,
-    )
-    if phase_doc_path and product_meta and phase_meta:
-        # Commit only the modified phase doc file in workspace root
-        ws_root_str = str(workspace_root)
-        phase_doc_rel = os.path.relpath(phase_doc_path, ws_root_str)
-        commit_msg = f"chore: archive plan {plan_name} — update phase doc {product_meta}/{phase_meta}"
-        result = commit_paths(ws_root_str, [phase_doc_rel], commit_msg)
-        if not result:
-            log_warn(
-                "Failed to stage/commit phase doc — the document was NOT "
-                "persisted:"
-            )
-            log_warn(str(result))
-        else:
-            log_success(f"Phase doc Related Plans updated: {product_meta}/{phase_meta}")
-            push_result = subprocess.run(
-                ["git", "push"],
-                cwd=ws_root_str,
-                capture_output=True,
-                text=True,
-            )
-            if push_result.returncode != 0:
-                log_warn(f"Failed to push phase doc: {push_result.stderr.strip()}")
-
-    # 9. Commit + push the archived plan — the durability point of the
+    # 7. Commit + push the archived plan — the durability point of the
     #    archive record. Nothing destructive or externally visible may run
     #    before this succeeds (D-07); a push failure means not durable.
     if not commit_archived_plan(
@@ -919,7 +737,7 @@ def cmd_archive(args: argparse.Namespace) -> int:
         _report_archive_not_durable(archived_file)
         return 1
 
-    # 9.5 Issue side effects — now that the archive record is durable (D-06):
+    # 8. Issue side effects — now that the archive record is durable (D-06):
     #     body sync, status label, type/project labels and the Plan link all
     #     point at the archived path. The original plan path no longer
     #     exists; the archived file is the source of the synced content.

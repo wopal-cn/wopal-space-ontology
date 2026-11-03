@@ -6,7 +6,7 @@
 #   issue edit <issue> [--title <title>] [--type <type>]
 #                  [--add-project <name> ...] [--remove-project <name> ...]
 #                  [--body-file <path>] [--append <path>]
-#   issue merge --into <umbrella> <issue...>
+#   issue merge --into <primary> <issue...>
 #   issue close <issue>
 #   issue delete <issue>
 #   issue list [--project X] [--status Y] [--limit N]
@@ -339,9 +339,9 @@ def cmd_issue_edit(args: argparse.Namespace) -> int:
 # ============================================
 
 def cmd_issue_merge(args: argparse.Namespace) -> int:
-    """Merge duplicate Issues into an already-authored umbrella Issue."""
+    """Merge duplicate Issues into an already-authored primary Issue."""
     try:
-        umbrella = _normalize_issue_ref(args.into)
+        target = _normalize_issue_ref(args.into)
         raw_sources = [_normalize_issue_ref(value) for value in (args.issues or [])]
     except ValueError as exc:
         log_error(str(exc))
@@ -352,8 +352,8 @@ def cmd_issue_merge(args: argparse.Namespace) -> int:
     if not sources:
         log_error("Missing source issues to merge")
         return 1
-    if umbrella in sources:
-        log_error(f"Issue #{umbrella} cannot be merged into itself")
+    if target in sources:
+        log_error(f"Issue #{target} cannot be merged into itself")
         return 1
 
     repo = detect_space_repo(find_workspace_root())
@@ -361,7 +361,7 @@ def cmd_issue_merge(args: argparse.Namespace) -> int:
     # Preflight every Issue before the first mutation so bad input cannot
     # create an avoidable half-merge.
     try:
-        umbrella_info = get_issue_info(umbrella, repo)
+        target_info = get_issue_info(target, repo)
         source_infos = {source: get_issue_info(source, repo) for source in sources}
     except RuntimeError:
         log_error("Failed to read all issues for merge")
@@ -369,36 +369,36 @@ def cmd_issue_merge(args: argparse.Namespace) -> int:
 
     for source, info in source_infos.items():
         existing_target = _merged_into_target(info.get("body", ""))
-        if existing_target and existing_target != umbrella:
+        if existing_target and existing_target != target:
             log_error(
                 f"Issue #{source} is already merged into #{existing_target}; "
-                f"cannot merge it into #{umbrella}"
+                f"cannot merge it into #{target}"
             )
             return 1
 
-    umbrella_body = umbrella_info.get("body", "") or ""
-    next_umbrella_body = umbrella_body
+    target_body = target_info.get("body", "") or ""
+    next_target_body = target_body
     for source in sources:
-        next_umbrella_body = _ensure_merge_history_line(
-            next_umbrella_body, f"- Merged from: #{source}"
+        next_target_body = _ensure_merge_history_line(
+            next_target_body, f"- Merged from: #{source}"
         )
 
-    if next_umbrella_body != umbrella_body:
+    if next_target_body != target_body:
         result = subprocess.run(
-            ["gh", "issue", "edit", umbrella, "--repo", repo,
-             "--body", next_umbrella_body],
+            ["gh", "issue", "edit", target, "--repo", repo,
+             "--body", next_target_body],
             capture_output=True,
             text=True,
         )
         if result.returncode != 0:
-            log_error(f"Failed to record merge sources on umbrella Issue #{umbrella}")
+            log_error(f"Failed to record merge sources on primary Issue #{target}")
             return 1
 
     for source in sources:
         info = source_infos[source]
         source_body = info.get("body", "") or ""
         next_source_body = _ensure_merge_history_line(
-            source_body, f"- Merged into: #{umbrella}"
+            source_body, f"- Merged into: #{target}"
         )
         if next_source_body != source_body:
             result = subprocess.run(
@@ -436,7 +436,7 @@ def cmd_issue_merge(args: argparse.Namespace) -> int:
                 return 1
 
     log_success(
-        f"Merged {', '.join(f'#{source}' for source in sources)} into #{umbrella}"
+        f"Merged {', '.join(f'#{source}' for source in sources)} into #{target}"
     )
     return 0
 
@@ -685,9 +685,9 @@ def register_issue_parser(subparsers: argparse._SubParsersAction) -> None:
 
     # issue merge
     merge_parser = issue_subparsers.add_parser(
-        "merge", help="Merge duplicate issues into an umbrella issue"
+        "merge", help="Merge duplicate issues into one primary issue"
     )
-    merge_parser.add_argument("--into", required=True, help="Umbrella issue number")
+    merge_parser.add_argument("--into", required=True, help="Primary issue number")
     merge_parser.add_argument("issues", nargs="+", help="Source issue numbers to merge")
     
     # issue list

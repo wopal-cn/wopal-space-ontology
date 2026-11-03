@@ -34,9 +34,7 @@ from plan import (
     get_plan_issue,
     get_plan_project_path,
     get_plan_worktree,
-    is_umbrella_plan,
 )
-from lib.umbrella import child_gate_failures
 from lib.git import (
     check_branch_merged,
     commit_exists,
@@ -364,73 +362,6 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
     # Resolve repo lazily for Issue sync / PR lookup
     repo = resolve_space_repo(effective_issue, workspace_root)
-
-    if is_umbrella_plan(plan_path):
-        if not confirm:
-            print("")
-            print("Status: verifying (umbrella awaiting user confirmation)")
-            print(f"After user verifies the umbrella outcome, run:")
-            print(f"  flow.sh verify {plan_issue or plan_name} --confirm")
-            return 0
-
-        failures = child_gate_failures(plan_path, workspace_root, "verify")
-        if failures:
-            log_error("Cannot verify umbrella Plan; child Plans are not done:")
-            for failure in failures:
-                log_error(f"  - {failure}")
-            return 1
-
-        try:
-            active = resolve_active_plan(plan_path, "verify", workspace_root)
-        except ResolveActivePlanError as e:
-            log_error(str(e))
-            return 1
-
-        try:
-            check_user_validation(str(active.active_plan_path))
-        except ValidationError as e:
-            log_error(f"User Validation gate failed: {e}")
-            return 1
-
-        target_status = "done"
-        if not is_valid_transition(current_status, target_status):
-            log_error(f"Invalid state transition: {current_status} -> {target_status}")
-            return 1
-
-        snapshot = PlanFieldSnapshot.capture(str(active.active_plan_path))
-        if not update_plan_status(str(active.active_plan_path), target_status):
-            log_error("Failed to update umbrella Plan status")
-            return 1
-
-        plan_commit_msg = (
-            f"docs(plan): verify plan #{plan_issue}"
-            if plan_issue
-            else f"docs(plan): verify plan {plan_name}"
-        )
-        if not _commit_plan_status_or_rollback(
-            active, snapshot, plan_commit_msg[:72], workspace_root
-        ):
-            return 1
-
-        if effective_issue and repo:
-            sync_status_label(effective_issue, target_status, repo)
-            sync_plan_to_issue_body(
-                effective_issue, plan_path, repo, str(workspace_root)
-            )
-            try:
-                subprocess.run(
-                    ['gh', 'issue', 'close', str(effective_issue), '--repo', repo,
-                     '--comment', 'Umbrella Plan verified and marked as done.'],
-                    capture_output=True,
-                )
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                pass
-
-        print("")
-        print("Status: done")
-        print("Reason: all child Plans done/archived + umbrella validation confirmed")
-        print(f"Next: flow.sh archive {plan_issue or plan_name}")
-        return 0
 
     # 5. Check PR merge status (PR path detection)
     is_pr_path = False

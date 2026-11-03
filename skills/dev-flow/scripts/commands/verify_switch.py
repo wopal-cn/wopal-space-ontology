@@ -13,7 +13,7 @@ from lib.project import resolve_plan_location
 from lib.workspace import find_workspace_root
 from lib.worktree import parse_worktree_context
 from lib.logging import log_success, log_error, log_warn, log_step
-from plan import find_plan, get_plan_field, is_umbrella_plan, resolve_project_path
+from plan import find_plan, get_plan_field, resolve_project_path
 
 
 
@@ -321,13 +321,6 @@ def run_verify_switch(issue: str) -> bool:
     plan_path = find_plan(issue, str(workspace_root))
     if not plan_path:
         log_error(f"Plan not found for issue {issue}")
-        return False
-
-    if is_umbrella_plan(str(plan_path)):
-        log_error(
-            "Umbrella Plans have no work branch to switch; "
-            "run verify-switch on a child Plan instead"
-        )
         return False
 
     # Parse WorktreeContext — structured format required
