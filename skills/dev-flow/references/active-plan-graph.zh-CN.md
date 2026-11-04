@@ -33,7 +33,7 @@ Graph 至少包含：
 - `membership`：说明当前采用的 submit/archive 进入退出规则；
 - `nodes`：已 submit 且尚未 archive 的 Plans；
 - `edges`：Plan 间实施顺序与硬约束；
-- `groups`：纯组织结构，用于把多份 Plan 聚合为同一个目标或工作面。
+- `groups`：纯组织结构，只用于已确认的共同交付目标，不用项目、Phase 或时间范围代替分组依据。
 
 当前实践阶段禁止加入 cron、timezone、priority、dispatch、notBefore、maxRuntime、nextRun 等自动调度字段；这些属于后续 P4 Scheduler 能力。
 
@@ -81,14 +81,14 @@ Edge 使用 `from → to`，表示：**`to` 开始实施前，`from` 必须已�
 
 ## Groups
 
-当一个目标需要多份实施时，不创建额外协调 Plan；直接在 Graph 中增加 group。
+Group 是当前 Graph 中的**单层组织容器**：把共同完成一个已确认总体交付目标的多份独立 Plan 组织起来。Group 不替代 Plan，也不是标签、项目或 Phase 的镜像；只有同项目、同 Phase、同时间段、相似主题，不足以作为建组依据。
 
 Group 的最小结构：
 
 ```json
 {
-  "id": "platform-delivery",
-  "title": "Platform Delivery",
+  "id": "shared-delivery",
+  "title": "Shared Delivery",
   "goal": "这组 Plans 共同要达成的整体结果",
   "members": [
     {
@@ -102,11 +102,14 @@ Group 的最小结构：
 规则：
 
 - `id` 在当前 Graph 内唯一且稳定；`title` / `goal` 让 UI 和 Agent 能理解这组工作的整体意图；
-- `members[].planId` 必须指向当前 `nodes`；`responsibility` 只说明职责，不表达依赖；
+- `members[].planId` 必须指向当前 `nodes`（已经 submit、尚未 archive）；`responsibility` 只说明职责，不表达依赖；禁止把未 submit 草稿写入 nodes 或 group；
+- **一个 Plan 最多属于一个 group**，也不能在同一 group 内重复出现。Group 只能直接包含 Plan node，禁止 group 嵌套 group；不属于任何 group 的 Plan 可以独立留在 Graph；
 - group 不拥有 workflow 状态、进度百分比或完成门。UI 读取 member Plans 的实时状态后动态投影进展；
-- group 不拥有执行顺序。所有先后与阻塞只由全局 `edges` 表达；
-- group 可以按用户确认的组织意图直接创建、改名、增删成员；这些变化不改变任何 Plan 生命周期；
-- member archive 后从 group 中删除；最后一个 member 离开后删除空 group；
+- group 不拥有执行顺序。所有先后与阻塞只由全局 `edges` 表达；仅仅同组不意味着成员之间有依赖，也不能自动生成 edges；
+- **用户授权边界**：建立 group、改变其总体 `goal` 或实质调整成员范围，必须有用户已确认的总体拆分/组织意图。Agent 不得凭 Plan 内容相似自行发明 group；已经确认的拆分无需每次 submit 再请示；
+- **建立与扩充**：第一个已 submit 的成员出现时即可建立对应 group，即使其余规划中的成员还未 submit，group 暂时只有一个 member 也合法。后续成员成功 submit 后按已确认拆分逐个加入。尚未 submit 的成员不预写进 group；
+- **变更**：根据已确认的组织调整成员职责、名称或归属；对实质性的目标/范围变更先取得用户确认。`id` 尽量保持稳定，避免随展示标题改名；
+- **退出**：member archive 后立即从 group 中删除；即使只剩一个 member 也保留 group，直到最后一个 member archive，再删除空 group。这是生命周期的机械清理，无需另设 group 关闭动作；
 - Graph 只保存当前工作面，不为已结束 group 额外建立历史对象；需要追溯时使用 Git 历史和归档 Plan。
 
 ## Lifecycle Hooks
@@ -116,8 +119,8 @@ Group 的最小结构：
 | dev-flow 时点 | 主控 Graph 动作 |
 |---|---|
 | `plan new` | membership 不变；草稿不进入 Graph |
-| `submit` 成功 | 添加 node；若已存在则保持幂等 |
-| 多 Plan 组织关系变化 | 直接维护 `groups`；实施顺序变化维护 `edges` |
+| `submit` 成功 | 添加 node；如果属于已确认分组则创建/更新 group 成员；若已存在则保持幂等 |
+| 多 Plan 组织关系变化 | 根据用户已确认的拆分/调整维护 `groups`；实施顺序变化单独维护 `edges`，不能从组员关系推导 |
 | `approve --confirm` 前 | Plan 必须在 Graph；每个 incoming edge 的 producer 必须已 `done` |
 | `approve --confirm` 后 | membership 不变 |
 | `complete` | membership 不变 |
@@ -135,8 +138,8 @@ Graph 手工维护失败时，不伪造生命周期回滚。保留已经成功�
 2. 每个已 submit 且尚未 archive 的 Plan 恰好一个 node；从未 submit 的 planning 草稿和已 archive Plan 没有 node；
 3. edge 两端都存在于 nodes；
 4. 无 self-edge、duplicate edge、cycle；
-5. 每个 group 的 `id` 唯一，`members[].planId` 都存在于 nodes；
-6. group 不保存 Plan 状态或执行顺序，edge 不复制到 Plan/Phase；
+5. 每个 group 的 `id` 唯一，`members[].planId` 都存在于 nodes；同组成员不重复、不同 group 成员不重叠，group 不嵌套；
+6. 每个 group 有可解释的共同交付目标与已确认的组织依据；group 不保存 Plan 状态或执行顺序，不从组员关系推导 edge，edge 不复制到 Plan/Phase；
 7. 当前实践阶段不存在 scheduling 字段。
 
 可以使用一次性的 `python3` / `jq` 做检查；不要因此新增 Graph CLI 或把校验结果写回 Plan/Phase。

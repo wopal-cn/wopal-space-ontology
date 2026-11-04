@@ -10,8 +10,8 @@ One line: **pin the contract surface, open up the implementation surface.**
 
 - **One Plan = one implementation**: it links 0..1 Issue and must have exactly one Target Project. When created from an Issue, the only `project/*` label may be inferred; zero or multiple project labels require explicit `--project <name>`.
 - **Several Issues but one implementation**: run `issue merge --into` first, then author one Plan. Multi-Issue Plan metadata is not supported.
-- **One goal requiring several implementations**: create the Plans separately and organize them in `.wopal-space/plans/active-graph.json` `groups`; express implementation order only with Graph `edges`.
-- A Graph group is not a Plan. It owns no Issue, lifecycle state, Acceptance Criteria, worktree, or Delivery. It records only the shared goal, members, and each member's responsibility. See `active-plan-graph.md`.
+- **One confirmed overall delivery goal requiring several implementations**: create separate Plans, then organize them in `.wopal-space/plans/active-graph.json` `groups` as each one is submitted. Never group solely because they share a project, Phase, or time period. Express implementation order only with Graph `edges`.
+- A Graph group is not a Plan. It owns no Issue, lifecycle state, Acceptance Criteria, worktree, or Delivery. It records only the overall goal, currently submitted members, and responsibilities. Each Plan belongs to at most one group; groups do not nest. Once the user confirms the organization, the Agent keeps membership in sync mechanically. See `active-plan-graph.md`.
 - Current implementation relationships between Plans do not belong in the Plan itself. Active Plan Graph owns the current nodes, hard dependencies, and groups.
 
 Examples:

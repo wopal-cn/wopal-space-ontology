@@ -34,8 +34,8 @@ Apply these rules in order before entering the lifecycle; do not use a complicat
 1. **An Issue records a problem or goal.** Its `project/*` labels describe impact scope and may be absent, singular, or multiple; they do not force one implementation project.
 2. **One Plan is one implementation.** It links at most one Issue and belongs to exactly one Target Project.
 3. **Several Issues, one implementation** → merge them first with `issue merge --into`, keep one Issue, then create one Plan. Do not create a multi-Issue Plan.
-4. **One goal, several implementations** — including several Plans in one project or Plans across projects — → create the normal Plans separately and organize them in Active Plan Graph `groups`; express implementation order only with Graph `edges`.
-5. **A Graph group is organization, not a Plan.** It owns no Issue, lifecycle state, Acceptance Criteria, worktree, or Delivery, and no Plan lifecycle command targets it.
+4. **One confirmed overall delivery goal, several independent implementations** — within one project or across projects — → create the Plans separately and organize them in Active Plan Graph `groups`. Sharing a project, Phase, or time period alone is not a reason to group Plans. Express implementation order only with Graph `edges`.
+5. **A Graph group is a flat organization container, not a Plan.** Each Plan belongs to at most one group; groups contain only submitted, non-archived Plan nodes and cannot nest. A group owns no Issue, lifecycle state, Acceptance Criteria, worktree, or Delivery, and no Plan lifecycle command targets it.
 
 See `references/issue-guide.md` for Issue labels/merge, `references/plan-guide.md` and `references/active-plan-graph.md` for Plan/Graph authoring, and `references/commands.md` for exact commands.
 
@@ -85,7 +85,8 @@ During the current practice phase there is no Graph CLI. The controller maintain
 The controller enforces these gates:
 
 - `plan new` does not change the Graph; an unsubmitted planning draft stays out.
-- After the first successful `submit`, add the Plan to `nodes`. When several Plans belong to one organizational goal, maintain a Graph `group` directly; do not create another Plan.
+- After the first successful `submit`, add the Plan to `nodes`. If the user has already confirmed its overall goal and group, also add it to that group; create the group when its first Plan is submitted, and add later Plans as they submit. Never add a draft as a fake node.
+- Group creation, overall-goal changes, and substantive membership changes require prior user confirmation; do not group Plans merely because they look similar. Once the user confirms the organization, maintain membership mechanically on subsequent submits without asking again. A group never implies or generates dependency edges.
 - Before `approve --confirm`, a normal Plan must already be in the Graph, and every incoming-edge producer must already be `done`; otherwise implementation is blocked.
 - `complete` / `verify --confirm` do not change membership. A `done` Plan and its edges remain until archive so the current Graph can still show the implementation order.
 - Only after successful `archive` remove the node, all incident edges, and group membership; delete a group when its last member leaves.

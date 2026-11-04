@@ -10,8 +10,8 @@ Plan 有两类读者：**评审的人**（要能看懂你要什么）和**实施
 
 - **一个 Plan = 一份实施**：Issue 为 0..1 个，Target Project 必须且只能有一个。若从 Issue 创建且 Issue 恰好只有一个 `project/*`，可以自动采用；Issue 没有项目标签或有多个项目标签时，必须显式 `--project <name>`。
 - **多个 Issue 但只有一份实施**：先 `issue merge --into`，再写一个 Plan；禁止多 Issue Plan。
-- **一个目标需要多份实施**：分别创建多份 Plan，在 `.wopal-space/plans/active-graph.json` 的 `groups` 中组织它们；Plan 间实施先后只写 Graph `edges`。
-- Graph group 不是 Plan，不拥有 Issue、状态机、Acceptance Criteria、worktree 或 Delivery。它只记录整体目标、成员及各成员职责；维护规则见 `active-plan-graph.zh-CN.md`。
+- **一个已确认的总体目标需要多份独立实施**：分别创建多份 Plan，按 `submit` 进度在 `.wopal-space/plans/active-graph.json` 的 `groups` 中组织；不要仅凭同项目、同 Phase 或时间相近自动建组。Plan 间实施先后只写 Graph `edges`。
+- Graph group 不是 Plan，不拥有 Issue、状态机、Acceptance Criteria、worktree 或 Delivery。它只记录整体目标、当前已提交成员及各成员职责；一个 Plan 最多属于一个 group，group 不能嵌套。组织方案已获用户确认后，Agent 机械维护成员即可；具体规则见 `active-plan-graph.zh-CN.md`。
 - Plan 之间的当前实施关系不写进 Plan 本身；当前节点、硬依赖和分组统一由 Active Plan Graph 持有。
 
 创建示例：

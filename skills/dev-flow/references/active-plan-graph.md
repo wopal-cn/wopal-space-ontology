@@ -33,7 +33,7 @@ The Graph contains at least:
 - `membership`, documenting the submit/archive entry and exit rule;
 - `nodes`, Plans that have been submitted and not yet archived;
 - `edges`, implementation order and hard constraints between Plans;
-- `groups`, pure organization for grouping several Plans around one goal or work surface.
+- `groups`, pure organization around a confirmed shared delivery goal, never grouping merely by project, Phase, or time period.
 
 During this practice phase, do not add cron, timezone, priority, dispatch, notBefore, maxRuntime, nextRun, or other automatic-scheduling fields. Those belong to the later P4 Scheduler capability.
 
@@ -81,14 +81,14 @@ Rules:
 
 ## Groups
 
-When one goal needs several implementations, do not create another coordination Plan. Add a group directly to the Graph.
+A group is a **flat organization container** for independent Plans that jointly deliver one confirmed overall goal. It is not a Plan, tag, project, or Phase mirror. Sharing a project, Phase, time period, or similar topic alone is insufficient reason to create a group.
 
 Minimum group shape:
 
 ```json
 {
-  "id": "platform-delivery",
-  "title": "Platform Delivery",
+  "id": "shared-delivery",
+  "title": "Shared Delivery",
   "goal": "the overall result these Plans jointly deliver",
   "members": [
     {
@@ -102,11 +102,14 @@ Minimum group shape:
 Rules:
 
 - `id` is unique and stable within the current Graph; `title` / `goal` let the UI and Agents understand the overall intent.
-- `members[].planId` must reference current `nodes`; `responsibility` describes responsibility only, never dependency.
+- `members[].planId` must reference current `nodes` (submitted and not archived); `responsibility` describes responsibility only, never dependency. Never insert unsubmitted drafts as nodes or members.
+- **Each Plan may belong to at most one group**, and must not be repeated within a group. A group may contain only direct Plan nodes; nested groups are forbidden. Plans may remain ungrouped.
 - A group owns no workflow state, progress percentage, or completion gate. The UI projects progress from the member Plans' live states.
-- A group owns no execution order. All ordering and blocking live in the global `edges` collection.
-- Create, rename, or change group membership directly when the user-confirmed organization changes; these edits do not change any Plan lifecycle.
-- Remove a member when that Plan is archived; remove the group when its last member leaves.
+- A group owns no execution order. All ordering and blocking live in the global `edges` collection. Group membership alone implies no dependency and must not generate edges automatically.
+- **Authorization boundary:** creating a group, changing its overall `goal`, or substantively changing its member scope requires an overall decomposition/organization already confirmed by the user. Do not invent groups based on perceived similarity; once the organization is confirmed, do not re-ask on each submit.
+- **Creation and growth:** create the group when the first confirmed member is submitted. It may temporarily have only one member while other planned members remain unsubmitted. Add each subsequent member after its successful submit; do not pre-populate drafts.
+- **Changes:** maintain names, responsibilities, and membership according to the confirmed organization; get user confirmation before substantive goal or scope changes. Keep `id` stable rather than renaming it with display titles.
+- **Exit:** remove a member on its successful archive. Retain a group with one remaining member; remove the group only when its last member archives. This is mechanical cleanup, not a separate group-closing action.
 - The Active Graph represents current work only. Do not create a separate historical group object; use Git history and archived Plans for traceability.
 
 ## Lifecycle Hooks
@@ -116,8 +119,8 @@ There is currently no Graph CLI, so each lifecycle command and Graph maintenance
 | dev-flow point | Controller Graph action |
 |---|---|
 | `plan new` | membership unchanged; drafts stay out of the Graph |
-| successful `submit` | add node; keep idempotent if already present |
-| multi-Plan organization changes | maintain `groups` directly; maintain `edges` when implementation order changes |
+| successful `submit` | add node; if the Plan belongs to a confirmed group, create/update its membership; keep idempotent |
+| multi-Plan organization changes | maintain `groups` from the confirmed decomposition; maintain `edges` separately when implementation order changes, never infer edges from grouping |
 | before `approve --confirm` | Plan must exist in the Graph; every incoming-edge producer must already be `done` |
 | after `approve --confirm` | membership unchanged |
 | `complete` | membership unchanged |
@@ -135,8 +138,8 @@ After every manual edit, check at least:
 2. Every submitted non-archived Plan has exactly one node; never-submitted planning drafts and archived Plans have no node.
 3. Every edge endpoint exists in nodes.
 4. There are no self-edges, duplicate edges, or cycles.
-5. Every group `id` is unique and every `members[].planId` exists in nodes.
-6. Groups do not store Plan state or execution order, and edges are not copied into Plans/Phases.
+5. Every group `id` is unique and every `members[].planId` exists in nodes; no duplicate members within or across groups and no nested groups.
+6. Every group has a clear shared delivery goal and user-confirmed organization; groups store no Plan status or execution order, never imply edges, and edges are not copied into Plans/Phases.
 7. No scheduling fields exist during this practice phase.
 
 One-off `python3` / `jq` validation is fine; do not turn this into a Graph CLI yet or write validation state back into Plans/Phases.

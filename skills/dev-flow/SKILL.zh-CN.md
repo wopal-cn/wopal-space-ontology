@@ -34,8 +34,8 @@ description: >
 1. **Issue 记录问题或目标**。`project/*` 标签表示影响范围，可以没有、一个或多个；Issue 本身不决定某一份实施一定落在哪个项目。
 2. **一个 Plan 就是一份实施**。最多关联一个 Issue，并且必须只属于一个 Target Project。
 3. **多个 Issue，实际只有一份实施** → 先用 `issue merge --into` 合成一个保留 Issue，再创建一个 Plan；不要写多 Issue Plan。
-4. **一个目标需要多份实施**（包括同一项目多份 Plan 或跨项目 Plan）→ 分别创建多份普通 Plan，并在 Active Plan Graph 的 `groups` 中组织它们；实施先后只用 Graph `edges` 表达。
-5. **Graph group 只是组织结构，不是 Plan**。它没有 Issue、状态机、Acceptance Criteria、worktree 或 Delivery，也不参与任何 Plan 生命周期命令。
+4. **一个已确认的总体目标需要多份独立实施**（同项目或跨项目）→ 分别创建 Plan，并在 Active Plan Graph 的 `groups` 中组织；只有同项目、同 Phase 或时间相近，不构成建组理由。实施先后只用 Graph `edges` 表达。
+5. **Graph group 只是单层组织结构，不是 Plan**。一个 Plan 最多属于一个 group，group 只能直接包含已 submit 且未 archive 的 Plan 节点、不能嵌套；它没有 Issue、状态机、Acceptance Criteria、worktree 或 Delivery，也不参与任何 Plan 生命周期命令。
 
 具体 Issue 标签、归并命令见 `references/issue-guide.md`；Plan 与 Graph group 写法见 `references/plan-guide.zh-CN.md` / `references/active-plan-graph.zh-CN.md`；完整命令行为见 `references/commands.md`。
 
@@ -85,7 +85,8 @@ description: >
 主控者必须遵守以下门禁：
 
 - `plan new` 不改变 Graph；未 submit 的 planning 草稿不进入 Graph。
-- 第一次 `submit` 成功后，Plan 加入 `nodes`。需要把多份 Plan 组织成一个目标时，主控者直接在 Graph `groups` 中维护分组；不创建额外 Plan。
+- 第一次 `submit` 成功后，Plan 加入 `nodes`。如果其所属总体目标/分组已获用户确认，同时加入对应 group；首个成员 submit 后即可建组，其余成员各自 submit 后再加入，不为草稿建立假 node。
+- 建组、改变总体目标或实质调整成员范围需要已有用户确认；不得凭相似性擅自归组。已确认的组织方案在后续 submit 时机械同步，无需反复请示；分组不表示依赖，不自动生成 edges。
 - 普通 Plan 执行 `approve --confirm` 前必须已经在 Graph 中；所有 incoming edge 的 producer 都必须已达到 `done`，否则不得开始实施。
 - `complete` / `verify --confirm` 不改变成员关系；`done` Plan 仍留在 Graph，边也保留到 archive，用于展示完整实施顺序。
 - `archive` 成功后才移除 node、其所有 incident edges 和 group membership；某个 group 失去最后一个 member 后删除该 group。
