@@ -314,6 +314,14 @@ flow.sh plan status <plan-name>
 | `add-skills-remove-command` | `skills-remove` |
 | `support-handling-expired-tokens` | `token-expiry` |
 
+### 命名必须能看懂
+
+合法不等于合格——读者要能光看名字就明白这项工作是干什么的。「精简」和「可理解」是两道独立的检查：
+
+- 名字要说明**对目标对象做了什么**，而不是抽象口号。用具体名词，不用空泛名词：`platform-sdk-release` 能看懂，`platform-delivery` 看不懂；`host-env-fix` 能看懂，`foundation-work` 看不懂。
+- 禁用不携带信息的词（`misc`、`foundation`、`delivery`、`support`）。如果这个名字放到一份完全不同的 Plan 上也成立，说明它太模糊。
+- 看不懂的名字要在**首次 submit 前**改掉；submit 之后名字已派生分支、被冻结，改用 group `title` 或 Plan 描述来解释。
+
 ### 哪些是强制的
 
 命名不是「靠自觉遵守」的约定——它要派生 feature 分支，所以由 CLI 校验：

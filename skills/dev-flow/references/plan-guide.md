@@ -317,6 +317,14 @@ flow.sh plan status <plan-name>
 | `add-skills-remove-command` | `skills-remove` |
 | `support-handling-expired-tokens` | `token-expiry` |
 
+### Names must be understandable
+
+A legal name is not enough — the reader must grasp the work from the name alone. Lean and understandable are two separate checks:
+
+- The name states **what the work does to its target**, not an abstract slogan. Prefer concrete nouns over vague ones: `platform-sdk-release`, not `platform-delivery`; `host-env-fix`, not `foundation-work`.
+- Avoid words that carry no information (`misc`, `foundation`, `delivery`, `support`). If the name would still fit a completely different Plan, it is too vague.
+- Rewrite a hard-to-understand name **before first submit**; after submit the branch-derived name is frozen, and the group `title` or Plan description carries the explanation instead.
+
 ### What is enforced
 
 The name is not a convention you are trusted to follow — it derives the feature branch, so the CLI checks it:

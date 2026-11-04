@@ -102,6 +102,7 @@ Minimum group shape:
 Rules:
 
 - `id` is unique and stable within the current Graph; `title` / `goal` let the UI and Agents understand the overall intent.
+- **Name for comprehension.** The `id` and `title` must state what the group actually delivers, concretely enough that a reader who has never seen the member Plans grasps the shared goal. Avoid vague umbrella words (`delivery`, `platform`, `foundation`, `misc`) as the distinguishing part: `platform-sdk-release` reads, `platform-delivery` does not. Keep `id` stable after creation — improve understanding through `title`/`goal` instead of renaming.
 - `members[].planId` must reference current `nodes` (submitted and not archived); `responsibility` describes responsibility only, never dependency. Never insert unsubmitted drafts as nodes or members.
 - **Each Plan may belong to at most one group**, and must not be repeated within a group. A group may contain only direct Plan nodes; nested groups are forbidden. Plans may remain ungrouped.
 - A group owns no workflow state, progress percentage, or completion gate. The UI projects progress from the member Plans' live states.

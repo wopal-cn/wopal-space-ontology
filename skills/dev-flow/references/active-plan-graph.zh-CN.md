@@ -102,6 +102,7 @@ Group 的最小结构：
 规则：
 
 - `id` 在当前 Graph 内唯一且稳定；`title` / `goal` 让 UI 和 Agent 能理解这组工作的整体意图；
+- **命名要能看懂**：`id` 和 `title` 必须说明这组工作实际交付什么，具体到没看过成员 Plan 的读者也能抓住共同目标。禁止用空泛的伞词（`delivery`、`platform`、`foundation`、`misc`）当区分性部分：`platform-sdk-release` 能看懂，`platform-delivery` 看不懂。`id` 建立后保持稳定，想更易懂时改 `title`/`goal`，不要改名。
 - `members[].planId` 必须指向当前 `nodes`（已经 submit、尚未 archive）；`responsibility` 只说明职责，不表达依赖；禁止把未 submit 草稿写入 nodes 或 group；
 - **一个 Plan 最多属于一个 group**，也不能在同一 group 内重复出现。Group 只能直接包含 Plan node，禁止 group 嵌套 group；不属于任何 group 的 Plan 可以独立留在 Graph；
 - group 不拥有 workflow 状态、进度百分比或完成门。UI 读取 member Plans 的实时状态后动态投影进展；
