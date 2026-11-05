@@ -105,8 +105,9 @@ def _prune_worktrees(repo_root: str) -> list[str]:
 def _remove_worktree(repo_root: str, worktree_path: str) -> bool:
     """Remove a git worktree and prune stale references.
 
-    Uses git worktree remove --force then git worktree prune
-    to ensure complete cleanup (avoids "branch already used by worktree" errors).
+    Uses only the non-forced `git worktree remove`. A worktree with local
+    changes or an initialized submodule is deliberately left in place for
+    the Agent to inspect; the switch must not bypass Git's safety check.
 
     Args:
         repo_root: Path to the git repository root
@@ -119,7 +120,7 @@ def _remove_worktree(repo_root: str, worktree_path: str) -> bool:
     if not target.exists():
         return True
 
-    cmd = ["git", "worktree", "remove", str(target), "--force"]
+    cmd = ["git", "worktree", "remove", str(target)]
     result = subprocess.run(
         cmd,
         cwd=repo_root,

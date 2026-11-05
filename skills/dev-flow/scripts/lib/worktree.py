@@ -6,7 +6,7 @@
 #
 # Provides:
 #   - create_worktree: Create a git worktree
-#   - remove_worktree: Remove a git worktree (with --force fallback)
+#   - remove_worktree: Remove a git worktree using Git safety checks
 #   - delete_branch: Delete a local branch (with -D fallback)
 #   - clean_worktree: One-stop cleanup (remove_worktree + delete_branch)
 
@@ -381,32 +381,6 @@ def create_worktree(project_dir: Path, branch: str, worktree_base: Path) -> Path
             )
 
     return worktree_path
-def _remove_empty_dirs(root: Path) -> bool:
-    """Remove an empty directory skeleton bottom-up.
-
-    macOS keeps directory hierarchy alive while a process holds the
-    directory as its cwd. git worktree remove --force deletes the files
-    but leaves the empty directories behind; once the process exits they
-    become orphaned skeletons. This removes empty directories only —
-    directories containing real files are left untouched.
-
-    Returns:
-        True if the whole skeleton is gone, False otherwise.
-    """
-    if not root.exists():
-        return True
-    if not root.is_dir():
-        return False
-
-    for dirpath, _, _ in os.walk(root, topdown=False):
-        try:
-            os.rmdir(dirpath)  # only succeeds on empty directories
-        except OSError:
-            pass
-
-    return not root.exists()
-
-
 def _find_worktree_path_by_branch(project_dir: Path, branch: str) -> Path | None:
     """Locate a worktree's real registered path via `git worktree list`.
 
@@ -447,9 +421,10 @@ def _find_worktree_path_by_branch(project_dir: Path, branch: str) -> Path | None
 def remove_worktree(project_dir: Path, branch: str, worktree_base: Path) -> list[str]:
     """Remove a git worktree (equivalent to worktree.sh cmd_remove).
 
-    Tries git worktree remove, then --force on failure. When --force also
-    fails, attempts to clean up the residual empty directory skeleton
-    (see _remove_empty_dirs). Always runs git worktree prune afterwards.
+    Uses only the non-forced `git worktree remove`. Git refuses a worktree
+    with local changes or an initialized submodule; that refusal is safety
+    information and must stop cleanup rather than be bypassed.
+    Always runs git worktree prune after a successful removal.
 
     Args:
         project_dir: Path to the project's git root directory
@@ -461,7 +436,7 @@ def remove_worktree(project_dir: Path, branch: str, worktree_base: Path) -> list
         failures still raise.
 
     Raises:
-        RuntimeError: If removal fails and residual files remain
+        RuntimeError: If removal fails.
     """
     branch_slug = branch.replace("/", "-")
     # Locate the real registered path first (git registry is authoritative).
@@ -472,7 +447,8 @@ def remove_worktree(project_dir: Path, branch: str, worktree_base: Path) -> list
         worktree_path = worktree_base / branch_slug
 
     if worktree_path.exists():
-        # Try normal remove
+        # Git's refusal is authoritative: dirty files and initialized
+        # submodules must stop cleanup, not trigger a forced retry.
         remove_cmd = ["git", "worktree", "remove", str(worktree_path)]
         result = subprocess.run(
             remove_cmd,
@@ -482,36 +458,18 @@ def remove_worktree(project_dir: Path, branch: str, worktree_base: Path) -> list
         )
 
         if result.returncode != 0:
-            # Force remove on failure
-            force_cmd = ["git", "worktree", "remove", str(worktree_path), "--force"]
-            force_result = subprocess.run(
-                force_cmd,
-                cwd=str(project_dir),
-                capture_output=True,
-                text=True,
+            failure = GitMutationFailure.from_completed(
+                remove_cmd, str(project_dir), result,
             )
-            if force_result.returncode != 0:
-                # The worktree registration is typically already gone;
-                # only a residual empty directory skeleton may remain
-                # (e.g. a process held the directory as cwd). Clean the
-                # skeleton so .worktrees/ does not accumulate orphans.
-                if not _remove_empty_dirs(worktree_path):
-                    first_attempt = GitMutationFailure.from_completed(
-                        remove_cmd, str(project_dir), result,
-                    )
-                    second_attempt = GitMutationFailure.from_completed(
-                        force_cmd, str(project_dir), force_result,
-                    )
-                    raise RuntimeError(
-                        f"Failed to remove worktree {worktree_path}:\n"
-                        f"  attempt 1: {first_attempt}\n"
-                        f"  attempt 2: {second_attempt}\n"
-                        f"Diagnostic hints:\n"
-                        f"  - Common causes: a process is holding the directory open, "
-                        f"or large untracked files (node_modules, dist, out) are present\n"
-                        f"  - Check for processes: lsof +D {worktree_path}\n"
-                        f"  - Manually remove: trash {worktree_path}"
-                    )
+            raise RuntimeError('\n'.join([
+                f"Failed to remove worktree {worktree_path}:",
+                str(failure),
+                "Diagnostic hints:",
+                "  - Git may be refusing because the worktree has local changes "
+                "or contains an initialized submodule",
+                "  - Inspect the worktree and nested submodules before removing it manually",
+                f"  - Check for processes: lsof +D {worktree_path}",
+            ]))
 
     # Always prune (whether remove succeeded or path didn't exist).
     # `git worktree prune` can exit 0 while printing a deletion error to
@@ -673,6 +631,16 @@ def clean_worktree(project_dir: Path, branch: str, worktree_base: Path) -> dict:
             errors.extend(warnings)
     except Exception as e:
         errors.append(f"Failed to remove worktree: {e}")
+
+    # A failed removal means the worktree may still contain the only copy
+    # of local work. Never continue to delete its branch.
+    if not removed:
+        return {
+            "removed": False,
+            "branch_deleted": False,
+            "branch_status": "skipped",
+            "errors": errors,
+        }
 
     # 2. Delete branch — a real failure keeps both attempts' diagnostics
     #    so callers can report the incomplete cleanup truthfully.

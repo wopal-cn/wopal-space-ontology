@@ -272,6 +272,8 @@ flow.sh archive <plan> [--keep-worktree]
 - 主控者不要手动创建、删除 feature 分支或 worktree；
 - `--no-worktree` 从一开始就在正式分支实施，没有开发分支，也没有 `integrate` 或归档清理开发分支这一步。
 
+清理采用安全失败：脚本不初始化 submodule，也不会强制删除有未提交内容或已初始化 submodule 的 worktree。项目有 submodule 时，Agent 按项目说明在工作树创建后、以及集成或切换分支后完成初始化和同步。清理被阻止时，保留 worktree 和分支，先检查和保存子仓库工作，再明确处理。
+
 不要加载其他 worktree 管理技能去接管 dev-flow 已经管理的 worktree。
 
 ## 用户授权门

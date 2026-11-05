@@ -272,6 +272,8 @@ Dev-flow scripts own branch/worktree creation and deletion:
 - the controller does not manually create or delete feature branches or worktrees;
 - `--no-worktree` starts and stays on the integration branch, so it has no work branch, no `integrate` step, and no work-branch cleanup at archive.
 
+Cleanup is fail-closed. The scripts do not initialize submodules or force-remove dirty or submodule worktrees. When a project has submodules, the controller initializes and updates them according to the project instructions after worktree creation and after integration or branch switching. A blocked cleanup means preserve the worktree and branch, inspect and publish nested work first, then remove it explicitly.
+
 Do not load a separate worktree-management skill to take over worktrees already owned by dev-flow.
 
 ## User authorization gates

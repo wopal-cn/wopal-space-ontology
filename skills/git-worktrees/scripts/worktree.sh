@@ -245,9 +245,9 @@ cmd_remove() {
     local worktree_path="$workspace_root/.worktrees/${project}-${branch_path}"
 
     if [ -d "$worktree_path" ]; then
-        git -C "$project_dir" worktree remove "$worktree_path" 2>/dev/null || \
-            git -C "$project_dir" worktree remove --force "$worktree_path" 2>/dev/null || \
-            git -C "$project_dir" worktree prune
+        if ! git -C "$project_dir" worktree remove "$worktree_path"; then
+            die "failed to remove worktree: $worktree_path (worktree and branch were preserved)"
+        fi
         echo "removed worktree: $worktree_path"
     else
         git -C "$project_dir" worktree prune >/dev/null 2>&1

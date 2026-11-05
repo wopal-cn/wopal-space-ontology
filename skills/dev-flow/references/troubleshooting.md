@@ -10,6 +10,7 @@
 | `Done completion failed` | 勾选所有 Task Done checkbox |
 | `Agent Verification failed` | 补齐 Agent Verification checkbox |
 | `dirty workspace` | 清理/提交 或使用 worktree 隔离 |
+| `working trees containing submodules cannot be moved or removed` | 停止清理；检查并保存/发布子仓库工作，再由 Agent 明确处理 worktree，不要自动 force |
 | `PR not merged yet` | 用户验证后运行 `flow.sh integrate <plan> --confirm`，由 integrate 完成正式 PR 合入 |
 | `User Validation gate failed` | 让用户完成验证并勾选最终 checkbox |
 | `Integration Commit is missing` | 本次 Delivery 尚未正式集成；完成用户验证后运行 `flow.sh integrate <plan> --confirm` |

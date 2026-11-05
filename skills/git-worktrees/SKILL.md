@@ -123,7 +123,7 @@ git merge hotfix/security-patch
 ./scripts/worktree.sh remove <project> <branch>
 ```
 
-自动执行：`git worktree remove` → 删除本地分支（跳过当前分支）。
+执行非强制的 git worktree remove；删除失败时保留 worktree 和分支，不自动重试。删除成功后才删除本地分支（跳过当前分支）。
 
 ### prune
 
@@ -145,7 +145,7 @@ git merge hotfix/security-patch
 
 ## 依赖安装
 
-脚本不自动安装依赖。创建 worktree 后会根据项目类型输出安装提示：
+脚本不自动安装依赖，也不初始化 submodule。创建 worktree 后，项目有 submodule 时由 Agent 按项目说明初始化；依赖安装提示如下：
 
 - Node.js: 检测 `packageManager` 字段（bun/pnpm/npm），提示对应命令
 - Python: 提示 `pip install -e .`
@@ -160,7 +160,7 @@ git merge hotfix/security-patch
 ./scripts/worktree.sh remove <project> <branch>
 ```
 
-脚本自动处理 worktree 删除和分支清理。
+脚本只在非强制删除成功后清理分支；失败时保留现场。
 
 ### 常见问题
 

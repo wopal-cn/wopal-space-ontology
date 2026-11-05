@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # test_worktree_context.py - TDD tests for WorktreeContext model and helpers
 
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -22,6 +21,7 @@ from lib.worktree import (
     resolve_active_plan,
     remove_worktree,
     create_worktree,
+    clean_worktree,
     delete_branch,
 )
 
@@ -588,28 +588,25 @@ class TestResolveActivePlanArchive:
         assert info.active_plan_path == plan_file.resolve()
 
 
-# -- remove_worktree force failure tests --------------------------------------
+# -- remove_worktree failure tests --------------------------------------------
 
-class TestRemoveWorktreeForceFailure:
-    """remove_worktree: --force failure raises RuntimeError whose message
-    carries the original stderr and diagnostic guidance."""
+class TestRemoveWorktreeFailure:
+    """remove_worktree: a failed non-forced removal preserves diagnostics."""
 
     @pytest.mark.parametrize(
         "stderr,expected_substrings",
         [
-            # Original stderr is preserved in the message
             (
                 "error: cannot lock ref 'refs/heads/feature-x'\n",
                 ["cannot lock ref", "Failed to remove worktree"],
             ),
-            # Message carries diagnostic hints and actionable commands
             (
                 "fatal: cannot remove worktree\n",
-                ["Diagnostic hints", "lsof +D", "trash", "node_modules", "dist"],
+                ["Diagnostic hints", "lsof +D", "initialized submodule"],
             ),
         ],
     )
-    def test_force_failure_message_content(
+    def test_failure_message_content(
         self, tmp_path, stderr, expected_substrings
     ):
         from unittest.mock import patch, MagicMock
@@ -620,7 +617,6 @@ class TestRemoveWorktreeForceFailure:
         worktree_base.mkdir()
         worktree_path = worktree_base / "feature-x"
         worktree_path.mkdir()
-        # Real file in the worktree — residual files cannot be auto-cleaned
         (worktree_path / "locked-file.txt").write_text("held by a process")
 
         fail_result = MagicMock()
@@ -634,81 +630,14 @@ class TestRemoveWorktreeForceFailure:
             msg = str(exc_info.value)
             for sub in expected_substrings:
                 assert sub in msg
-            # The failing path is always part of the message
             assert str(worktree_path) in msg
-
-
-class TestRemoveWorktreeResidualCleanup:
-    """remove_worktree: force failure must attempt residual-dir cleanup.
-
-    Regression: macOS keeps directory hierarchy alive while a process holds
-    the directory as cwd. git worktree remove --force deletes the files but
-    leaves the directory skeleton behind; git worktree prune clears the
-    registration, orphaning the leftover directory. Once the process exits,
-    the leftover dirs must be removed so they do not accumulate under
-    .worktrees/.
-    """
-
-    def test_removes_residual_dirs_after_force_failure(self, tmp_path):
-        """After --force fails, empty residual dirs under worktree_path
-        are removed and no exception is raised."""
-        from unittest.mock import patch, MagicMock
-
-        project_dir = tmp_path / "project"
-        project_dir.mkdir()
-        worktree_base = tmp_path / ".worktrees"
-        worktree_base.mkdir()
-        worktree_path = worktree_base / "feature-x"
-        worktree_path.mkdir()
-        (worktree_path / "packages" / "app" / ".vite" / "deps").mkdir(parents=True)
-
-        # Normal remove fails, --force fails, prune succeeds
-        remove_fail = MagicMock()
-        remove_fail.returncode = 1
-        remove_fail.stderr = "fatal: cannot remove worktree\n"
-        prune_ok = MagicMock()
-        prune_ok.returncode = 0
-        porcelain_empty = MagicMock()
-        porcelain_empty.returncode = 0
-        porcelain_empty.stdout = ""
-
-        with patch("lib.worktree.subprocess.run", side_effect=[porcelain_empty, remove_fail, remove_fail, prune_ok]):
-            remove_worktree(project_dir, "feature/x", worktree_base)
-
-        assert not worktree_path.exists(), "residual worktree dir must be cleaned"
-
-    def test_keeps_residual_dirs_when_non_empty(self, tmp_path):
-        """Non-empty residual dirs (real files) survive and error is raised."""
-        from unittest.mock import patch, MagicMock
-
-        project_dir = tmp_path / "project"
-        project_dir.mkdir()
-        worktree_base = tmp_path / ".worktrees"
-        worktree_base.mkdir()
-        worktree_path = worktree_base / "feature-x"
-        worktree_path.mkdir()
-        residual_file = worktree_path / "important.txt"
-        residual_file.write_text("keep me")
-
-        remove_fail = MagicMock()
-        remove_fail.returncode = 1
-        remove_fail.stderr = "fatal: cannot remove worktree\n"
-        porcelain_empty = MagicMock()
-        porcelain_empty.returncode = 0
-        porcelain_empty.stdout = ""
-
-        with patch("lib.worktree.subprocess.run", side_effect=[porcelain_empty, remove_fail, remove_fail]):
-            with pytest.raises(RuntimeError):
-                remove_worktree(project_dir, "feature/x", worktree_base)
-
-        assert residual_file.exists(), "non-empty residual files must not be deleted"
 
 
 # -- Git mutation attempt diagnostics -----------------------------------------
 
 
 def _git(path: Path, *args: str) -> subprocess.CompletedProcess:
-    """Run a git command inside `path`, asserting success."""
+    """Run a git command in path, asserting success."""
     result = subprocess.run(
         ["git", *args], cwd=str(path), capture_output=True, text=True,
     )
@@ -725,6 +654,66 @@ def _init_repo_with_commit(path: Path) -> None:
     (path / "README.md").write_text("# test\n")
     _git(path, "add", "README.md")
     _git(path, "commit", "-m", "init")
+
+
+class TestRemoveWorktreeSubmoduleSafety:
+    """An initialized submodule stops cleanup instead of being force-deleted."""
+
+    def test_initialized_submodule_is_preserved(self, tmp_path):
+        child = tmp_path / "child"
+        _init_repo_with_commit(child)
+        parent = tmp_path / "parent"
+        _init_repo_with_commit(parent)
+        _git(
+            parent, "-c", "protocol.file.allow=always",
+            "submodule", "add", str(child), "third_party/child",
+        )
+        _git(
+            parent, "-c", "protocol.file.allow=always",
+            "submodule", "update", "--init", "--recursive",
+        )
+        _git(parent, "add", ".")
+        _git(parent, "commit", "-m", "add child")
+
+        branch = "feature/with-child"
+        worktree_path = tmp_path / "checkout"
+        _git(parent, "worktree", "add", "-b", branch, str(worktree_path), "HEAD")
+        _git(
+            worktree_path, "-c", "protocol.file.allow=always",
+            "submodule", "update", "--init", "--recursive",
+        )
+        child_file = worktree_path / "third_party" / "child" / "README.md"
+        child_file.write_text("# local child change\n")
+
+        with pytest.raises(RuntimeError) as exc_info:
+            remove_worktree(parent, branch, tmp_path / ".worktrees")
+
+        message = str(exc_info.value).lower()
+        assert "submodule" in message
+        assert worktree_path.exists()
+        assert child_file.read_text() == "# local child change\n"
+
+
+class TestCleanWorktreeFailure:
+    """Branch deletion must not continue after worktree removal fails."""
+
+    def test_removal_failure_preserves_branch_and_worktree(self, tmp_path):
+        repo = tmp_path / "project"
+        _init_repo_with_commit(repo)
+
+        branch = "feature/remove-failure"
+        worktree_path = tmp_path / "checkout"
+        _git(repo, "worktree", "add", "-b", branch, str(worktree_path), "HEAD")
+        (worktree_path / "untracked.txt").write_text("keep\n")
+
+        result = clean_worktree(repo, branch, tmp_path / ".worktrees")
+
+        assert result["removed"] is False
+        assert result["branch_deleted"] is False
+        assert result["branch_status"] == "skipped"
+        assert worktree_path.exists()
+        assert (worktree_path / "untracked.txt").read_text() == "keep\n"
+        _git(repo, "rev-parse", "--verify", f"refs/heads/{branch}")
 
 
 class TestCreateWorktreeAttemptDiagnostics:
@@ -757,39 +746,25 @@ class TestCreateWorktreeAttemptDiagnostics:
         assert str(target) in message                 # attempted path
 
 
-class TestRemoveWorktreeAttemptDiagnostics:
-    """remove_worktree: a failed --force fallback must not overwrite the
-    normal-remove attempt's evidence in the raised error."""
+class TestRemoveWorktreeFailureDiagnostics:
+    """A failed removal keeps the single normal-removal diagnostic."""
 
-    def test_both_attempt_errors_preserved(self, tmp_path):
-        if os.geteuid() == 0:
-            pytest.skip("chmod-based failure injection has no effect as root")
-
+    def test_normal_failure_evidence_is_preserved(self, tmp_path):
         repo = tmp_path / "project"
         _init_repo_with_commit(repo)
 
-        branch = "feature/remove-dual-failure"
+        branch = "feature/remove-failure"
         worktree_path = tmp_path / "checkout"
         _git(repo, "worktree", "add", "-b", branch, str(worktree_path), "HEAD")
-
-        # Dirty worktree: normal remove refuses ("use --force").
         (worktree_path / "untracked.txt").write_text("dirty\n")
-        # Read-only directory: --force cannot delete its content either.
-        held_dir = worktree_path / "held-dir"
-        held_dir.mkdir()
-        (held_dir / "held.txt").write_text("held\n")
-        os.chmod(held_dir, 0o555)
-        try:
-            with pytest.raises(RuntimeError) as exc_info:
-                remove_worktree(repo, branch, tmp_path / ".worktrees")
-        finally:
-            os.chmod(held_dir, 0o755)
+
+        with pytest.raises(RuntimeError) as exc_info:
+            remove_worktree(repo, branch, tmp_path / ".worktrees")
 
         message = str(exc_info.value)
-        assert "use --force to delete it" in message  # attempt 1 evidence
-        assert "failed to delete" in message          # attempt 2 evidence
-        assert message.count("git worktree remove") == 2
-        assert message.count("exit code:") == 2
+        assert "use --force to delete it" in message
+        assert message.count("command: git worktree remove") == 1
+        assert "attempt 2" not in message
         assert str(worktree_path.resolve()) in message
 
 
