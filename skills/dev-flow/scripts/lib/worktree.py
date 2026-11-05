@@ -418,12 +418,127 @@ def _find_worktree_path_by_branch(project_dir: Path, branch: str) -> Path | None
     return None
 
 
-def remove_worktree(project_dir: Path, branch: str, worktree_base: Path) -> list[str]:
-    """Remove a git worktree (equivalent to worktree.sh cmd_remove).
+def _git_output(path: Path, *args: str) -> tuple[int, str]:
+    """Run Git in one worktree and return its exit code with combined output."""
+    cmd = ["git", "-C", str(path), *args]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    return result.returncode, (result.stdout + result.stderr).strip()
 
-    Uses only the non-forced `git worktree remove`. Git refuses a worktree
-    with local changes or an initialized submodule; that refusal is safety
-    information and must stop cleanup rather than be bypassed.
+
+def _local_only_work(worktree_path: Path) -> tuple[bool, list[str]]:
+    """Report tracked changes and local-only work in a worktree.
+
+    Returns:
+        (has_parent_changes, submodule_paths_with_local_work)
+
+    Ignored build and test output is intentionally excluded. A missing
+    submodule is not local work: it has not been initialized.
+    """
+    rc, lines = _git_output(
+        worktree_path, "status", "--porcelain", "--ignore-submodules=none",
+    )
+    if rc != 0:
+        return True, []
+    parent_lines = []
+    for line in lines.splitlines():
+        if line.startswith(" M ") or line.startswith("M  "):
+            continue
+        parent_lines.append(line)
+    parent_changed = bool(parent_lines)
+
+    registered = worktree_path / ".gitmodules"
+    if not registered.is_file():
+        return parent_changed, []
+
+    rc, names = _git_output(
+        worktree_path, "config", "-f", ".gitmodules", "--get-regexp",
+        r"^submodule\..*\.path$",
+    )
+    if rc != 0:
+        return parent_changed, []
+
+    unsafe: list[str] = []
+    for relative in (
+        line.split(maxsplit=1)[1] for line in names.splitlines() if " " in line
+    ):
+        child = worktree_path / relative
+        if not child.is_dir():
+            continue
+        rc, _ = _git_output(child, "rev-parse", "--git-dir")
+        if rc != 0:
+            continue
+        rc, dirty = _git_output(
+            child, "status", "--porcelain", "--ignore-submodules=none",
+        )
+        if rc != 0 or dirty:
+            unsafe.append(relative)
+            continue
+
+        pinned_rc, pinned = _git_output(worktree_path, "rev-parse", ":" + relative)
+        head_rc, head = _git_output(child, "rev-parse", "HEAD")
+        if pinned_rc != 0 or head_rc != 0 or pinned.strip() != head.strip():
+            unsafe.append(relative)
+            continue
+        rc, containing = _git_output(
+            child, "branch", "-r", "--contains", head.strip(),
+        )
+        if rc != 0 or not containing:
+            unsafe.append(relative)
+    return parent_changed, unsafe
+
+
+def _remove_clean_worktree(
+    project_dir: Path, worktree_path: Path, *, allow_force: bool,
+) -> None:
+    """Remove one worktree after confirming no local-only work remains."""
+    parent_changed, unsafe_submodules = _local_only_work(worktree_path)
+    if parent_changed or unsafe_submodules:
+        details = []
+        if parent_changed:
+            details.append("tracked or untracked files")
+        if unsafe_submodules:
+            details.append(
+                "local-only submodule work: " + ", ".join(unsafe_submodules)
+            )
+        raise RuntimeError("\n".join([
+            f"Failed to remove worktree {worktree_path}:",
+            "Preserved " + "; ".join(details) + ".",
+            "Save or publish it, then rerun cleanup.",
+        ]))
+
+    cmd = ["git", "worktree", "remove"]
+    if allow_force:
+        cmd.append("--force")
+    cmd.append(str(worktree_path))
+    result = subprocess.run(cmd, cwd=str(project_dir), capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError("\n".join([
+            f"Failed to remove worktree {worktree_path}:",
+            str(GitMutationFailure.from_completed(cmd, str(project_dir), result)),
+        ]))
+
+
+def remove_worktree_path(project_dir: Path, worktree_path: Path) -> None:
+    """Remove one worktree by path, preserving local-only work."""
+    if not worktree_path.exists():
+        return
+    result = subprocess.run(
+        ["git", "worktree", "remove", str(worktree_path)],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        _remove_clean_worktree(project_dir, worktree_path, allow_force=True)
+
+
+def remove_worktree(project_dir: Path, branch: str, worktree_base: Path) -> list[str]:
+    """Remove a git worktree, preserving any local-only work.
+
+    Normal removal is tried first. Git's refusal is inspected rather than
+    blindly force-deleted: ignored build and test output is safe to remove,
+    while tracked changes, non-ignored untracked files, and submodule state
+    that is not fully reproducible must stop cleanup.
     Always runs git worktree prune after a successful removal.
 
     Args:
@@ -446,30 +561,7 @@ def remove_worktree(project_dir: Path, branch: str, worktree_base: Path) -> list
         # Worktree directory = branch (branch already contains the project prefix)
         worktree_path = worktree_base / branch_slug
 
-    if worktree_path.exists():
-        # Git's refusal is authoritative: dirty files and initialized
-        # submodules must stop cleanup, not trigger a forced retry.
-        remove_cmd = ["git", "worktree", "remove", str(worktree_path)]
-        result = subprocess.run(
-            remove_cmd,
-            cwd=str(project_dir),
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode != 0:
-            failure = GitMutationFailure.from_completed(
-                remove_cmd, str(project_dir), result,
-            )
-            raise RuntimeError('\n'.join([
-                f"Failed to remove worktree {worktree_path}:",
-                str(failure),
-                "Diagnostic hints:",
-                "  - Git may be refusing because the worktree has local changes "
-                "or contains an initialized submodule",
-                "  - Inspect the worktree and nested submodules before removing it manually",
-                f"  - Check for processes: lsof +D {worktree_path}",
-            ]))
+    remove_worktree_path(project_dir, worktree_path)
 
     # Always prune (whether remove succeeded or path didn't exist).
     # `git worktree prune` can exit 0 while printing a deletion error to

@@ -518,11 +518,8 @@ class TestSwitchMutationDiagnostics:
         assert result is False
         combined = "".join(capsys.readouterr())
         assert "command: git worktree remove" in combined
-        remove_line = next(
-            line for line in combined.splitlines()
-            if line.startswith("command: git worktree remove")
-        )
-        assert "--force" not in remove_line
+        assert "locked" in combined.lower()
+        assert str(wt_dir) in combined
         assert "locked" in combined.lower()
 
     def test_checkout_failure_keeps_full_diagnostics(self, tmp_path, capsys):

@@ -591,46 +591,24 @@ class TestResolveActivePlanArchive:
 # -- remove_worktree failure tests --------------------------------------------
 
 class TestRemoveWorktreeFailure:
-    """remove_worktree: a failed non-forced removal preserves diagnostics."""
+    """remove_worktree: any tracked or untracked local file is preserved."""
 
-    @pytest.mark.parametrize(
-        "stderr,expected_substrings",
-        [
-            (
-                "error: cannot lock ref 'refs/heads/feature-x'\n",
-                ["cannot lock ref", "Failed to remove worktree"],
-            ),
-            (
-                "fatal: cannot remove worktree\n",
-                ["Diagnostic hints", "lsof +D", "initialized submodule"],
-            ),
-        ],
-    )
-    def test_failure_message_content(
-        self, tmp_path, stderr, expected_substrings
-    ):
-        from unittest.mock import patch, MagicMock
+    def test_local_file_is_preserved_with_actionable_message(self, tmp_path):
+        repo = tmp_path / "project"
+        _init_repo_with_commit(repo)
 
-        project_dir = tmp_path / "project"
-        project_dir.mkdir()
-        worktree_base = tmp_path / ".worktrees"
-        worktree_base.mkdir()
-        worktree_path = worktree_base / "feature-x"
-        worktree_path.mkdir()
-        (worktree_path / "locked-file.txt").write_text("held by a process")
+        branch = "feature/local-file"
+        worktree_path = tmp_path / "checkout"
+        _git(repo, "worktree", "add", "-b", branch, str(worktree_path), "HEAD")
+        (worktree_path / "notes.txt").write_text("keep\n")
 
-        fail_result = MagicMock()
-        fail_result.returncode = 1
-        fail_result.stderr = stderr
+        with pytest.raises(RuntimeError) as exc_info:
+            remove_worktree(repo, branch, tmp_path / ".worktrees")
 
-        with patch("lib.worktree.subprocess.run", return_value=fail_result):
-            with pytest.raises(RuntimeError) as exc_info:
-                remove_worktree(project_dir, "feature/x", worktree_base)
-
-            msg = str(exc_info.value)
-            for sub in expected_substrings:
-                assert sub in msg
-            assert str(worktree_path) in msg
+        message = str(exc_info.value)
+        assert "Preserved tracked or untracked files" in message
+        assert "Save or publish it, then rerun cleanup" in message
+        assert worktree_path.exists()
 
 
 # -- Git mutation attempt diagnostics -----------------------------------------
@@ -716,6 +694,51 @@ class TestCleanWorktreeFailure:
         _git(repo, "rev-parse", "--verify", f"refs/heads/{branch}")
 
 
+class TestRemoveWorktreeIgnoredArtifacts:
+    """Ignored test/build files do not block a clean worktree removal."""
+
+    def test_ignored_artifacts_are_removed(self, tmp_path):
+        parent = tmp_path / "parent"
+        _init_repo_with_commit(parent)
+        (parent / ".gitignore").write_text(
+            ".venv/\n__pycache__/\n.pytest_cache/\ndist/\nnode_modules/\n"
+        )
+        _git(parent, "add", ".gitignore")
+        _git(parent, "commit", "-m", "ignore generated output")
+
+        branch = "feature/generated-output"
+        worktree_path = tmp_path / "checkout"
+        _git(parent, "worktree", "add", "-b", branch, str(worktree_path), "HEAD")
+        for name in (".venv", "__pycache__", ".pytest_cache", "dist", "node_modules"):
+            generated = worktree_path / name
+            generated.mkdir()
+            (generated / "output").write_text("regenerable\n")
+
+        warnings = remove_worktree(parent, branch, tmp_path / ".worktrees")
+
+        assert warnings == []
+        assert not worktree_path.exists()
+
+
+class TestRemoveWorktreeTrackedChange:
+    """A tracked edit is local work and must never be discarded."""
+
+    def test_tracked_change_is_preserved(self, tmp_path):
+        parent = tmp_path / "parent"
+        _init_repo_with_commit(parent)
+
+        branch = "feature/tracked-change"
+        worktree_path = tmp_path / "checkout"
+        _git(parent, "worktree", "add", "-b", branch, str(worktree_path), "HEAD")
+        (worktree_path / "README.md").write_text("# unsaved local work\n")
+
+        with pytest.raises(RuntimeError):
+            remove_worktree(parent, branch, tmp_path / ".worktrees")
+
+        assert worktree_path.exists()
+        assert (worktree_path / "README.md").read_text() == "# unsaved local work\n"
+
+
 class TestCreateWorktreeAttemptDiagnostics:
     """create_worktree: a failed fallback must not overwrite the first
     attempt's evidence in the raised error."""
@@ -762,9 +785,8 @@ class TestRemoveWorktreeFailureDiagnostics:
             remove_worktree(repo, branch, tmp_path / ".worktrees")
 
         message = str(exc_info.value)
-        assert "use --force to delete it" in message
-        assert message.count("command: git worktree remove") == 1
-        assert "attempt 2" not in message
+        assert "Preserved tracked or untracked files" in message
+        assert "Save or publish it, then rerun cleanup" in message
         assert str(worktree_path.resolve()) in message
 
 

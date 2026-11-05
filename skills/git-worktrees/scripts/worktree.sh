@@ -179,6 +179,10 @@ cmd_create() {
         git -C "$project_dir" rev-parse --verify "$branch" >/dev/null 2>&1 && \
             die "branch '$branch' already exists, use --existing to reuse"
         git -C "$project_dir" worktree add -b "$branch" "$worktree_path" "$main_branch" >/dev/null 2>&1
+
+    if [ -f "$worktree_path/.gitmodules" ]; then
+        echo "submodule: initialize from project instructions before building"
+    fi
     fi
 
     echo "$worktree_path"
@@ -245,8 +249,11 @@ cmd_remove() {
     local worktree_path="$workspace_root/.worktrees/${project}-${branch_path}"
 
     if [ -d "$worktree_path" ]; then
-        if ! git -C "$project_dir" worktree remove "$worktree_path"; then
-            die "failed to remove worktree: $worktree_path (worktree and branch were preserved)"
+        if ! git -C "$project_dir" worktree remove "$worktree_path" 2>/dev/null; then
+            [ -z "$(git -C "$worktree_path" status --porcelain --ignore-submodules=none)" ] || \
+                die "worktree contains local files: $worktree_path (worktree and branch were preserved)"
+            git -C "$project_dir" worktree remove --force "$worktree_path" || \
+                die "failed to remove worktree: $worktree_path (worktree and branch were preserved)"
         fi
         echo "removed worktree: $worktree_path"
     else

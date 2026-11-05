@@ -11,7 +11,7 @@ from pathlib import Path
 from lib.git import commit_paths, get_dirty_lines, GitMutationFailure
 from lib.project import resolve_plan_location
 from lib.workspace import find_workspace_root
-from lib.worktree import parse_worktree_context
+from lib.worktree import parse_worktree_context, remove_worktree_path
 from lib.logging import log_success, log_error, log_warn, log_step
 from plan import find_plan, get_plan_field, resolve_project_path
 
@@ -103,11 +103,12 @@ def _prune_worktrees(repo_root: str) -> list[str]:
 
 
 def _remove_worktree(repo_root: str, worktree_path: str) -> bool:
-    """Remove a git worktree and prune stale references.
+    """Remove a worktree with bounded, checked forced cleanup when needed.
 
-    Uses only the non-forced `git worktree remove`. A worktree with local
-    changes or an initialized submodule is deliberately left in place for
-    the Agent to inspect; the switch must not bypass Git's safety check.
+    Normal removal keeps ignored test and build output safe. If Git refuses a
+    clean worktree solely because it contains an initialized submodule, the
+    shared helper rechecks local work before forcing removal. Local-only work
+    always stops the switch.
 
     Args:
         repo_root: Path to the git repository root
@@ -120,21 +121,12 @@ def _remove_worktree(repo_root: str, worktree_path: str) -> bool:
     if not target.exists():
         return True
 
-    cmd = ["git", "worktree", "remove", str(target)]
-    result = subprocess.run(
-        cmd,
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        log_error(
-            f"Failed to remove worktree at {target}:\n"
-            f"{GitMutationFailure.from_completed(cmd, repo_root, result)}"
-        )
+    try:
+        remove_worktree_path(Path(repo_root), target)
+    except RuntimeError as exc:
+        log_error(str(exc))
         return False
 
-    # Prune stale worktree references; failures are reported (non-fatal).
     for problem in _prune_worktrees(repo_root):
         log_error(f"Worktree removed, but {problem}")
 

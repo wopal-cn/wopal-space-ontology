@@ -164,16 +164,7 @@ git merge hotfix/security-patch
 
 ### 删除失败时
 
-普通删除失败时，不要用 `--force` 重试。先检查工作树和所有嵌套 submodule：
-
-```bash
-git -C <worktree> status --porcelain --ignore-submodules=none
-git -C <worktree> submodule status --recursive
-git -C <worktree> submodule foreach --recursive 'git status --porcelain'
-git -C <worktree> submodule foreach --recursive 'git log --oneline @{u}..HEAD'
-```
-
-按项目说明保存未提交、未跟踪和未发布的改动，并确认父仓库引用的子仓库提交能从实际配置的远端取得。确认安全后才显式执行 `git worktree remove --force <worktree>`，确认目录消失后再删除分支。无法确认时保留 worktree 和分支并停止。
+已忽略的缓存和构建产物不阻塞清理。普通删除失败后，脚本只在确认没有已跟踪修改、未忽略的未跟踪文件或子仓库本地独有工作时，才会自动强制删除干净的 submodule 工作树。发现本地待保留内容时保留 worktree 和分支；保存或发布后重新执行清理即可。
 
 ### 常见问题
 

@@ -18,23 +18,9 @@
 
 ## 被阻止的 worktree 清理
 
-普通删除失败说明 Git 检测到未提交内容、已初始化 submodule 或其他不能安全移除的状态。控制器先保留现场并逐层检查：
+缓存、`.venv/`、`node_modules/`、`dist/` 等已忽略产物不会阻塞清理。普通删除被 Git 拒绝时，脚本会检查是否有已跟踪修改、未忽略的未跟踪文件或子仓库本地独有工作；只有这些内容不存在时才会自动强制删除干净的 submodule 工作树。
 
-```bash
-git -C <worktree> status --porcelain --ignore-submodules=none
-git -C <worktree> submodule status --recursive
-git -C <worktree> submodule foreach --recursive 'git status --porcelain'
-git -C <worktree> submodule foreach --recursive 'git log --oneline @{u}..HEAD'
-```
-
-按项目说明保存所有未提交、未跟踪和未发布的嵌套改动；确认父仓库引用的每个子仓库提交都能从实际配置的远端取得。缺少上游分支只是提示，不能单独证明提交未发布。只有保存和远端可得性都确认后，才显式删除：
-
-```bash
-git -C <project> worktree remove --force <worktree>
-git -C <project> worktree list
-```
-
-确认工作树目录消失后，才能删除开发分支，或重新执行原先失败的 `verify-switch` / `archive`。任何一步不能确认时，保留 worktree 和分支并停止；禁止把强制删除作为脚本失败后的自动重试。
+检查发现本地待保留内容时，worktree 和分支都会保留。保存或发布这些内容后重新执行原先失败的 `verify-switch` / `archive` 即可。脚本不初始化 submodule，也不替项目决定如何保存依赖和构建产物。
 
 ## 边缘场景
 
