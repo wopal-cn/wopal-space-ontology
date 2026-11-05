@@ -162,6 +162,19 @@ git merge hotfix/security-patch
 
 脚本只在非强制删除成功后清理分支；失败时保留现场。
 
+### 删除失败时
+
+普通删除失败时，不要用 `--force` 重试。先检查工作树和所有嵌套 submodule：
+
+```bash
+git -C <worktree> status --porcelain --ignore-submodules=none
+git -C <worktree> submodule status --recursive
+git -C <worktree> submodule foreach --recursive 'git status --porcelain'
+git -C <worktree> submodule foreach --recursive 'git log --oneline @{u}..HEAD'
+```
+
+按项目说明保存未提交、未跟踪和未发布的改动，并确认父仓库引用的子仓库提交能从实际配置的远端取得。确认安全后才显式执行 `git worktree remove --force <worktree>`，确认目录消失后再删除分支。无法确认时保留 worktree 和分支并停止。
+
 ### 常见问题
 
 **Q: 提示"无效项目名"？**

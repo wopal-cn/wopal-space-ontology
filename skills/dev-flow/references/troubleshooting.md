@@ -10,11 +10,31 @@
 | `Done completion failed` | 勾选所有 Task Done checkbox |
 | `Agent Verification failed` | 补齐 Agent Verification checkbox |
 | `dirty workspace` | 清理/提交 或使用 worktree 隔离 |
-| `working trees containing submodules cannot be moved or removed` | 停止清理；检查并保存/发布子仓库工作，再由 Agent 明确处理 worktree，不要自动 force |
+| `working trees containing submodules cannot be moved or removed` | 停止当前步骤，不自动 force、不删分支、不继续 checkout；按下方“被阻止的 worktree 清理”检查并保存现场 |
 | `PR not merged yet` | 用户验证后运行 `flow.sh integrate <plan> --confirm`，由 integrate 完成正式 PR 合入 |
 | `User Validation gate failed` | 让用户完成验证并勾选最终 checkbox |
 | `Integration Commit is missing` | 本次 Delivery 尚未正式集成；完成用户验证后运行 `flow.sh integrate <plan> --confirm` |
 | `Recorded Integration Commit ... is not on ...` | Plan 记录与正式分支不一致；先检查负责人 Plan 的 `Integration Commit` / `Integration Branch`，不要用当前 HEAD 代替本次交付提交 |
+
+## 被阻止的 worktree 清理
+
+普通删除失败说明 Git 检测到未提交内容、已初始化 submodule 或其他不能安全移除的状态。控制器先保留现场并逐层检查：
+
+```bash
+git -C <worktree> status --porcelain --ignore-submodules=none
+git -C <worktree> submodule status --recursive
+git -C <worktree> submodule foreach --recursive 'git status --porcelain'
+git -C <worktree> submodule foreach --recursive 'git log --oneline @{u}..HEAD'
+```
+
+按项目说明保存所有未提交、未跟踪和未发布的嵌套改动；确认父仓库引用的每个子仓库提交都能从实际配置的远端取得。缺少上游分支只是提示，不能单独证明提交未发布。只有保存和远端可得性都确认后，才显式删除：
+
+```bash
+git -C <project> worktree remove --force <worktree>
+git -C <project> worktree list
+```
+
+确认工作树目录消失后，才能删除开发分支，或重新执行原先失败的 `verify-switch` / `archive`。任何一步不能确认时，保留 worktree 和分支并停止；禁止把强制删除作为脚本失败后的自动重试。
 
 ## 边缘场景
 

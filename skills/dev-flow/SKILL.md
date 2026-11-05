@@ -274,6 +274,19 @@ Dev-flow scripts own branch/worktree creation and deletion:
 
 Cleanup is fail-closed. The scripts do not initialize submodules or force-remove dirty or submodule worktrees. When a project has submodules, the controller initializes and updates them according to the project instructions after worktree creation and after integration or branch switching. A blocked cleanup means preserve the worktree and branch, inspect and publish nested work first, then remove it explicitly.
 
+When normal cleanup or `verify-switch` fails, the controller stops the lifecycle step. It does not retry with `--force`, delete the branch, or continue the checkout. Inspect the worktree and every submodule recursively:
+
+```bash
+git -C <worktree> status --porcelain --ignore-submodules=none
+git -C <worktree> submodule status --recursive
+git -C <worktree> submodule foreach --recursive 'git status --porcelain'
+git -C <worktree> submodule foreach --recursive 'git log --oneline @{u}..HEAD'
+```
+
+Before a forced removal, the controller preserves every dirty, untracked, or unpublished nested change according to the project instructions and verifies that every submodule commit referenced by the parent is available from its published remote. It then removes the worktree explicitly with `git worktree remove --force <worktree>`, confirms the directory is gone, and only then deletes the work branch or retries `verify-switch`. If work cannot be preserved or remote availability cannot be established, leave the worktree and branch in place and report the exact blocker.
+
+A missing upstream is not proof that a nested commit is unpublished; check the submodule's configured remote directly. A clean parent repository does not prove that nested work is saved.
+
 Do not load a separate worktree-management skill to take over worktrees already owned by dev-flow.
 
 ## User authorization gates

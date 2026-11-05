@@ -274,6 +274,19 @@ flow.sh archive <plan> [--keep-worktree]
 
 清理采用安全失败：脚本不初始化 submodule，也不会强制删除有未提交内容或已初始化 submodule 的 worktree。项目有 submodule 时，Agent 按项目说明在工作树创建后、以及集成或切换分支后完成初始化和同步。清理被阻止时，保留 worktree 和分支，先检查和保存子仓库工作，再明确处理。
 
+普通清理或 `verify-switch` 失败时，控制器停止当前生命周期步骤：不用 `--force` 自动重试，不删除分支，也不继续 checkout。先逐层检查工作树与所有子仓库：
+
+```bash
+git -C <worktree> status --porcelain --ignore-submodules=none
+git -C <worktree> submodule status --recursive
+git -C <worktree> submodule foreach --recursive 'git status --porcelain'
+git -C <worktree> submodule foreach --recursive 'git log --oneline @{u}..HEAD'
+```
+
+强制删除前，控制器按项目说明保存所有未提交、未跟踪和未发布的嵌套改动，并确认父仓库引用的每个子仓库提交都能从已发布远端取得。随后才能显式执行 `git worktree remove --force <worktree>`；确认目录消失后，才删除开发分支或重试 `verify-switch`。工作无法保存或远端可得性无法确认时，保留 worktree 和分支，如实上报阻塞原因。
+
+缺少上游分支不能直接认定为“未发布”，应检查子仓库实际配置的远端。父仓库干净也不能证明子仓库工作已经保存。
+
 不要加载其他 worktree 管理技能去接管 dev-flow 已经管理的 worktree。
 
 ## 用户授权门
