@@ -36,6 +36,7 @@ rules:
   - typescript.md
   - python.md
   - git.md
+  - wopal/mem-rule.md
 
 # 声明该空间加载的命令
 commands:
